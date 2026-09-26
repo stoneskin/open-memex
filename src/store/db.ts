@@ -27,22 +27,27 @@ const TABLE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS memories (
   id           TEXT PRIMARY KEY,
   scope_key    TEXT NOT NULL,
-  scope_kind   TEXT NOT NULL,
-  project_name TEXT NOT NULL,
-  type         TEXT NOT NULL DEFAULT 'note',
+  scope        TEXT NOT NULL,
+  visibility   TEXT NOT NULL DEFAULT 'private',
+  project_name TEXT NOT NULL DEFAULT '',
+  type         TEXT NOT NULL DEFAULT 'fact',
+  role         TEXT NOT NULL DEFAULT 'knowledge',
+  importance   TEXT NOT NULL DEFAULT 'normal',
+  status       TEXT NOT NULL DEFAULT 'active',
   tags         TEXT NOT NULL DEFAULT '',
   content      TEXT NOT NULL,
+  cjk          TEXT NOT NULL DEFAULT '',
   source       TEXT NOT NULL DEFAULT '',
   file_path    TEXT NOT NULL,
-  mtime_ms     INTEGER NOT NULL,
+  mtime_ms     REAL NOT NULL,
   created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL,
-  cjk          TEXT NOT NULL DEFAULT ''
+  updated_at   INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_scope_updated
   ON memories(scope_key, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
+CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
 `;
 
 // The `cjk` column holds pre-tokenized CJK unigrams+bigrams (see
@@ -81,31 +86,31 @@ END;
 `;
 
 /** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function userVersion(d: AnyDatabase): number {
   const row = d.prepare("PRAGMA user_version").get() as { user_version: number };
   return row.user_version;
 }
 
-/** v1 -> v2: add `cjk` column and rebuild the FTS table with it. */
-function migrateToV2(d: AnyDatabase): void {
-  const cols = d.prepare("PRAGMA table_info(memories)").all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === "cjk")) {
-    d.exec("ALTER TABLE memories ADD COLUMN cjk TEXT NOT NULL DEFAULT ''");
-  }
-  // The query layer is fully derived from markdown (D1); wipe it so the next
-  // syncScope() repopulates every row with the cjk column filled.
-  // NOTE ordering matters: triggers are dropped BEFORE the wipe, and the FTS
-  // table is rebuilt after. FTS5's 'delete' command corrupts
-  // (SQLITE_CORRUPT_VTAB) when it targets a rowid that was never indexed, so
-  // the wipe must not fire any FTS trigger while the index is out of sync
-  // with the table.
+/**
+ * Any schema change: the query layer is fully derived from markdown (D1),
+ * so wipe it and let the next syncScope() repopulate. The markdown files
+ * themselves are untouched — `migrate --to-v2` handles the file format.
+ * NOTE ordering matters: triggers are dropped BEFORE the wipe, and the FTS
+ * table is rebuilt after. FTS5's 'delete' command corrupts
+ * (SQLITE_CORRUPT_VTAB) when it targets a rowid that was never indexed, so
+ * the wipe must not fire any FTS trigger while the index is out of sync
+ * with the table (found 2026-09-26).
+ */
+function rebuildIndexSchema(d: AnyDatabase): void {
   d.exec(`DROP TRIGGER IF EXISTS memories_ai;
           DROP TRIGGER IF EXISTS memories_ad;
           DROP TRIGGER IF EXISTS memories_au;`);
   d.exec("DELETE FROM memories");
   d.exec(`DROP TABLE IF EXISTS memories_fts;`);
+  d.exec(`DROP TABLE IF EXISTS memories;`);
+  d.exec(TABLE_SCHEMA);
   d.exec(FTS_SCHEMA);
   d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
@@ -120,7 +125,7 @@ export function db(): AnyDatabase {
   d.exec("PRAGMA foreign_keys = ON;");
   d.exec(TABLE_SCHEMA);
   d.exec(FTS_SCHEMA);
-  if (userVersion(d) < SCHEMA_VERSION) migrateToV2(d);
+  if (userVersion(d) < SCHEMA_VERSION) rebuildIndexSchema(d);
   _db = d;
   return d;
 }

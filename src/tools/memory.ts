@@ -1,13 +1,15 @@
 import { tool } from "@opencode-ai/plugin/tool";
 import type { Scope } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
-import { USER_SCOPE } from "../scope.ts";
+import { PERSONAL_SCOPE } from "../scope.ts";
 import { search, list } from "../retrieve/search.ts";
 import {
   writeMemoryFile,
   deleteMemoryFile,
   readMemoryFile,
   ulid,
+  msToRfc3339,
+  MEMORY_TYPE_TAXONOMY,
   type Frontmatter,
 } from "../store/markdown.ts";
 import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
@@ -16,26 +18,19 @@ import { redact } from "../redact.ts";
 
 const z = tool.schema;
 
-const MEMORY_TYPES = [
-  "note",
-  "preference",
-  "project-config",
-  "architecture",
-  "error-solution",
-  "learned-pattern",
-  "conversation",
-] as const;
+/** v2 content-kind taxonomy (V2-DESIGN §3.1). */
+const MEMORY_TYPES = MEMORY_TYPE_TAXONOMY;
 
 export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
   const scopeArg = z
-    .enum(["project", "user"])
+    .enum(["project", "personal", "user"])
     .optional()
     .describe(
-      "Memory scope. `project` = tied to this repo. `user` = global across all your projects. Default: project.",
+      "Memory scope. `project` = tied to this repo. `personal` = global across all your projects. `user` is a deprecated alias of `personal`. Default: project.",
     );
 
-  function resolveScope(kind?: "project" | "user"): Scope {
-    return kind === "user" ? USER_SCOPE : getScope();
+  function resolveScope(kind?: "project" | "personal" | "user"): Scope {
+    return kind === "personal" || kind === "user" ? PERSONAL_SCOPE : getScope();
   }
 
   const memory_add = tool({
@@ -62,17 +57,22 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
         };
       }
       const s = resolveScope(args.scope);
-      const now = Date.now();
+      const rfc = msToRfc3339(Date.now());
       const fm: Frontmatter = {
         id: ulid(),
+        schema_version: 2,
         scope_key: s.key,
-        scope_kind: s.kind,
+        scope: s.kind === "project" ? "project" : "personal",
+        visibility: s.kind === "project" ? "internal" : "private",
         project_name: s.projectName,
-        type: args.type ?? "note",
+        type: args.type ?? "fact",
+        role: "knowledge",
+        importance: "normal",
+        status: "active",
         tags: args.tags ?? [],
         source: "tool",
-        created_at: now,
-        updated_at: now,
+        created_at: rfc,
+        updated_at: rfc,
       };
       const { filePath } = writeMemoryFile(fm, redacted);
       const mf = readMemoryFile(filePath);
@@ -86,14 +86,14 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
 
   const memory_search = tool({
     description:
-      "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or user scope. Use before asking the user something they may have told you before.",
+      "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or personal scope. Use before asking the user something they may have told you before.",
     args: {
       query: z
         .string()
         .min(1)
         .describe("Free-text query. File paths, error strings, identifiers work well."),
       scope: z
-        .enum(["project", "user", "both"])
+        .enum(["project", "personal", "user", "both"])
         .optional()
         .describe("Which scope(s) to search. Default: both."),
       type: z.string().optional().describe("Restrict to memories of this type."),
@@ -102,11 +102,11 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     async execute(args) {
       const project = getScope();
       const scopeKeys =
-        args.scope === "user"
-          ? [USER_SCOPE.key]
+        args.scope === "personal" || args.scope === "user"
+          ? [PERSONAL_SCOPE.key]
           : args.scope === "project"
             ? [project.key]
-            : [project.key, USER_SCOPE.key];
+            : [project.key, PERSONAL_SCOPE.key];
       const hits = search(args.query, {
         scopeKeys,
         limit: args.limit,
@@ -120,7 +120,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
       }
       const lines = hits.map(
         (h) =>
-          `- [${h.scope_key === USER_SCOPE.key ? "user" : "project"}/${h.type}] id=${h.id}\n  ${h.snippet.replace(/\s+/g, " ").trim()}`,
+          `- [${h.scope_key === PERSONAL_SCOPE.key ? "personal" : "project"}/${h.type}] id=${h.id}\n  ${h.snippet.replace(/\s+/g, " ").trim()}`,
       );
       return {
         title: `memory: ${hits.length} result(s)`,

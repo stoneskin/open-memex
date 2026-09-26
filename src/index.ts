@@ -1,6 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { loadConfig } from "./config.ts";
-import { resolveProjectScope, resolveCwdScope, USER_SCOPE, type Scope } from "./scope.ts";
+import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE, type Scope } from "./scope.ts";
 import { db } from "./store/db.ts";
 import { syncScope, upsertFromFile } from "./store/sync.ts";
 import { scopeHasFiles } from "./store/migrate.ts";
@@ -8,6 +8,7 @@ import {
   writeMemoryFile,
   readMemoryFile,
   ulid,
+  msToRfc3339,
   type Frontmatter,
 } from "./store/markdown.ts";
 import { buildContextBlock } from "./retrieve/inject.ts";
@@ -24,7 +25,7 @@ const plugin: Plugin = async ({ worktree, directory }) => {
   try {
     db();
     syncScope(scope.key);
-    syncScope(USER_SCOPE.key);
+    syncScope(PERSONAL_SCOPE.key);
     if (cfg.logLevel === "debug") {
       console.log(`[open-memex] loaded. scope=${scope.key}`);
     }
@@ -64,16 +65,22 @@ const plugin: Plugin = async ({ worktree, directory }) => {
         const { content, hadSecret } = redact(h.content, cfg.redactPatterns);
         if (hadSecret || content.length === 0) continue;
         const now = Date.now();
+        const rfc = msToRfc3339(now);
         const fm: Frontmatter = {
           id: ulid(),
+          schema_version: 2,
           scope_key: scope.key,
-          scope_kind: scope.kind,
+          scope: scope.kind === "project" ? "project" : "personal",
+          visibility: scope.kind === "project" ? "internal" : "private",
           project_name: scope.projectName,
-          type: "note",
+          type: "fact",
+          role: "knowledge",
+          importance: "normal",
+          status: "active",
           tags: ["keyword"],
           source: "keyword",
-          created_at: now,
-          updated_at: now,
+          created_at: rfc,
+          updated_at: rfc,
         };
         try {
           const { filePath } = writeMemoryFile(fm, content);

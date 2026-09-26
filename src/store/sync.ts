@@ -1,16 +1,25 @@
 import fs from "node:fs";
 import { db } from "./db.ts";
 import { cjkIndexText } from "../retrieve/cjk.ts";
-import { iterMemoryFiles, readMemoryFile, type MemoryFile } from "./markdown.ts";
+import {
+  iterMemoryFiles,
+  readMemoryFile,
+  timeToMs,
+  type MemoryFile,
+} from "./markdown.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope_kind, project_name, type, tags, content, cjk, source, file_path, mtime_ms, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, content, cjk, source, file_path, mtime_ms, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
-    scope_kind   = excluded.scope_kind,
+    scope        = excluded.scope,
+    visibility   = excluded.visibility,
     project_name = excluded.project_name,
     type         = excluded.type,
+    role         = excluded.role,
+    importance   = excluded.importance,
+    status       = excluded.status,
     tags         = excluded.tags,
     content      = excluded.content,
     cjk          = excluded.cjk,
@@ -26,17 +35,21 @@ export function upsertFromFile(mf: MemoryFile): void {
   db().prepare(UPSERT_SQL).run(
     fm.id,
     fm.scope_key,
-    fm.scope_kind,
+    fm.scope,
+    fm.visibility,
     fm.project_name,
     fm.type,
+    fm.role,
+    fm.importance,
+    fm.status,
     tags,
     body,
     cjkIndexText(body + "\n" + tags),
     fm.source ?? "",
     filePath,
     mtimeMs,
-    fm.created_at,
-    fm.updated_at,
+    timeToMs(fm.created_at),
+    timeToMs(fm.updated_at),
   );
 }
 

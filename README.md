@@ -30,8 +30,9 @@ Restart opencode.
 | Tool | What it does |
 |---|---|
 | `memory_add`     | Save a fact, preference, decision, note |
-| `memory_search`  | Keyword search (BM25) across project + user memories |
+| `memory_search`  | Keyword search (BM25) across project + personal memories |
 | `memory_list`    | List memories in a scope, newest first |
+| `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
 | `memory_forget`  | Delete a memory by id |
 
 ## Capture
@@ -49,7 +50,7 @@ See [docs/SCOPES.md](./docs/SCOPES.md) for the full scope model: key derivation,
 
 ## Retrieval
 
-On the first turn of every session, `open-memex` injects a `[OPEN-MEMEX]` block into the system prompt containing top-N recent project memories + top-N user preferences. The agent can also call `memory_search` on demand.
+On the first turn of every session, `open-memex` injects a `[OPEN-MEMEX]` block into the system prompt containing top-N recent project memories + top-N personal preferences. The agent can also call `memory_search` on demand.
 
 ## Storage layout
 

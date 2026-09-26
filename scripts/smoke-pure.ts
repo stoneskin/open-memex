@@ -5,6 +5,7 @@ import { redact, findSecret } from "../src/redact.ts";
 import { detectKeywords } from "../src/capture/keywords.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, USER_SCOPE } from "../src/scope.ts";
+import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -86,6 +87,30 @@ ok("cwd scope deterministic", cwdOnly.key === cwdOnly2.key);
 // In a repo with a git remote, cwd-only scope must differ from git-origin scope.
 // (This repo does have an origin after `git push`.)
 console.log("     cwd.key   =", cwdOnly.key);
+
+console.log("== cjk ==");
+ok("detects han", hasCjk("中文记忆"));
+ok("detects mixed", hasCjk("open中文"));
+ok("no cjk in latin", !hasCjk("hello world 123"));
+ok(
+  "index bigrams",
+  cjkIndexText("中文记忆") === "中 文 记 忆 中文 文记 记忆",
+  cjkIndexText("中文记忆"),
+);
+ok("index single char", cjkIndexText("猫") === "猫", cjkIndexText("猫"));
+ok(
+  "index skips latin",
+  cjkIndexText("open中文") === "中 文 中文",
+  cjkIndexText("open中文"),
+);
+ok("index empty", cjkIndexText("hello") === "");
+ok(
+  "query bigrams",
+  cjkQueryExpr("中文记忆") === '"中文" OR "文记" OR "记忆"',
+  cjkQueryExpr("中文记忆"),
+);
+ok("query single char", cjkQueryExpr("猫") === '"猫"', cjkQueryExpr("猫"));
+ok("query no cjk", cjkQueryExpr("hello") === "");
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

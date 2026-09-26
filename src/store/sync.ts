@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import { db } from "./db.ts";
+import { cjkIndexText } from "../retrieve/cjk.ts";
 import { iterMemoryFiles, readMemoryFile, type MemoryFile } from "./markdown.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope_kind, project_name, type, tags, content, source, file_path, mtime_ms, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope_kind, project_name, type, tags, content, cjk, source, file_path, mtime_ms, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
     scope_kind   = excluded.scope_kind,
@@ -12,6 +13,7 @@ const UPSERT_SQL = `
     type         = excluded.type,
     tags         = excluded.tags,
     content      = excluded.content,
+    cjk          = excluded.cjk,
     source       = excluded.source,
     file_path    = excluded.file_path,
     mtime_ms     = excluded.mtime_ms,
@@ -20,14 +22,16 @@ const UPSERT_SQL = `
 
 export function upsertFromFile(mf: MemoryFile): void {
   const { fm, body, filePath, mtimeMs } = mf;
+  const tags = (fm.tags ?? []).join(",");
   db().prepare(UPSERT_SQL).run(
     fm.id,
     fm.scope_key,
     fm.scope_kind,
     fm.project_name,
     fm.type,
-    (fm.tags ?? []).join(","),
+    tags,
     body,
+    cjkIndexText(body + "\n" + tags),
     fm.source ?? "",
     filePath,
     mtimeMs,

@@ -1,4 +1,5 @@
 import { db } from "../store/db.ts";
+import { cjkQueryExpr, hasCjk } from "./cjk.ts";
 
 export interface SearchHit {
   id: string;
@@ -11,11 +12,20 @@ export interface SearchHit {
   updated_at: number;
 }
 
-/** Convert free-text query into a safe FTS5 MATCH expression. */
+/**
+ * Convert free-text query into a safe FTS5 MATCH expression.
+ * Latin tokens keep the old behavior (prefix match on content/tags/type).
+ * CJK runs become an OR of bigrams against the `cjk` column (see cjk.ts).
+ * Mixed queries OR the two parts together.
+ */
 function toFtsQuery(q: string): string {
-  const tokens = q.toLowerCase().match(/[a-z0-9_.\-]+/g) ?? [];
-  if (tokens.length === 0) return "";
-  return tokens.map((t) => `"${t.replace(/"/g, '""')}"*`).join(" OR ");
+  const latin = (q.toLowerCase().match(/[a-z0-9_.\-]+/g) ?? [])
+    .map((t) => `"${t.replace(/"/g, '""')}"*`)
+    .join(" OR ");
+  const cjk = hasCjk(q) ? cjkQueryExpr(q) : "";
+  if (latin && cjk) return `(${latin}) OR {cjk}:(${cjk})`;
+  if (cjk) return `{cjk}:(${cjk})`;
+  return latin;
 }
 
 export function search(

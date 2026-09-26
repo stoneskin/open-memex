@@ -13,6 +13,7 @@ import {
   type Frontmatter,
 } from "../store/markdown.ts";
 import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
+import { findDuplicates, supersede } from "../store/lifecycle.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 
@@ -57,6 +58,15 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
         };
       }
       const s = resolveScope(args.scope);
+      // Dedup on write (§3.4): identical content is idempotent; near-duplicates
+      // are reported so the caller can supersede instead of duplicating.
+      const dups = findDuplicates(s.key, redacted);
+      if (dups.exact) {
+        return {
+          title: "memory: already exists",
+          output: `Identical memory already exists: id=${dups.exact.id}. Not duplicated.`,
+        };
+      }
       const rfc = msToRfc3339(Date.now());
       const fm: Frontmatter = {
         id: ulid(),
@@ -73,13 +83,19 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
         source: "tool",
         created_at: rfc,
         updated_at: rfc,
+        supersedes: null,
+        superseded_by: null,
       };
       const { filePath } = writeMemoryFile(fm, redacted);
       const mf = readMemoryFile(filePath);
       if (mf) upsertFromFile(mf);
+      let output = `Saved to ${s.key} as ${fm.type}. id=${fm.id}`;
+      for (const n of dups.near) {
+        output += `\nNote: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id} — ${n.snippet}. Use memory_supersede if this replaces it.`;
+      }
       return {
         title: `memory: saved ${fm.id}`,
-        output: `Saved to ${s.key} as ${fm.type}. id=${fm.id}`,
+        output,
       };
     },
   });
@@ -152,6 +168,51 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     },
   });
 
+  const memory_supersede = tool({
+    description:
+      "Replace an existing memory with a newer version. The old memory is kept as history (status: superseded) and retrieval returns the new one. Use when a saved fact becomes outdated and should be replaced rather than duplicated.",
+    args: {
+      id: z.string().min(1).describe("ID of the memory being replaced."),
+      content: z.string().min(1).describe("The new, corrected content."),
+      type: z
+        .enum(MEMORY_TYPES)
+        .optional()
+        .describe("Category of the new memory. Defaults to the old memory's type."),
+      tags: z.array(z.string()).optional().describe("Optional tags for the new memory."),
+    },
+    async execute(args) {
+      const { content: redacted, hadSecret, matchedPattern } = redact(
+        args.content,
+        cfg.redactPatterns,
+      );
+      if (hadSecret) {
+        return {
+          title: "memory: rejected (secret detected)",
+          output: `Refused to save: content matched a secret pattern (${matchedPattern}). Wrap the sensitive part in <private>...</private> tags or paraphrase, then try again.`,
+        };
+      }
+      try {
+        const { oldMf, newMf } = supersede(args.id, {
+          body: redacted,
+          type: args.type,
+          tags: args.tags,
+          source: "tool",
+        });
+        upsertFromFile(oldMf);
+        upsertFromFile(newMf);
+        return {
+          title: `memory: superseded ${oldMf.fm.id}`,
+          output: `Replaced ${oldMf.fm.id} with ${newMf.fm.id} (old kept as history).`,
+        };
+      } catch (e) {
+        return {
+          title: "memory: supersede failed",
+          output: (e as Error).message,
+        };
+      }
+    },
+  });
+
   const memory_forget = tool({
     description: "Delete a memory by id. Use when the user asks to forget something.",
     args: {
@@ -170,5 +231,5 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     },
   });
 
-  return { memory_add, memory_search, memory_list, memory_forget };
+  return { memory_add, memory_search, memory_list, memory_forget, memory_supersede };
 }

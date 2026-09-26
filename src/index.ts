@@ -13,6 +13,7 @@ import {
 } from "./store/markdown.ts";
 import { buildContextBlock } from "./retrieve/inject.ts";
 import { detectKeywords } from "./capture/keywords.ts";
+import { findDuplicates } from "./store/lifecycle.ts";
 import { redact } from "./redact.ts";
 import { makeTools } from "./tools/memory.ts";
 
@@ -64,6 +65,8 @@ const plugin: Plugin = async ({ worktree, directory }) => {
       for (const h of hits) {
         const { content, hadSecret } = redact(h.content, cfg.redactPatterns);
         if (hadSecret || content.length === 0) continue;
+        // Dedup (§3.4): skip exact duplicates captured before.
+        if (findDuplicates(scope.key, content).exact) continue;
         const now = Date.now();
         const rfc = msToRfc3339(now);
         const fm: Frontmatter = {
@@ -81,6 +84,8 @@ const plugin: Plugin = async ({ worktree, directory }) => {
           source: "keyword",
           created_at: rfc,
           updated_at: rfc,
+          supersedes: null,
+          superseded_by: null,
         };
         try {
           const { filePath } = writeMemoryFile(fm, content);

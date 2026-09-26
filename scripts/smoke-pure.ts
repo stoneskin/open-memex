@@ -7,6 +7,7 @@ import { detectKeywords } from "../src/capture/keywords.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
+import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -191,6 +192,20 @@ fs.writeFileSync(v1path, v2raw, "utf8");
 const plan2 = planConversion(v1path, memRoot);
 ok("v2 on disk → null plan", plan2 === null);
 fs.rmSync(tmpRoot, { recursive: true, force: true });
+
+console.log("== lifecycle pure: contentHash / similarity ==");
+ok("hash deterministic + whitespace-insensitive", contentHash("hello   world\n") === contentHash("hello world"));
+ok("hash differs on content", contentHash("hello world") !== contentHash("hello mars"));
+ok("hash is sha256 hex", /^[0-9a-f]{64}$/.test(contentHash("x")));
+ok("similarity identical latin = 1", similarity("apple banana", "apple banana") === 1);
+ok("similarity identical CJK = 1", similarity("北京烤鸭好吃", "北京烤鸭好吃") === 1);
+ok("similarity disjoint ≈ 0", similarity("apple banana", "car train") < 0.2);
+const near = similarity(
+  "the meeting notes from tuesday about deployment",
+  "meeting notes from tuesday about deployment",
+);
+ok(`similarity near-dup ${near.toFixed(2)} >= ${NEAR_DUP_THRESHOLD}`, near >= NEAR_DUP_THRESHOLD);
+ok("similarity empty → 0", similarity("", "anything") === 0);
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

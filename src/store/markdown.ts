@@ -50,6 +50,8 @@ export interface Frontmatter {
   source: string;
   created_at: string; // RFC 3339, never bare epoch (§3)
   updated_at: string; // RFC 3339
+  supersedes: string | null; // on the NEW memory → points BACK (§3.3)
+  superseded_by: string | null; // on the OLD memory → points FORWARD
 }
 
 export interface MemoryFile {
@@ -171,6 +173,12 @@ export function normalizeFrontmatter(
     source: typeof raw.source === "string" ? raw.source : "",
     created_at: msToRfc3339(timeToMs(raw.created_at)),
     updated_at: msToRfc3339(timeToMs(raw.updated_at)),
+    supersedes:
+      typeof raw.supersedes === "string" && raw.supersedes ? raw.supersedes : null,
+    superseded_by:
+      typeof raw.superseded_by === "string" && raw.superseded_by
+        ? raw.superseded_by
+        : null,
   };
 }
 

@@ -5,6 +5,7 @@ import { db, closeDb } from "./store/db.ts";
 import { syncScope, upsertFromFile, deleteFromIndex } from "./store/sync.ts";
 import { migrateScope, scopeHasFiles, type ConflictStrategy } from "./store/migrate.ts";
 import { migrateV2 } from "./store/v2migrate.ts";
+import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
 import { search, list } from "./retrieve/search.ts";
 import {
   writeMemoryFile,
@@ -27,6 +28,8 @@ Usage:
   node --experimental-strip-types src/cli.ts list [--scope project|personal] [--type T] [--limit N]
   node --experimental-strip-types src/cli.ts search "query" [--scope project|personal|both] [--type T] [--limit N]
   node --experimental-strip-types src/cli.ts add "content" [--scope project|personal] [--type T] [--tag t1,t2]
+  node --experimental-strip-types src/cli.ts supersede <id> "new content" [--type T] [--tag t1,t2]
+  node --experimental-strip-types src/cli.ts status <id> active|deprecated|retracted|archived
   node --experimental-strip-types src/cli.ts forget <id>
   node --experimental-strip-types src/cli.ts reindex
   node --experimental-strip-types src/cli.ts scopes
@@ -144,7 +147,8 @@ async function main() {
       return;
     }
     for (const h of hits) {
-      console.log(`[${h.type}] ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+      const dep = h.status === "deprecated" ? " [deprecated]" : "";
+      console.log(`[${h.type}]${dep} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
   }
@@ -172,7 +176,8 @@ async function main() {
     }
     for (const h of hits) {
       const tag = h.scope_key === PERSONAL_SCOPE.key ? "personal" : "project";
-      console.log(`[${tag}/${h.type}] ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+      const dep = h.status === "deprecated" ? " [deprecated]" : "";
+      console.log(`[${tag}/${h.type}]${dep} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
   }
@@ -186,6 +191,13 @@ async function main() {
     if (hadSecret) {
       console.error(`refused: content matched secret pattern (${matchedPattern}).`);
       process.exit(2);
+    }
+    // Dedup on write (§3.4): identical content is idempotent; near-duplicates
+    // warn but still save (use `supersede` when this replaces the old one).
+    const dups = findDuplicates(s.key, red);
+    if (dups.exact) {
+      console.log(`already exists: id=${dups.exact.id} (identical content — not duplicated)`);
+      return;
     }
     const now = Date.now();
     const rfc = msToRfc3339(now);
@@ -209,11 +221,62 @@ async function main() {
       source: "cli",
       created_at: rfc,
       updated_at: rfc,
+      supersedes: null,
+      superseded_by: null,
     };
     const { filePath } = writeMemoryFile(fm, red);
     const mf = readMemoryFile(filePath);
     if (mf) upsertFromFile(mf);
     console.log(`saved ${fm.id} -> ${filePath}`);
+    for (const n of dups.near) {
+      console.log(
+        `warning: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id}\n  ${n.snippet}\n  use \`open-memex supersede ${n.id} "new content"\` if this replaces it.`,
+      );
+    }
+    return;
+  }
+
+  if (cmd === "supersede") {
+    const id = rest[0];
+    const content = rest[1];
+    if (!id || !content || content.startsWith("--")) usage();
+    const flags = parseFlags(rest.slice(2));
+    const { content: red, hadSecret, matchedPattern } = redact(content, cfg.redactPatterns);
+    if (hadSecret) {
+      console.error(`refused: content matched secret pattern (${matchedPattern}).`);
+      process.exit(2);
+    }
+    try {
+      const { oldMf, newMf } = supersede(id, {
+        body: red,
+        type: flags.type,
+        tags: flags.tag
+          ? flags.tag.split(",").map((t) => t.trim()).filter(Boolean)
+          : undefined,
+        source: "cli",
+      });
+      upsertFromFile(oldMf);
+      upsertFromFile(newMf);
+      console.log(`superseded ${oldMf.fm.id} → ${newMf.fm.id}`);
+    } catch (e) {
+      console.error(`supersede failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "status") {
+    const id = rest[0];
+    const st = rest[1];
+    if (!id || !st) usage();
+    try {
+      const mf = setStatus(id, st as "active" | "deprecated" | "retracted" | "archived");
+      upsertFromFile(mf);
+      console.log(`status ${id} → ${mf.fm.status}`);
+    } catch (e) {
+      console.error(`status failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
     return;
   }
 

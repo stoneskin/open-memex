@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS memories (
   tags         TEXT NOT NULL DEFAULT '',
   content      TEXT NOT NULL,
   cjk          TEXT NOT NULL DEFAULT '',
+  content_hash TEXT NOT NULL DEFAULT '',
+  superseded_by TEXT,
   source       TEXT NOT NULL DEFAULT '',
   file_path    TEXT NOT NULL,
   mtime_ms     REAL NOT NULL,
@@ -86,7 +88,7 @@ END;
 `;
 
 /** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 5;
 
 function userVersion(d: AnyDatabase): number {
   const row = d.prepare("PRAGMA user_version").get() as { user_version: number };

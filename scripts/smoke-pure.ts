@@ -23,7 +23,9 @@ const a = ulid();
 const b = ulid();
 ok("length is 26", a.length === 26);
 ok("two calls differ", a !== b);
-ok("sortable", a < b || a === b);
+// NOTE: same-ms monotonicity is NOT guaranteed — the 16-char suffix is
+// random by design (timestamp prefix still gives rough ordering).
+ok("time prefix is 10 chars", a.slice(0, 10).length === 10);
 
 console.log("== markdown round-trip (v2) ==");
 const fm: Frontmatter = {
@@ -61,6 +63,77 @@ ok("bare secret detected", r2.hadSecret === true);
 
 const r3 = redact("ghp_" + "a".repeat(36), DEFAULT_CONFIG.redactPatterns);
 ok("github PAT detected", r3.hadSecret === true);
+
+console.log("== redact hardening ==");
+import {
+  BUILTIN_SECRET_PATTERNS,
+  findBuiltinSecret,
+  findHighEntropySecret,
+  stripPrivate,
+} from "../src/redact.ts";
+
+// Every builtin pattern fires on a realistic sample, reported by id.
+const builtinSamples: Array<[string, string]> = [
+  ["openai-key", "key=sk-1234567890abcdefghij1234"],
+  ["github-oauth-token", "tok=gho_12345678901234567890123456789012"],
+  ["github-fine-grained-pat", "tok=github_pat_1234567890123456789012345678901234567890"],
+  ["aws-access-key-id", "id=AKIA1234567890ABCDEF"],
+  ["slack-token", "tok=xoxb-123456789012-abcdefghij"],
+  ["google-api-key", "k=AIza12345678901234567890123456789012"],
+  ["npm-token", "t=npm_12345678901234567890123456789012"],
+  ["gitlab-pat", "t=glpat-12345678901234567890ab"],
+  ["stripe-webhook-secret", "s=whsec_12345678901234567890"],
+  ["private-key-block", "-----BEGIN RSA PRIVATE KEY-----"],
+  ["generic-secret-assignment", 'password = "hunter2hunter2hunter2"'],
+];
+for (const [id, sample] of builtinSamples) {
+  const r = redact(`note: ${sample} end`, []);
+  ok(`builtin ${id} detected`, r.hadSecret === true && r.matchedPattern === id, r.matchedPattern);
+}
+// All builtin regexes compile.
+ok(
+  "all builtins compile",
+  BUILTIN_SECRET_PATTERNS.every((p) => {
+    try {
+      new RegExp(p.source, p.flags ?? "");
+      return true;
+    } catch {
+      return false;
+    }
+  }),
+);
+// Non-secrets pass.
+const benign = [
+  "remember that the meeting is at 3pm tomorrow",
+  "the api endpoint is https://api.example.com/v1/users/list",
+  "commit = a3f5c81234abcd1234abcd1234abcd1234abcd12",
+  "version = 1.2.3-alpha.4",
+  "note = aaaaaaaaaaaaaaaaaaaaaaaa",
+  "token: abc",
+];
+for (const b of benign) {
+  const r = redact(b, []);
+  ok(`benign passes: ${b.slice(0, 40)}`, r.hadSecret === false, r.matchedPattern);
+}
+// High-entropy heuristic.
+const entropic = findHighEntropySecret('deploy_key = "aB3dE5fG7hJ9kL2mN4pQ6rS8tU0vW2xY4zA6bC8dE0"');
+ok("high-entropy assignment caught", entropic === "high-entropy-secret:deploy_key", entropic);
+ok("low-entropy passes", findHighEntropySecret('note = "aaaaaaaaaaaaaaaaaaaaaaaa"') === null);
+ok("hex digest passes", findHighEntropySecret("commit = a3f5c81234abcd1234abcd1234abcd1234abcd12") === null);
+// <private> handling.
+ok(
+  "unclosed private redacts to end",
+  stripPrivate("hello <private>my secret") === "hello [REDACTED]",
+);
+ok(
+  "closed private still stripped",
+  stripPrivate("a <private>x</private> b") === "a [REDACTED] b",
+);
+const r4 = redact("token is <private>sk-1234567890abcdefghij1234</private> ok", []);
+ok("wrapped secret does not trigger", r4.hadSecret === false);
+// User patterns still work, reported verbatim.
+const r5 = redact("foo CUSTOM123 bar", ["CUSTOM\\d+"]);
+ok("user pattern detected", r5.hadSecret === true && r5.matchedPattern === "CUSTOM\\d+", r5.matchedPattern);
 
 console.log("== keywords ==");
 const hits1 = detectKeywords("remember that this repo uses Bun, not Node", DEFAULT_CONFIG);

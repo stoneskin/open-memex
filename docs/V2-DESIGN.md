@@ -235,7 +235,7 @@ instructions are never candidates.)
 
 ```
 <project-repo>/
-├── .open-memex/            # default; configurable (alt: .ai/memory/)
+├── .ai/open-memex/            # default (D23); configurable (alt: .ai/memory/)
 │   ├── 01K6AB….md           # one memory = one file ("reduces unrelated merge conflicts…")
 │   └── …
 ├── AGENTS.md                # constitution + ONE pointer line to the memory system
@@ -243,9 +243,9 @@ instructions are never candidates.)
 └── docs/                    # human-authored formal docs (ADRs, guides)
 ```
 
-- The in-repo directory name is **configurable** (`memoryDir` in config): default `.open-memex/`
-  (brand clarity, no collisions), alternative `.ai/memory/` for teams that prefer the emerging `.ai/`
-  namespace convention.
+- The in-repo directory name is **configurable** (`memoryDir` in config): default
+  `.ai/open-memex/` (D23 — `.ai/` namespace + brand clarity, no collisions),
+  alternatives `.open-memex/` and `.ai/memory/`.
 - `index.db` is **never committed** — rebuildable from markdown.
 - Org repo layout (Phase 4): `company-memory/{engineering,architecture,decisions,lessons,policies}/…`
 - AGENTS.md pointer: `> Project memory lives in .open-memex/ — query it with memory_search before answering.`
@@ -488,7 +488,7 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 - **D7** — Embeddings are an optional capability, BM25+CJK is the default. *Rationale: zero-setup
   default; no mandatory 100MB download or native dependency.*
 - **D8** — Contested choices become **configurable with a popular default**, not hard-coded.
-  Applies to: in-repo dir name (default `.open-memex/`), CJK tokenizer (default bigram),
+  Applies to: in-repo dir name (default `.ai/open-memex/` per D23), CJK tokenizer (default bigram),
   embeddings model (default `multilingual-e5-small`). *Rationale: the five-AI review split on all
   three; maintainers shouldn't burn decision capital where config suffices.*
 - **D9** — The LAN reference server lives at `examples/remote-server/`. *Rationale: maintainer decision
@@ -597,6 +597,12 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   keeps the old repo-level behavior for teams where everyone uses open-memex.
   The instructions carry a guard clause ("ignore this section when the
   `open-memex` MCP server is not available") as cheap insurance. 2026-09-27.*
+- **D23** — The in-repo memory directory defaults to **`.ai/open-memex/`** (under the
+  emerging `.ai/` project-file namespace, keeping the `open-memex` brand for
+  collision clarity), superseding the §6 draft default of `.open-memex/`
+  (`.ai/memory/` remains a documented alternative). The directory name stays
+  configurable via `memoryDir`. Hidden (dot-prefixed) so it doesn't clutter the
+  repo root. 2026-09-27.*
 
 ## Open Questions
 

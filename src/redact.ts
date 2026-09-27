@@ -23,32 +23,58 @@ export interface SecretPattern {
   flags?: string;
 }
 
+/**
+ * Prefixes like `sk-` also occur inside ordinary English words ("task-…",
+ * "risk-…", "disk-…"), which caused confirmed false positives. Require the
+ * token prefix NOT to be preceded by a word/hyphen char, so a real key after
+ * "=", ":", space, or a quote still matches.
+ */
+const TOKEN_BOUNDARY = "(?<![A-Za-z0-9_-])";
+
 export const BUILTIN_SECRET_PATTERNS: SecretPattern[] = [
-  { id: "openai-key", source: "sk-[A-Za-z0-9_-]{20,}" },
-  { id: "openai-admin-key", source: "sk-admin-[A-Za-z0-9_-]{20,}" },
-  { id: "openai-session-key", source: "sm_[A-Za-z0-9_-]{20,}" },
-  { id: "github-pat", source: "ghp_[A-Za-z0-9]{30,}" },
-  { id: "github-oauth-token", source: "gho_[A-Za-z0-9]{30,}" },
-  { id: "github-user-token", source: "ghu_[A-Za-z0-9]{30,}" },
-  { id: "github-refresh-token", source: "ghr_[A-Za-z0-9]{30,}" },
-  { id: "github-fine-grained-pat", source: "github_pat_[A-Za-z0-9_]{40,}" },
-  { id: "aws-access-key-id", source: "AKIA[0-9A-Z]{16}" },
+  { id: "openai-key", source: `${TOKEN_BOUNDARY}sk-[A-Za-z0-9_-]{20,}` },
+  {
+    id: "openai-admin-key",
+    source: `${TOKEN_BOUNDARY}sk-admin-[A-Za-z0-9_-]{20,}`,
+  },
+  {
+    id: "openai-session-key",
+    source: `${TOKEN_BOUNDARY}sm_[A-Za-z0-9_-]{20,}`,
+  },
+  { id: "github-pat", source: `${TOKEN_BOUNDARY}ghp_[A-Za-z0-9]{30,}` },
+  { id: "github-oauth-token", source: `${TOKEN_BOUNDARY}gho_[A-Za-z0-9]{30,}` },
+  { id: "github-user-token", source: `${TOKEN_BOUNDARY}ghu_[A-Za-z0-9]{30,}` },
+  {
+    id: "github-refresh-token",
+    source: `${TOKEN_BOUNDARY}ghr_[A-Za-z0-9]{30,}`,
+  },
+  {
+    id: "github-fine-grained-pat",
+    source: `${TOKEN_BOUNDARY}github_pat_[A-Za-z0-9_]{40,}`,
+  },
+  { id: "aws-access-key-id", source: `${TOKEN_BOUNDARY}AKIA[0-9A-Z]{16}` },
   {
     id: "aws-secret-access-key",
     source:
       "aws[_-]?secret[_-]?access[_-]?key[\"']?\\s*[:=]\\s*[\"']?[A-Za-z0-9/+=]{40}",
     flags: "i",
   },
-  { id: "slack-token", source: "xox[baprs]-[A-Za-z0-9-]{10,}" },
-  { id: "google-api-key", source: "AIza[0-9A-Za-z_-]{30,}" },
-  { id: "npm-token", source: "npm_[A-Za-z0-9]{30,}" },
-  { id: "gitlab-pat", source: "glpat-[A-Za-z0-9_-]{20,}" },
-  { id: "stripe-restricted-key", source: "rk_(live|test)_[A-Za-z0-9]{20,}" },
-  { id: "stripe-webhook-secret", source: "whsec_[A-Za-z0-9]{20,}" },
+  { id: "slack-token", source: `${TOKEN_BOUNDARY}xox[baprs]-[A-Za-z0-9-]{10,}` },
+  { id: "google-api-key", source: `${TOKEN_BOUNDARY}AIza[0-9A-Za-z_-]{30,}` },
+  { id: "npm-token", source: `${TOKEN_BOUNDARY}npm_[A-Za-z0-9]{30,}` },
+  { id: "gitlab-pat", source: `${TOKEN_BOUNDARY}glpat-[A-Za-z0-9_-]{20,}` },
+  {
+    id: "stripe-restricted-key",
+    source: `${TOKEN_BOUNDARY}rk_(live|test)_[A-Za-z0-9]{20,}`,
+  },
+  {
+    id: "stripe-webhook-secret",
+    source: `${TOKEN_BOUNDARY}whsec_[A-Za-z0-9]{20,}`,
+  },
   { id: "private-key-block", source: "-----BEGIN [A-Z ]*PRIVATE KEY-----" },
   {
     id: "jwt",
-    source: "eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}",
+    source: `${TOKEN_BOUNDARY}eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}`,
   },
   {
     id: "generic-secret-assignment",

@@ -43,6 +43,8 @@ const fm: Frontmatter = {
   source: "test",
   created_at: msToRfc3339(1000),
   updated_at: msToRfc3339(2000),
+  supersedes: null,
+  superseded_by: null,
 };
 const body = "hello\n\nworld";
 const raw = serialize(fm, body);
@@ -110,6 +112,11 @@ const benign = [
   "version = 1.2.3-alpha.4",
   "note = aaaaaaaaaaaaaaaaaaaaaaaa",
   "token: abc",
+  // sk- inside ordinary words must not trip the openai-key pattern
+  // (regression: these were refused as "openai-key" before the boundary guard).
+  "the task-management-system-workflow-2024 document is here",
+  "disk-encryption-key-management-system-v2 rollout notes",
+  "risk-assessment-score-2024-10 update",
 ];
 for (const b of benign) {
   const r = redact(b, []);

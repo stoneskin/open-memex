@@ -5,7 +5,10 @@ for user-facing docs; `docs/V2-DESIGN.md` §18 for the roadmap. This file lists 
 
 ## Runtime model — read before touching anything
 
-Three entry points execute the same TypeScript source, with **no build step**:
+Three entry points execute the same TypeScript source. **Development is build-free**;
+the published npm package ships pre-compiled JS (`npm run build` → `dist/`,
+via `prepublishOnly` — Node refuses `--experimental-strip-types` for files under
+`node_modules`, so a global install cannot run `src/` directly):
 
 - **opencode host** loads `src/index.ts` under embedded **Bun**. SQLite here is `bun:sqlite` (built-in).
 - **CLI** (`src/cli.ts`) and smoke tests run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
@@ -42,8 +45,9 @@ previews keyword capture without writing, `open-memex doctor` runs health checks
 (node version, config, scope resolution, storage writability, MCP handshake).
 `open-memex init` asks editor + two settings on a TTY (`--yes` skips, scripts never
 prompt); `open-memex config set <key> <value>` edits settings after install.
-The bin is a tiny JS launcher (`bin/open-memex.js`) that
-re-execs `src/cli.ts` with type-stripping — no build step, works on Node 22.6+.
+The published `open-memex` bin points at `dist/cli.js` (compiled at publish time).
+From a source checkout, `npm run cli` / `npm run mcp` still run `src/` directly
+with type-stripping — no build step needed for development.
 
 There is **no `npm test`** and no CI. Verification loop is: `npm run typecheck` + `smoke-pure.ts` + (if touching sqlite) `npm run cli -- reindex` against a scratch `MY_O_MEMORY_HOME`.
 

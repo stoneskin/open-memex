@@ -578,6 +578,15 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   auto-discovers `.vscode/mcp.json` and `.cursor/mcp.json`, so repos already set up for
   VS Code get VS support for free; the explicit `.mcp.json` is the source-controllable
   option. 2026-09-27.*
+- **D21** — The published npm package ships pre-compiled JS (`tsc -p tsconfig.build.json`
+  → `dist/`, via `prepublishOnly`; bin points at `dist/cli.js`). *Rationale: Node's
+  `--experimental-strip-types` refuses files under `node_modules`
+  (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so the old launcher
+  (`bin/open-memex.js` re-execing `src/cli.ts`) crashed on every global install —
+  reported 2026-09-27 on Node v22.12.0. Development stays build-free (`npm run cli`
+  / `npm run mcp` run `src/` directly); `doctor`'s MCP self-check resolves its server
+  entry the same way it is running (`dist/mcp.js` vs `src/mcp.ts`). The opencode
+  native plugin still loads `src/index.ts` (Bun strips types anywhere). 2026-09-27.*
 
 ## Open Questions
 

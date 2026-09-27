@@ -8,7 +8,7 @@ plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, Visual Studio, 
 - **Markdown files** as the source of truth (human-editable, git-friendly)
 - **SQLite FTS5** as a rebuildable index (BM25 keyword search, via `better-sqlite3`)
 - **Zero cloud**, zero account, zero third-party API
-- Loads directly under opencode's embedded Bun runtime; CLI and MCP server run under Node — no build step, no Bun install
+- Loads directly under opencode's embedded Bun runtime; CLI and MCP server run under Node — no build step in development (the published npm package ships pre-compiled JS), no Bun install
 
 ## Installation
 
@@ -259,8 +259,9 @@ open-memex reindex      # rebuild the SQLite index from markdown
 open-memex migrate --to-v2 [--dry-run]   # v1 data → v2
 ```
 
-The CLI runs under Node 22 with the built-in experimental TypeScript loader (no build
-step). From a source checkout, prefix every command with
+The CLI runs under Node 22. From a source checkout it uses the built-in experimental
+TypeScript loader (no build step); the published npm package ships pre-compiled JS
+(`npm run build` at publish time). From a source checkout, prefix every command with
 `node --experimental-strip-types src/cli.ts` (or `npm run cli -- <command>` for
 simple cases — npm swallows unknown `--flag` args, so prefer direct `node`).
 

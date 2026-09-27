@@ -73,15 +73,26 @@ function storageCheck(): Check {
 function mcpCheck(): Promise<Check> {
   const name = "mcp";
   return new Promise((resolve) => {
-    const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-    const server = path.join(root, "src", "mcp.ts");
+    // D21: the installed package runs compiled JS from dist/ (Node refuses
+    // --experimental-strip-types for files under node_modules), while a source
+    // checkout runs src/ directly. Resolve the server entry the same way this
+    // file itself is running.
+    const here = fileURLToPath(import.meta.url);
+    const fromDist = here.endsWith(`dist${path.sep}doctor.js`);
+    const server = fromDist
+      ? path.join(path.dirname(here), "mcp.js")
+      : path.join(path.dirname(path.dirname(here)), "src", "mcp.ts");
     if (!fs.existsSync(server)) {
       resolve({ name, ok: false, detail: `server entry not found: ${server}` });
       return;
     }
-    const child = spawn(process.execPath, ["--experimental-strip-types", server], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      fromDist ? [server] : ["--experimental-strip-types", server],
+      {
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     const done = (c: Check) => {
       clearTimeout(timer);
       try {

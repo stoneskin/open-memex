@@ -8,7 +8,7 @@
 - **Markdown 文件**是 source of truth（人类可读、git 友好）
 - **SQLite FTS5** 做可重建索引（BM25 关键词检索，`better-sqlite3`）
 - **零云端**、零账号、零第三方 API
-- 直接跑在 opencode 内嵌的 Bun 运行时里；CLI 和 MCP server 跑在 Node 下——无需构建、无需安装 Bun
+- 直接跑在 opencode 内嵌的 Bun 运行时里；CLI 和 MCP server 跑在 Node 下——开发时无需构建（发布的 npm 包带预编译好的 JS）、无需安装 Bun
 
 ## 安装
 
@@ -258,7 +258,8 @@ open-memex reindex      # 从 markdown 重建 SQLite 索引
 open-memex migrate --to-v2 [--dry-run]   # v1 数据 → v2
 ```
 
-CLI 跑在 Node 22 内置的实验性 TypeScript loader 下（无需构建）。
+CLI 跑在 Node 22 下。从源码 checkout 使用时走内置的实验性 TypeScript loader（无需构建）；
+发布的 npm 包带预编译好的 JS（发布时间执行 `npm run build`）。
 从源码 checkout 使用时，每条命令前加
 `node --experimental-strip-types src/cli.ts`（简单场景也可用
 `npm run cli -- <命令>`——但 npm 会吞掉未知的 `--flag` 参数，

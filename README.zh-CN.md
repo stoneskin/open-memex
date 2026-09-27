@@ -21,15 +21,15 @@
 **npm（推荐）：**
 
 ```sh
-npm install -g open-memex@alpha
+npm install -g open-memex
 ```
 
-安装的是 `0.3.0-alpha` 预览通道。（`latest` 仍指向旧的 `0.1.0` 稳定版。）
+安装的是 `0.3.0` 正式版。
 
 **免安装——用 npx 直接跑：**
 
 ```sh
-npx -y open-memex@alpha <命令>   # 例如 npx -y open-memex@alpha init --client vscode
+npx -y open-memex <命令>   # 例如 npx -y open-memex init --client vscode
 ```
 
 **从源码安装**（最新开发版，`V2-dev-p2` 分支）：
@@ -40,9 +40,6 @@ cd open-memex
 npm install
 node --experimental-strip-types src/cli.ts <命令>
 ```
-
-> `0.3.0-alpha` 的 npm 发布从该分支切出——如果 npx 还解析到旧的 alpha 版，
-> 请先用源码安装，等发布落地。
 
 #### 提示 "'open-memex' 不是内部命令"？——PATH 设置
 
@@ -66,7 +63,7 @@ node --experimental-strip-types src/cli.ts <命令>
 #### Windows 重装报 "`EBUSY` / `EPERM`（`better_sqlite3.node`）"
 
 Windows 下被进程加载的 DLL 是锁死的：如果 open-memex MCP server 正在运行
-（VS Code MCP 面板、Cursor 等），`npm install -g open-memex@alpha` 替换不了
+（VS Code MCP 面板、Cursor 等），`npm install -g open-memex` 替换不了
 `better_sqlite3.node`，就会报 `EBUSY` / `EPERM`。先停掉 MCP server
 （或退出编辑器），再重跑安装。还不行的话，手动删掉全局 npm 目录下的
 `node_modules/open-memex` 和 `node_modules/.open-memex-*` 临时目录，再装。
@@ -80,7 +77,7 @@ Windows 下被进程加载的 DLL 是锁死的：如果 open-memex MCP server �
 ```sh
 open-memex init --client vscode
 # ……没装全局包的话：
-npx -y open-memex@alpha init --client vscode
+npx -y open-memex init --client vscode
 ```
 
 自动写 `.vscode/mcp.json` 和用户级 Copilot instructions，然后重新加载窗口，
@@ -140,8 +137,8 @@ Visual Studio 也会自动发现 `.vscode/mcp.json` 和 `.cursor/mcp.json`，
 - 已有配置文件会被**合并，不会被覆盖**——重复运行是安全的。
   `--force` 强制覆盖。
 - 如果 `PATH` 上没有可用的 `open-memex`（比如一次性 npx），`init` 会把
-  `npx -y open-memex@alpha mcp` 写进配置，配置照样能用。
-  以后 `npm i -g open-memex@alpha` + `open-memex init --force` 可切换到更快
+  `npx -y open-memex mcp` 写进配置，配置照样能用。
+  以后 `npm i -g open-memex` + `open-memex init --force` 可切换到更快
   的直接调用。
 
 ### 第三步——验证
@@ -288,7 +285,7 @@ CLI 跑在 Node 22 下。从源码 checkout 使用时走内置的实验性 TypeS
 
 ```sh
 open-memex mcp               # 全局安装后
-npx -y open-memex@alpha mcp  # 免安装
+npx -y open-memex mcp  # 免安装
 ```
 
 project scope 从进程工作目录解析，所以配置 server 时 cwd 要指向项目根目录
@@ -300,11 +297,11 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 
 ## 路线图（Roadmap）
 
-**`0.3.0-alpha`（本版）：** 通用 MCP server、`open-memex` bin/CLI、
+**`0.3.0`（本版）：** 通用 MCP server、`open-memex` bin/CLI、
 一键 `init` 配置、中文关键词捕获（含 personal/project 路由）、
 `config` / `capture --dry-run` / `doctor` 助手命令、Visual Studio 支持。
 
-**Coming —— `0.3.0-beta`：** 团队同步——用 git 做共享记忆
+**Coming —— `0.4.0`：** 团队同步——用 git 做共享记忆
 （`propose` / `promote` / `resolve` 工作流、仓库内记忆目录），
 找 1–2 个同事做 pilot。
 

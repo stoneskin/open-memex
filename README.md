@@ -21,16 +21,15 @@ plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, Visual Studio, 
 **npm (recommended):**
 
 ```sh
-npm install -g open-memex@alpha
+npm install -g open-memex
 ```
 
-This installs the `0.3.0-alpha` prerelease channel. (`latest` still points at the older
-`0.1.0` stable.)
+This installs the `0.3.0` stable release.
 
 **No install — run via npx:**
 
 ```sh
-npx -y open-memex@alpha <command>   # e.g. npx -y open-memex@alpha init --client vscode
+npx -y open-memex <command>   # e.g. npx -y open-memex init --client vscode
 ```
 
 **From source** (bleeding edge, `V2-dev-p2` branch):
@@ -41,9 +40,6 @@ cd open-memex
 npm install
 node --experimental-strip-types src/cli.ts <command>
 ```
-
-> The `0.3.0-alpha` npm publish is cut from this branch — if `npx` still resolves an
-> older alpha, install from source until the publish lands.
 
 #### "`open-memex` is not recognized" — PATH setup
 
@@ -68,7 +64,7 @@ If your terminal can't find it, that folder isn't on your `PATH`:
 #### "`EBUSY` / `EPERM` on `better_sqlite3.node`" — Windows reinstall
 
 On Windows a loaded DLL is locked: if the open-memex MCP server is running
-(VS Code MCP panel, Cursor, etc.), `npm install -g open-memex@alpha` cannot
+(VS Code MCP panel, Cursor, etc.), `npm install -g open-memex` cannot
 replace `better_sqlite3.node` and fails with `EBUSY` / `EPERM`. Stop the MCP
 server first (or quit the editor), then re-run the install. If it still fails,
 delete `node_modules/open-memex` and any `node_modules/.open-memex-*` temp
@@ -83,7 +79,7 @@ Run from your **project root** (so the project scope resolves to this repo):
 ```sh
 open-memex init --client vscode
 # …or without a global install:
-npx -y open-memex@alpha init --client vscode
+npx -y open-memex init --client vscode
 ```
 
 Writes `.vscode/mcp.json` and user-level Copilot instructions, then reload the
@@ -145,8 +141,8 @@ above works too.
 - Existing config files are **merged, never clobbered** — re-running is safe.
   `--force` overwrites.
 - With no durable `open-memex` on `PATH` (e.g. one-shot npx), `init` writes an
-  `npx -y open-memex@alpha mcp` server command into the config so the setup keeps
-  working. `npm i -g open-memex@alpha` + `open-memex init --force` switches to the
+  `npx -y open-memex mcp` server command into the config so the setup keeps
+  working. `npm i -g open-memex` + `open-memex init --force` switches to the
   faster direct command later.
 
 ### Step 3 — Verify it works
@@ -289,7 +285,7 @@ no host-specific plugin needed. Any MCP client can use open-memex.
 
 ```sh
 open-memex mcp               # after a global install
-npx -y open-memex@alpha mcp  # no install needed
+npx -y open-memex mcp  # no install needed
 ```
 
 The project scope is resolved from the process working directory, so configure the
@@ -302,11 +298,11 @@ server with cwd set to your project root (`init` handles this for you).
 
 ## Roadmap
 
-**`0.3.0-alpha` (this release):** generic MCP server, `open-memex` bin/CLI, one-command
+**`0.3.0` (this release):** generic MCP server, `open-memex` bin/CLI, one-command
 `init` setup, Chinese keyword capture with personal/project routing, `config` /
 `capture --dry-run` / `doctor` helpers, Visual Studio support.
 
-**Coming — `0.3.0-beta`:** team sync — shared memory via git (`propose` / `promote` /
+**Coming — `0.4.0`:** team sync — shared memory via git (`propose` / `promote` /
 `resolve` workflow, in-repo memory dir), 1–2 colleague pilot.
 
 **Coming — `0.3.0` (stable):** org layer — org memory repo, curator convention,

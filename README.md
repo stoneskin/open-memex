@@ -65,6 +65,15 @@ If your terminal can't find it, that folder isn't on your `PATH`:
 3. No admin rights / don't want to touch `PATH`? Use the npx form above — npx
    resolves the package itself and needs no `PATH` changes.
 
+#### "`EBUSY` / `EPERM` on `better_sqlite3.node`" — Windows reinstall
+
+On Windows a loaded DLL is locked: if the open-memex MCP server is running
+(VS Code MCP panel, Cursor, etc.), `npm install -g open-memex@alpha` cannot
+replace `better_sqlite3.node` and fails with `EBUSY` / `EPERM`. Stop the MCP
+server first (or quit the editor), then re-run the install. If it still fails,
+delete `node_modules/open-memex` and any `node_modules/.open-memex-*` temp
+folders under your global npm root and install again.
+
 ### Step 2 — One-command setup for your editor
 
 Run from your **project root** (so the project scope resolves to this repo):

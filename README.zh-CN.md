@@ -63,6 +63,14 @@ node --experimental-strip-types src/cli.ts <命令>
 3. 没有管理员权限 / 不想动 `PATH`？用上面的 npx 形式——npx 自己解析包，
    不需要改 `PATH`。
 
+#### Windows 重装报 "`EBUSY` / `EPERM`（`better_sqlite3.node`）"
+
+Windows 下被进程加载的 DLL 是锁死的：如果 open-memex MCP server 正在运行
+（VS Code MCP 面板、Cursor 等），`npm install -g open-memex@alpha` 替换不了
+`better_sqlite3.node`，就会报 `EBUSY` / `EPERM`。先停掉 MCP server
+（或退出编辑器），再重跑安装。还不行的话，手动删掉全局 npm 目录下的
+`node_modules/open-memex` 和 `node_modules/.open-memex-*` 临时目录，再装。
+
 ### 第二步——给你的编辑器一键配置
 
 在**项目根目录**下运行（这样 project scope 会解析到这个仓库）：

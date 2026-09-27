@@ -40,6 +40,11 @@ Decisions log; Prior Art; solo-dev adoption path.
 - **MCP is an interface, not the identity.** MCP / CLI / REST / SDK are access layers over the protocol,
   so the project is never locked to one transport or one agent tool (opencode, VS Code Copilot, Cursor,
   Claude Code, Windsurf, …).
+- **Company lens:** at organizational scale the same pain is tribal knowledge — senior engineers'
+  hard-won experience evaporates when they move on, and every incident gets re-debugged by someone
+  new. The current phase therefore prioritizes *capture*: valuable knowledge must land in memory
+  first, because team/org sharing, onboarding, and incident learning all build on that foundation.
+  (No capture, nothing to inherit.)
 
 ### Non-goals
 

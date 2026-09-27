@@ -165,7 +165,7 @@ export async function addMemory(
   const { filePath } = writeMemoryFile(fm, redacted);
   const mf = readMemoryFile(filePath);
   if (mf) upsertFromFile(mf);
-  let output = `Saved to ${s.key} as ${fm.type}. id=${fm.id}${secretNote}`;
+  let output = `Saved to ${s.kind} scope (${s.key}) as ${fm.type}. id=${fm.id}${secretNote}`;
   for (const n of dups.near) {
     output += `\nNote: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id} — ${n.snippet}. Use memory_supersede if this replaces it.`;
   }

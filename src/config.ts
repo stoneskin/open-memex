@@ -59,15 +59,22 @@ function stripJsonComments(raw: string): string {
   return out;
 }
 
-export function loadConfig(): MyOMemoryConfig {
+/** Path of the config file in effect, or null when using built-in defaults. */
+export function configSource(): string | null {
   const candidates = [
     process.env.MY_O_MEMORY_CONFIG,
     path.join(os.homedir(), ".config", "opencode", "open-memex.jsonc"),
     path.join(os.homedir(), ".config", "opencode", "open-memex.json"),
   ].filter(Boolean) as string[];
-
   for (const p of candidates) {
-    if (!fs.existsSync(p)) continue;
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+export function loadConfig(): MyOMemoryConfig {
+  const p = configSource();
+  if (p) {
     try {
       const raw = fs.readFileSync(p, "utf8");
       const parsed = JSON.parse(stripJsonComments(raw)) as Partial<MyOMemoryConfig>;

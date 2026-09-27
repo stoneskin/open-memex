@@ -98,9 +98,11 @@ const plugin: Plugin = async ({ worktree, directory }) => {
           const { filePath } = writeMemoryFile(fm, content);
           const mf = readMemoryFile(filePath);
           if (mf) upsertFromFile(mf);
-          if (cfg.logLevel === "debug") {
-            console.log(`[open-memex] captured keyword memory ${fm.id}`);
-          }
+          // Capture feedback: always visible (not debug-only) — the user said
+          // "记住…", they should see that it landed. The opencode plugin API
+          // offers no toast channel, so the plugin log is the feedback surface.
+          const preview = content.length > 60 ? content.slice(0, 60) + "…" : content;
+          console.log(`[open-memex] remembered → ${target.kind} scope: "${preview}"`);
         } catch (err) {
           console.error("[open-memex] keyword capture failed:", err);
         }

@@ -111,6 +111,9 @@ node --experimental-strip-types src/cli.ts reindex
 node --experimental-strip-types src/cli.ts scopes
 node --experimental-strip-types src/cli.ts migrate --from <old-scope-key> [--dry-run]
 node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
+node --experimental-strip-types src/cli.ts config
+node --experimental-strip-types src/cli.ts capture --dry-run "记住我喜欢简洁的回答"
+node --experimental-strip-types src/cli.ts doctor
 ```
 
 Or via the npm script: `npm run cli -- list --scope project`.

@@ -41,6 +41,7 @@ Usage:
   node --experimental-strip-types src/cli.ts init [--client vscode|cursor] [--force]
   node --experimental-strip-types src/cli.ts config
   node --experimental-strip-types src/cli.ts capture --dry-run "text"
+  node --experimental-strip-types src/cli.ts doctor
 
 One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
 \`.vscode/mcp.json\` and \`.github/copilot-instructions.md\` for the project — no
@@ -204,6 +205,14 @@ async function main() {
     return;
   }
 
+  // `doctor` runs environment health checks — no DB needed (it self-contains).
+  if (cmd === "doctor") {
+    const { runDoctor } = await import("./doctor.ts");
+    const ok = await runDoctor();
+    if (!ok) process.exitCode = 1;
+    return;
+  }
+
   // `config` prints the effective configuration (defaults + file). No DB needed.
   if (cmd === "config") {
     const cfg = loadConfig();
@@ -361,7 +370,7 @@ async function main() {
     const { filePath } = writeMemoryFile(fm, red);
     const mf = readMemoryFile(filePath);
     if (mf) upsertFromFile(mf);
-    console.log(`saved ${fm.id} -> ${filePath}`);
+    console.log(`saved ${fm.id} [${s.kind}] -> ${filePath}`);
     if (hadSecret) {
       console.log(
         `warning: content matched secret pattern (${matchedPattern}); saved with the secret masked (first 4 chars kept).`,

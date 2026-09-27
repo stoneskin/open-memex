@@ -10,7 +10,6 @@ import { search, list } from "./retrieve/search.ts";
 import {
   writeMemoryFile,
   readMemoryFile,
-  deleteMemoryFile,
   ulid,
   msToRfc3339,
   type Frontmatter,
@@ -504,14 +503,21 @@ async function main() {
   if (cmd === "forget") {
     const id = rest[0];
     if (!id) usage();
-    const row = db().prepare(`SELECT scope_key FROM memories WHERE id = ?`).get(id) as
-      | { scope_key: string }
+    const row = db().prepare(`SELECT file_path FROM memories WHERE id = ?`).get(id) as
+      | { file_path: string }
       | undefined;
     if (!row) {
       console.error("not found");
       process.exit(1);
     }
-    deleteMemoryFile(row.scope_key, id);
+    // Delete by indexed file_path — location-agnostic (appdata or in-repo, 2B/D24).
+    if (row.file_path) {
+      try {
+        fs.unlinkSync(row.file_path);
+      } catch {
+        /* already gone */
+      }
+    }
     deleteFromIndex(id);
     console.log(`deleted ${id}`);
     return;

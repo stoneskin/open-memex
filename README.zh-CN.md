@@ -220,9 +220,15 @@ Markdown 是 source of truth，SQLite 索引是派生的、可重建的
   "maxProfileItems": 5,       // 首轮注入的个人偏好条数
   "injectOnFirstTurn": true,  // [OPEN-MEMEX] system-prompt 块
   "keywordCaptureEnabled": true,
-  "logLevel": "info"          // info | debug
+  "logLevel": "info",          // info | debug
+  "memoryDir": ".ai/open-memex" // 仓库内项目记忆目录，相对于仓库根目录
 }
 ```
+
+project scope 的记忆以"一个记忆一个 Markdown 文件"的形式存放在
+`<仓库>/<memoryDir>/`（默认 `.ai/open-memex/`）下，可经 git 共享；
+personal 记忆只存本地 appdata，永不离开本机。已有的 appdata 项目文件会在
+首次写入/同步时自动搬进仓库目录。
 
 `open-memex config` 打印生效配置（默认值 + 文件）。
 安装后改设置：
@@ -233,7 +239,7 @@ open-memex config set maxProjectMemories 12
 ```
 
 可设置的 key：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、
-`keywordCaptureEnabled`、`logLevel`。完整设计见
+`keywordCaptureEnabled`、`logLevel`、`memoryDir`。完整设计见
 [docs/V2-DESIGN.md](./docs/V2-DESIGN.md)。
 
 ## CLI 参考

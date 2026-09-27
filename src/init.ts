@@ -3,9 +3,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { DEFAULT_CONFIG, saveConfig } from "./config.ts";
+import { projectRoot } from "./paths.ts";
 
 const MARKER = "<!-- open-memex -->";
 
@@ -63,20 +63,6 @@ You have a local memory MCP server (\`open-memex\`) with five tools:
   the user that hold across all projects. When a saved fact becomes outdated, call
   \`memory_supersede\` instead of adding a duplicate.
 `;
-
-/** Project root: git top-level, falling back to cwd. */
-function projectRoot(): string {
-  try {
-    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    if (top) return top;
-  } catch {
-    /* not a git repo — use cwd */
-  }
-  return process.cwd();
-}
 
 function writeMcpJson(root: string, client: string, force: boolean): string | null {
   if (client === "opencode") return writeOpencodeMcpJson(root, force);

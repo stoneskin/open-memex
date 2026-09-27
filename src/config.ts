@@ -13,6 +13,12 @@ export interface MyOMemoryConfig {
   keywordPersonalPatterns: string[];
   redactPatterns: string[];
   logLevel: "debug" | "info" | "warn" | "error";
+  /**
+   * In-repo project-memory directory, relative to the project root (2B/D23).
+   * Default `.ai/open-memex/`. Must stay relative and `..`-free so project
+   * memories can never escape the repo.
+   */
+  memoryDir: string;
 }
 
 export const DEFAULT_CONFIG: MyOMemoryConfig = {
@@ -47,6 +53,7 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   // Add only your own extra patterns here.
   redactPatterns: [],
   logLevel: "info",
+  memoryDir: ".ai/open-memex",
 };
 
 function stripJsonComments(raw: string): string {
@@ -80,12 +87,21 @@ function toNonNegInt(v: unknown): number {
   return n;
 }
 
+function toRelativeDir(v: unknown): string {
+  if (typeof v !== "string" || !v.trim()) throw new Error("must be a non-empty relative directory");
+  const t = v.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!t || path.isAbsolute(t) || t.split("/").includes(".."))
+    throw new Error('must be a relative path without ".." (e.g. ".ai/open-memex")');
+  return t;
+}
+
 /** Keys users may change via `open-memex config set <key> <value>`, with validators. */
 export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
   maxProjectMemories: toNonNegInt,
   maxProfileItems: toNonNegInt,
   injectOnFirstTurn: toBool,
   keywordCaptureEnabled: toBool,
+  memoryDir: toRelativeDir,
   logLevel: (v) => {
     if (v !== "info" && v !== "debug") throw new Error('must be "info" or "debug"');
     return v;

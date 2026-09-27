@@ -6,6 +6,7 @@
  * They take plain validated args and return a plain { title, output }
  * result; each host adapts that to its own tool-result shape.
  */
+import fs from "node:fs";
 import { z } from "zod";
 import type { Scope } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
@@ -13,7 +14,6 @@ import { PERSONAL_SCOPE } from "../scope.ts";
 import { search, list } from "../retrieve/search.ts";
 import {
   writeMemoryFile,
-  deleteMemoryFile,
   readMemoryFile,
   ulid,
   msToRfc3339,
@@ -248,12 +248,19 @@ export async function supersedeMemory(
 
 export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> {
   const row = db()
-    .prepare(`SELECT scope_key FROM memories WHERE id = ?`)
-    .get(args.id) as { scope_key: string } | undefined;
+    .prepare(`SELECT file_path FROM memories WHERE id = ?`)
+    .get(args.id) as { file_path: string } | undefined;
   if (!row) {
     return { title: "memory: not found", output: `No memory with id ${args.id}.` };
   }
-  deleteMemoryFile(row.scope_key, args.id);
+  // Delete by indexed file_path — location-agnostic (appdata or in-repo, 2B/D24).
+  if (row.file_path) {
+    try {
+      fs.unlinkSync(row.file_path);
+    } catch {
+      /* already gone */
+    }
+  }
   deleteFromIndex(args.id);
   return { title: "memory: forgotten", output: `Deleted ${args.id}.` };
 }

@@ -1,8 +1,9 @@
 # OpenMemex User Guide
 
 > This document describes open-memex's **mental model**: where your memories live,
-> how they flow, and who can see them. Features marked **2B** belong to Phase 2B
-> (targeting 0.4.0); everything else is 0.3.0 behavior.
+> how they flow, and who can see them. Features marked **2B** are still to be
+> built in Phase 2B; the in-repo directory (§2, §6 write path) is already
+> implemented on the `V2-dev-p2b` branch; everything else is 0.3.0 behavior.
 
 ## In one sentence
 
@@ -25,14 +26,18 @@ Keywords route automatically (D18): "remember… / I think… / I like…" (I) �
 
 ## 2. Two homes: appdata vs the repo directory
 
-| | appdata (the desk) | repo `.ai/open-memex/` (the shelf) **2B** |
+| | appdata (the desk) | repo `.ai/open-memex/` (the shelf) |
 |---|---|---|
-| Location | Windows `%APPDATA%/open-memex`, Linux `~/.local/share/open-memex` | Project root, default `.ai/open-memex/` (D23, configurable) |
+| Location | Windows `%APPDATA%/open-memex`, Linux `~/.local/share/open-memex` | Project root, default `.ai/open-memex/` (D23, configurable via `memoryDir`) |
 | Holds | `memories/personal/` personal memories; `index.db` local index | Project-scope Markdown, one memory per file |
 | In git? | No | Yes — git is its courier |
 | The index? | `index.db` is rebuildable, **never committed** | No index stored; rebuilt from Markdown on demand |
 
 The private notebook (personal) never goes on the shelf. That's an iron rule, not a setting.
+
+The repo directory is created on demand: the first project-scope write creates it.
+Legacy project files left in appdata by 0.3.0 are moved in automatically on first
+write/sync (only the current project's — never another's).
 
 ## 3. First-turn injection: how the 8 and 5 are chosen
 
@@ -99,7 +104,7 @@ personal idea ──propose──▶ in review ──▶ approved ──▶ publ
 - **Write**: `memory_add` (project scope) → writes `.ai/open-memex/<id>.md` in the
   repo working tree and updates the local index. **Never auto-commits, never
   auto-pushes.**
-- **Pull**: `open-memex pull` (always explicit, never automatic) → git fetch +
+- **Pull** **2B**: `open-memex pull` (always explicit, never automatic) → git fetch +
   fast-forward → scans `.ai/open-memex/*.md` → merges into the local `index.db` by
   file mtime. Retrieval always goes through SQLite, never walks git.
 - **personal scope**: never syncs (§1 iron rule).
@@ -121,4 +126,4 @@ personal idea ──propose──▶ in review ──▶ approved ──▶ publ
 
 ---
 
-*Companion design record: `docs/V2-DESIGN.md` (decisions D1–D23).*
+*Companion design record: `docs/V2-DESIGN.md` (decisions D1–D24).*

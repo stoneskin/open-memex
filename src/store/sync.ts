@@ -1,13 +1,18 @@
 import fs from "node:fs";
+import path from "node:path";
 import { db } from "./db.ts";
 import { cjkIndexText } from "../retrieve/cjk.ts";
 import { contentHash, repairChain } from "./lifecycle.ts";
 import {
   iterMemoryFiles,
+  iterInRepoMemoryFiles,
+  migrateScopeToRepo,
   readMemoryFile,
   timeToMs,
   type MemoryFile,
 } from "./markdown.ts";
+import { projectRoot } from "../paths.ts";
+import { loadConfig } from "../config.ts";
 
 const UPSERT_SQL = `
   INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at)
@@ -101,7 +106,21 @@ export function syncScope(scopeKey: string): SyncStats {
   const existingById = new Map(existing.map((r) => [r.id, r]));
   const seen = new Set<string>();
 
-  for (const fp of iterMemoryFiles(scopeKey)) {
+  // 2B/D24: project scopes live in the repo dir. Drain any legacy appdata
+  // files first, then scan both locations (appdata first so the in-repo copy
+  // wins on the near-impossible id collision).
+  const filePaths: string[] = [];
+  if (scopeKey.startsWith("project__")) {
+    const root = projectRoot();
+    const memoryDir = loadConfig().memoryDir;
+    migrateScopeToRepo(scopeKey, root, memoryDir);
+    for (const fp of iterMemoryFiles(scopeKey)) filePaths.push(fp);
+    for (const fp of iterInRepoMemoryFiles(root, memoryDir)) filePaths.push(fp);
+  } else {
+    for (const fp of iterMemoryFiles(scopeKey)) filePaths.push(fp);
+  }
+
+  for (const fp of filePaths) {
     const mf = readMemoryFile(fp);
     if (!mf) continue;
     stats.scanned++;

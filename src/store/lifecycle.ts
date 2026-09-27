@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db.ts";
-import { paths, memoriesDirPath } from "../paths.ts";
+import {
+  paths,
+  projectRoot,
+  inRepoMemoriesDirPath,
+} from "../paths.ts";
+import { loadConfig } from "../config.ts";
 import { cjkIndexText } from "../retrieve/cjk.ts";
 import {
   parse,
@@ -97,25 +102,33 @@ export function findDuplicates(
   return { exact, near: near.slice(0, 3) };
 }
 
-/** Locate a memory file by id: index first, then a full dir scan fallback. */
+/** Locate a memory file by id: index file_path first, then dir-scan fallback. */
 export function findMemoryFile(id: string): MemoryFile | null {
   const { memories } = paths();
   let filePath: string | null = null;
   try {
     const row = db()
-      .prepare(`SELECT scope_key FROM memories WHERE id = ?`)
-      .get(id) as { scope_key: string } | undefined;
-    if (row) {
-      const p = path.join(memoriesDirPath(row.scope_key), `${id}.md`);
-      if (fs.existsSync(p)) filePath = p;
-    }
+      .prepare(`SELECT file_path FROM memories WHERE id = ?`)
+      .get(id) as { file_path: string } | undefined;
+    if (row && fs.existsSync(row.file_path)) filePath = row.file_path;
   } catch {
     // index unavailable — fall through to scan
   }
-  if (!filePath && fs.existsSync(memories)) {
-    for (const entry of fs.readdirSync(memories, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const p = path.join(memories, entry.name, `${id}.md`);
+  if (!filePath) {
+    // Fallback scan: appdata scope dirs + the in-repo dir (2B/D24).
+    const dirs: string[] = [];
+    if (fs.existsSync(memories)) {
+      for (const entry of fs.readdirSync(memories, { withFileTypes: true })) {
+        if (entry.isDirectory()) dirs.push(path.join(memories, entry.name));
+      }
+    }
+    try {
+      dirs.push(inRepoMemoriesDirPath(projectRoot(), loadConfig().memoryDir));
+    } catch {
+      /* ignore */
+    }
+    for (const dir of dirs) {
+      const p = path.join(dir, `${id}.md`);
       if (fs.existsSync(p)) {
         filePath = p;
         break;

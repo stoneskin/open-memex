@@ -222,9 +222,16 @@ Defaults:
   "maxProfileItems": 5,       // top-N personal items injected on first turn
   "injectOnFirstTurn": true,  // [OPEN-MEMEX] system-prompt block
   "keywordCaptureEnabled": true,
-  "logLevel": "info"          // info | debug
+  "logLevel": "info",          // info | debug
+  "memoryDir": ".ai/open-memex" // in-repo project-memory dir, relative to repo root
 }
 ```
+
+Project-scope memories are stored as one Markdown file each under
+`<repo>/<memoryDir>/` (default `.ai/open-memex/`) so they can be shared via git;
+personal memories stay in local appdata and never leave the machine. Existing
+project files from appdata are moved into the repo dir automatically on first
+write/sync.
 
 `open-memex config` prints the effective config (defaults + file).
 Change a setting after install:
@@ -235,7 +242,7 @@ open-memex config set maxProjectMemories 12
 ```
 
 Settable keys: `maxProjectMemories`, `maxProfileItems`, `injectOnFirstTurn`,
-`keywordCaptureEnabled`, `logLevel`. Full design: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
+`keywordCaptureEnabled`, `logLevel`, `memoryDir`. Full design: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
 
 ## CLI reference
 

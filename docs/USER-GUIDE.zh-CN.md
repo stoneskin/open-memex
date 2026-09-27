@@ -1,7 +1,8 @@
 # OpenMemex 用户守则
 
 > 本文档讲的是 open-memex 的**心智模型**：你的记忆住在哪里、怎么流动、谁能看到。
-> 标有 **2B** 的功能属于 Phase 2B（目标 0.4.0），其余为 0.3.0 已有行为。
+> 标有 **2B** 的功能属于 Phase 2B 待实现部分；in-repo 目录（§2、§6 的写路径）
+> 已在 `V2-dev-p2b` 分支实现，其余为 0.3.0 已有行为。
 
 ## 一句话
 
@@ -23,14 +24,17 @@ Markdown 丢了才是真的丢了。
 
 ## 2. 两个家：appdata 与 repo 目录
 
-| | appdata（书桌） | repo `.ai/open-memex/`（书架）**2B** |
+| | appdata（书桌） | repo `.ai/open-memex/`（书架） |
 |---|---|---|
-| 位置 | Windows `%APPDATA%/open-memex`，Linux `~/.local/share/open-memex` | 项目根目录下，默认 `.ai/open-memex/`（D23，可配置） |
+| 位置 | Windows `%APPDATA%/open-memex`，Linux `~/.local/share/open-memex` | 项目根目录下，默认 `.ai/open-memex/`（D23，可配置 `memoryDir`） |
 | 放什么 | `memories/personal/` 个人记忆；`index.db` 本地索引 | project scope 的 Markdown，一个记忆一个文件 |
 | 进 git 吗 | 不进 | 进，git 就是它的搬运工 |
 | 索引呢 | `index.db` 可重建，**永远不入库** | 不存索引，用时从 Markdown 重建 |
 
 个人笔记本（personal）永远不上书架。这是铁律，不是配置项。
+
+仓库目录按需创建：第一次写入 project 记忆时自动建目录；0.3.0 时代留在
+appdata 的旧项目文件会在首次写入/同步时自动搬进来（只搬当前项目的，不碰别人的）。
 
 ## 3. 首轮注入：8 条和 5 条是怎么选出来的
 
@@ -85,7 +89,7 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
 
 - **写**：`memory_add`（project scope）→ 写 repo 工作区的 `.ai/open-memex/<id>.md`，
   同时更新本地索引。**不自动 commit、不自动 push**。
-- **拉**：`open-memex pull`（必须显式，没有自动）→ git fetch + fast-forward →
+- **拉** **2B**：`open-memex pull`（必须显式，没有自动）→ git fetch + fast-forward →
   扫描 `.ai/open-memex/*.md` → 按文件 mtime 合进本地 `index.db`。检索永远走 SQLite，不 walk git。
 - **personal scope**：永远不同步（§1 铁律）。
 - **没 git 的项目**：照常用，project scope 降级为纯本地并明确提示，不会坏掉。
@@ -100,4 +104,4 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
 
 ---
 
-*配套设计文档：`docs/V2-DESIGN.md`（D1–D23 决策记录）。*
+*配套设计文档：`docs/V2-DESIGN.md`（D1–D24 决策记录）。*

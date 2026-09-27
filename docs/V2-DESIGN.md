@@ -597,12 +597,15 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   keeps the old repo-level behavior for teams where everyone uses open-memex.
   The instructions carry a guard clause ("ignore this section when the
   `open-memex` MCP server is not available") as cheap insurance. 2026-09-27.*
-- **D23** — The in-repo memory directory defaults to **`.ai/open-memex/`** (under the
-  emerging `.ai/` project-file namespace, keeping the `open-memex` brand for
-  collision clarity), superseding the §6 draft default of `.open-memex/`
-  (`.ai/memory/` remains a documented alternative). The directory name stays
-  configurable via `memoryDir`. Hidden (dot-prefixed) so it doesn't clutter the
-  repo root. 2026-09-27.*
+- **D24** — Project-scope markdown lives in the repo: writes with
+  `scope: project` go to `<projectRoot>/<memoryDir>/` (D23 default
+  `.ai/open-memex/`); `personal` never leaves appdata. Legacy appdata project
+  files are lazily migrated on first write/`syncScope` — the move is guarded by
+  the appdata dir name (which *is* the scope key), so it can only ever migrate
+  the current scope's files. The index's `file_path` is the single locator for
+  reads/deletes (`findMemoryFile`, `forget`); on the near-impossible id
+  collision between locations, the in-repo copy wins. *Rationale: one home per
+  scope, no silent data loss, no repo pollution before first use.* 2026-09-27.*
 
 ## Open Questions
 

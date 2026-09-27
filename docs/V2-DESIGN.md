@@ -419,9 +419,11 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
   Ships in **`0.3.0-beta`**.
   Embeddings/rerank run as a **parallel benchmark-gated experiment**, not on the critical path.
 - **Phase 2C — Native agent plugins (candidates, not committed).** Claude Code plugin and/or
-  Codex plugin using their hooks systems (`SessionStart` → context injection,
-  `UserPromptSubmit` → keyword-triggered search, `Stop`/`PostToolUse` → capture).
-  Gated on real-world signal from 0.3.0-alpha MCP dogfooding.
+  Codex plugin as hook-enhanced paths over the same MCP tool surface (`SessionStart` →
+  context injection, `UserPromptSubmit` → keyword-triggered search, `Stop`/`PostToolUse` →
+  capture); per D16, no host-specific extraction intelligence — opencode is likewise
+  supported as a plain MCP consumer. Gated on real-world signal from 0.3.0-alpha MCP
+  dogfooding.
 
 ### Agent integration matrix
 
@@ -525,6 +527,15 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   shared zod schemas); the opencode plugin and the MCP server are thin adapters over it.
   Query-aware injection stays host-side: MCP is request/response and offers no hooks, so
   proactive memory use depends on the host's agent instructions. 2026-09-27.*
+- **D16** — No separate LLM extraction pass; memory intelligence lives in model-driven tool
+  calls. A dedicated post-session extraction (opencode `session.idle` hook → hidden session
+  → host model) was evaluated and rejected: the model's own decision to call `memory_add`
+  *is* the LLM judgment of "worth remembering", so a second pass is redundant and
+  host-specific. Investment goes into the shared layer instead — `TOOL_DESCRIPTIONS` in
+  `src/tools/ops.ts` and each host's agent instructions — so every host benefits at once.
+  Native plugins (opencode now; Claude Code / Codex as Phase 2C candidates) remain as
+  hook-enhanced paths, but opencode is also supported as a plain MCP consumer of
+  `open-memex mcp`, keeping one unified tool surface. 2026-09-27.
 
 ## Open Questions
 

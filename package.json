@@ -30,5 +30,11 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
+  },
+  "bin": {
+    "open-memex": "bin/open-memex.js"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }

@@ -36,6 +36,12 @@ Usage:
   node --experimental-strip-types src/cli.ts migrate [--from <key>] [--to <key>]
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
   node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
+  node --experimental-strip-types src/cli.ts mcp [--print-config vscode|cursor|claude]
+
+Once installed globally (\`npm i -g open-memex@alpha\`) the \`open-memex\` command is
+available directly: \`open-memex mcp\` starts the stdio MCP server (same five
+memory_* tools as the opencode plugin); \`open-memex mcp --print-config <client>\`
+prints a copy-paste MCP client config snippet.
 
 Scope defaults to \`project\` (derived from cwd's git remote or path).
 \`user\` is accepted as a deprecated alias of \`personal\`.
@@ -74,6 +80,48 @@ function resolveCliScope(flags: Record<string, string>, project: Scope): Scope {
     : project;
 }
 
+/** Print a copy-paste MCP client config snippet. Requires a global install
+ * (`npm i -g open-memex@alpha`) so the `open-memex` command is on PATH. */
+function printMcpConfig(client: string): never {
+  const c = client.toLowerCase();
+  if (c === "vscode") {
+    console.log(
+      JSON.stringify(
+        {
+          servers: {
+            "open-memex": {
+              type: "stdio",
+              command: "open-memex",
+              args: ["mcp"],
+              cwd: "${workspaceFolder}",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  } else if (c === "cursor") {
+    console.log(
+      JSON.stringify(
+        {
+          mcpServers: {
+            "open-memex": { command: "open-memex", args: ["mcp"] },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  } else if (c === "claude") {
+    console.log("claude mcp add open-memex -- open-memex mcp");
+  } else {
+    console.error(`unknown client "${client}" (vscode|cursor|claude)`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd) usage();
@@ -110,6 +158,19 @@ async function main() {
           `run \`open-memex reindex\` to verify.`,
       );
     }
+    return;
+  }
+
+  // `mcp` starts the stdio MCP server (same tools as the opencode plugin).
+  // Branched before db() — runMcpServer() does its own init, and stdout must
+  // stay clean for the MCP protocol.
+  if (cmd === "mcp") {
+    const flags = parseFlags(rest);
+    if (flags["print-config"]) {
+      printMcpConfig(flags["print-config"] === "true" ? "vscode" : flags["print-config"]);
+    }
+    const { runMcpServer } = await import("./mcp.ts");
+    await runMcpServer();
     return;
   }
 

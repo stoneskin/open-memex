@@ -57,7 +57,7 @@ function toMcp(p: Promise<ToolResult>) {
   );
 }
 
-async function main() {
+export async function runMcpServer() {
   const cfg = loadConfig();
   const scope: Scope = resolveProjectScope(process.cwd());
   const getScope = () => scope;
@@ -122,7 +122,12 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  console.error("[open-memex] MCP server failed:", err);
-  process.exit(1);
-});
+// Standalone entry: `node --experimental-strip-types src/mcp.ts`.
+// The CLI (`open-memex mcp`) imports runMcpServer() instead.
+import { pathToFileURL } from "node:url";
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runMcpServer().catch((err) => {
+    console.error("[open-memex] MCP server failed:", err);
+    process.exit(1);
+  });
+}

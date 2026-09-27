@@ -122,8 +122,14 @@ no host-specific plugin needed. Any MCP client can use open-memex.
 Start it:
 
 ```
-node --experimental-strip-types src/mcp.ts
-# or: npm run mcp
+open-memex mcp                        # after `npm i -g open-memex@alpha`
+npx open-memex@alpha mcp              # no install needed
+```
+
+Don't know what to paste into your client? This prints a copy-paste config snippet:
+
+```
+open-memex mcp --print-config vscode|cursor|claude
 ```
 
 The project scope is resolved from the process working directory, so configure the server
@@ -132,40 +138,43 @@ with cwd set to your project root (all three clients below do this for workspace
 ### MCP config
 
 **VS Code** — create `.vscode/mcp.json` in your project (workspace scope) or add to your
-user `mcp.json`:
+user `mcp.json` (or run `open-memex mcp --print-config vscode`):
 
 ```json
 {
   "servers": {
     "open-memex": {
       "type": "stdio",
-      "command": "node",
-      "args": ["--experimental-strip-types", "/path/to/open-memex/src/mcp.ts"],
+      "command": "open-memex",
+      "args": ["mcp"],
       "cwd": "${workspaceFolder}"
     }
   }
 }
 ```
 
-**Cursor** — Settings → MCP → Add new MCP server:
+**Cursor** — Settings → MCP → Add new MCP server (or `open-memex mcp --print-config cursor`):
 
 ```json
 {
   "mcpServers": {
     "open-memex": {
-      "command": "node",
-      "args": ["--experimental-strip-types", "/path/to/open-memex/src/mcp.ts"],
-      "cwd": "<your project root>"
+      "command": "open-memex",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-**Claude Code** — run from your project root so the project scope resolves correctly:
+**Claude Code** — run from your project root so the project scope resolves correctly
+(or `open-memex mcp --print-config claude`):
 
 ```
-claude mcp add open-memex -- node --experimental-strip-types /path/to/open-memex/src/mcp.ts
+claude mcp add open-memex -- open-memex mcp
 ```
+
+> Source install? Replace `"command": "open-memex"` with `"command": "node"` and
+> `"args": ["--experimental-strip-types", "/absolute/path/to/open-memex/src/mcp.ts"]`.
 
 ### VS Code setup, step by step
 

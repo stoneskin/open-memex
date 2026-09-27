@@ -421,7 +421,7 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
   Ships in **`0.3.0-alpha`** (with bin/npx user-friendliness polish per §17 adoption path).
 - **Phase 2B — Team sync.** GitProvider · `propose/promote/resolve` · in-repo dir · 1–2 colleague pilot
   (pilot project selection is maintainer-private, not tracked in this doc).
-  Ships in **`0.3.0-beta`**.
+  Ships in **`0.4.0`** (was labeled `0.3.0-beta` before 0.3.0 shipped as stable).
   Embeddings/rerank run as a **parallel benchmark-gated experiment**, not on the critical path.
 - **Phase 2C — Native agent plugins (candidates, not committed).** Claude Code plugin and/or
   Codex plugin as hook-enhanced paths over the same MCP tool surface (`SessionStart` →

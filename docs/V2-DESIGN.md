@@ -410,8 +410,9 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
   VS Code MCP-server support; corporate Copilot local-tool support. **Hard gate before Phase 2.**
 - **Phase 1 — Local hardening (1–2 wks).** CJK default (bigram+FTS5) · v1→v2 migration · dedup +
   lifecycle · redaction hardening · scope docs. No external dependencies.
-- **Phase 2A — Read-only MCP.** Core/adapters split · MCP server (search/get/list/status) ·
-  query-aware injection.
+- **Phase 2A — MCP server (shipped 2026-09-27, D15).** Core/adapters split
+  (`src/tools/ops.ts`) · MCP server (`src/mcp.ts`, stdio) exposing all five memory tools —
+  read-only-first phasing dropped per D15 · query-aware injection stays host-side.
 - **Phase 2B — Team sync.** GitProvider · `propose/promote/resolve` · in-repo dir · 1–2 colleague pilot
   (pilot project selection is maintainer-private, not tracked in this doc).
   Embeddings/rerank run as a **parallel benchmark-gated experiment**, not on the critical path.
@@ -482,6 +483,15 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
   recognizable (which key it was) while the credential itself is not recoverable from the file.
   Supersedes the refusal behavior; applies to every write path (tools, keyword capture, CLI).
   2026-09-27.*
+- **D15** — Phase 2A MCP server ships with all five tools, not read-only first. The MCP server
+  (`src/mcp.ts`, stdio) exposes `memory_add` / `memory_search` / `memory_list` /
+  `memory_supersede` / `memory_forget` — amends the §18 roadmap's "Read-only MCP" phasing.
+  *Rationale: the write path is the same Core (redact/D14, dedup, lifecycle) already shipped and
+  dogfooded in the opencode plugin, so a separate read-only stage adds process cost without
+  reducing risk. Core/adapters split implemented as `src/tools/ops.ts` (host-agnostic logic +
+  shared zod schemas); the opencode plugin and the MCP server are thin adapters over it.
+  Query-aware injection stays host-side: MCP is request/response and offers no hooks, so
+  proactive memory use depends on the host's agent instructions. 2026-09-27.*
 
 ## Open Questions
 

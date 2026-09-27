@@ -102,3 +102,8 @@ hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
 - `strict: true`, `verbatimModuleSyntax: false`. Prefer `import type` for types anyway.
 - Log prefix is `[open-memex]`. Gate verbose logs behind `cfg.logLevel === "debug"`.
 - Windows is a first-class target (this workspace is Windows). Use `node:path` and never hardcode `/`.
+- **Docs ship with code.** Every code change updates the docs it affects in the same commit:
+  new/changed tools → `README.md` tool table + MCP section; behavior changes → `README.md`
+  and the frozen `docs/V2-DESIGN.md` (append a `D<n>` decision entry, never rewrite history);
+  new commands → `README.md` CLI section + this file's Commands. A change without its docs
+  is not done.

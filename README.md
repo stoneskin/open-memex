@@ -1,20 +1,35 @@
 # open-memex
 
-Local-first persistent memory plugin for [opencode](https://opencode.ai).
+Local-first persistent memory for AI coding agents: an [opencode](https://opencode.ai) plugin
+plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, …).
 
 - **Markdown files** as the source of truth (human-editable, git-friendly)
 - **SQLite FTS5** as a rebuildable index (BM25 keyword search, via `better-sqlite3`)
 - **Zero cloud**, zero account, zero third-party API
-- Loads directly under opencode's embedded Bun runtime; CLI runs under Node — no build step, no Bun install
+- Loads directly under opencode's embedded Bun runtime; CLI and MCP server run under Node — no build step, no Bun install
 
-## Install (dev)
+## Install
+
+**From npm** (stable release):
 
 ```
-cd c:\github\open-memex
+npm install -g open-memex
+```
+
+The npm release tracks `main` (currently `0.1.0`: opencode plugin + CLI). The MCP server
+is new in `0.2.0-alpha` and not on npm yet — to try it now, install from source:
+
+**From source** (latest dev, includes the MCP server):
+
+```
+git clone -b V2-dev-p2 https://github.com/stoneskin/open-memex.git
+cd open-memex
 npm install
 ```
 
-Then add to `~/.config/opencode/opencode.jsonc`:
+Then wire it into your agent:
+
+- **opencode** — add to `~/.config/opencode/opencode.jsonc`:
 
 ```jsonc
 {
@@ -24,6 +39,8 @@ Then add to `~/.config/opencode/opencode.jsonc`:
 ```
 
 Restart opencode.
+
+- **VS Code / Cursor / Claude Code** — see [MCP server](#mcp-server-vs-code-cursor-claude-code-) below.
 
 ## Tools the plugin exposes to the agent
 
@@ -98,16 +115,23 @@ Or via the npm script: `npm run cli -- list --scope project`.
 
 ## MCP server (VS Code, Cursor, Claude Code, …)
 
-The same five memory tools are exposed over the Model Context Protocol via a stdio server — no host-specific plugin needed. Any MCP client can use open-memex.
+The same five memory tools are exposed over the Model Context Protocol via a stdio server —
+no host-specific plugin needed. Any MCP client can use open-memex.
+
+Start it:
 
 ```
 node --experimental-strip-types src/mcp.ts
 # or: npm run mcp
 ```
 
-The project scope is resolved from the process working directory, so configure the server with cwd set to your project root (all three clients below do this for workspace servers).
+The project scope is resolved from the process working directory, so configure the server
+with cwd set to your project root (all three clients below do this for workspace servers).
 
-**VS Code** — add to `.vscode/mcp.json` (workspace) or your user `mcp.json`:
+### MCP config
+
+**VS Code** — create `.vscode/mcp.json` in your project (workspace scope) or add to your
+user `mcp.json`:
 
 ```json
 {
@@ -121,8 +145,6 @@ The project scope is resolved from the process working directory, so configure t
   }
 }
 ```
-
-Then enable MCP in Copilot Chat; the `memory_*` tools appear automatically.
 
 **Cursor** — Settings → MCP → Add new MCP server:
 
@@ -138,15 +160,29 @@ Then enable MCP in Copilot Chat; the `memory_*` tools appear automatically.
 }
 ```
 
-**Claude Code** —
+**Claude Code** — run from your project root so the project scope resolves correctly:
 
 ```
 claude mcp add open-memex -- node --experimental-strip-types /path/to/open-memex/src/mcp.ts
 ```
 
-Run it from your project root so the project scope resolves correctly.
+### VS Code setup, step by step
 
-**Note:** MCP is request/response — it gives the agent tools, not the opencode plugin's automatic keyword capture or first-turn context injection. If you want the agent to consult memory proactively, add an instruction like "search open-memex memory before answering questions about past decisions" to your project's agent instructions file.
+1. Add the server to `.vscode/mcp.json` as above (use the absolute path to your clone).
+2. Open Copilot Chat, click the tools / MCP icon, and make sure the `open-memex` server
+   is started and its `memory_*` tools are enabled.
+3. Make Copilot consult memory proactively: create `.github/copilot-instructions.md`
+   in your project root with something like:
+
+```markdown
+Before answering questions about past decisions, conventions, or things I told you
+before, search open-memex memory (`memory_search`). When I tell you something worth
+remembering (preferences, decisions, fixes), save it with `memory_add`.
+```
+
+**Note:** MCP is request/response — it gives the agent tools, not the opencode plugin's
+automatic keyword capture or first-turn context injection. Proactive memory use depends
+on the agent's instructions (step 3 above).
 
 ## Status
 

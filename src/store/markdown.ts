@@ -4,16 +4,54 @@ import { randomBytes } from "node:crypto";
 import yaml from "js-yaml";
 import { memoriesDirFor, memoriesDirPath } from "../paths.ts";
 
+/** v2 content-kind taxonomy (V2-DESIGN §3.1). `type` = what the memory IS. */
+export const MEMORY_TYPE_TAXONOMY = [
+  "preference",
+  "fact",
+  "decision",
+  "lesson",
+  "warning",
+  "workflow",
+  "architecture",
+  "constraint",
+  "todo",
+  "knowledge",
+  "observation",
+] as const;
+
+const TAXONOMY = new Set<string>(MEMORY_TYPE_TAXONOMY);
+
+export type ScopeKind = "personal" | "project" | "org";
+export type Visibility = "private" | "internal" | "shared";
+export type MemoryRole = "knowledge" | "instruction";
+export type Importance = "low" | "normal" | "high";
+export type MemoryStatus =
+  | "active"
+  | "superseded"
+  | "deprecated"
+  | "retracted"
+  | "archived";
+
+/** v2 frontmatter (V2-DESIGN §3). Markdown is the source of truth; the
+ *  SQLite index is derived and rebuildable (D1). `scope_key` is kept as the
+ *  local storage address; `scope` is the semantic ownership. */
 export interface Frontmatter {
   id: string;
+  schema_version: 2;
   scope_key: string;
-  scope_kind: "user" | "project";
+  scope: ScopeKind;
+  visibility: Visibility;
   project_name: string;
   type: string;
+  role: MemoryRole;
+  importance: Importance;
+  status: MemoryStatus;
   tags: string[];
   source: string;
-  created_at: number;
-  updated_at: number;
+  created_at: string; // RFC 3339, never bare epoch (§3)
+  updated_at: string; // RFC 3339
+  supersedes: string | null; // on the NEW memory → points BACK (§3.3)
+  superseded_by: string | null; // on the OLD memory → points FORWARD
 }
 
 export interface MemoryFile {
@@ -39,26 +77,140 @@ export function ulid(): string {
   return ts + rand;
 }
 
+/** epoch ms → RFC 3339 (v2 times). */
+export function msToRfc3339(ms: number): string {
+  return new Date(ms).toISOString().replace(/\.000Z$/, "Z");
+}
+
+/** RFC 3339 (or epoch ms) → epoch ms. Falls back to now on garbage. */
+export function timeToMs(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.round(v);
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    if (Number.isFinite(t)) return t;
+  }
+  return Date.now();
+}
+
+function asScopeKind(v: unknown, scopeKind: unknown): ScopeKind {
+  if (v === "personal" || v === "project" || v === "org") return v;
+  if (scopeKind === "user") return "personal"; // v1 → v2 (§19)
+  if (scopeKind === "project") return "project";
+  return "personal";
+}
+
+function asVisibility(v: unknown, scope: ScopeKind): Visibility {
+  if (v === "private" || v === "internal" || v === "shared") return v;
+  // v2 defaults (§4): personal stays local, project is internal.
+  return scope === "personal" ? "private" : "internal";
+}
+
+function asRole(v: unknown): MemoryRole {
+  if (v === "knowledge" || v === "instruction") return v;
+  return "knowledge";
+}
+
+function asImportance(v: unknown, priority: unknown): Importance {
+  if (v === "low" || v === "normal" || v === "high") return v;
+  // v1 `priority: N` → importance (§19): 1–3 low, 8–10 high, else normal.
+  if (typeof priority === "number" && Number.isFinite(priority)) {
+    if (priority <= 3) return "low";
+    if (priority >= 8) return "high";
+  }
+  return "normal";
+}
+
+function asStatus(v: unknown): MemoryStatus {
+  if (
+    v === "active" ||
+    v === "superseded" ||
+    v === "deprecated" ||
+    v === "retracted" ||
+    v === "archived"
+  )
+    return v;
+  return "active";
+}
+
+/**
+ * Normalize raw (possibly v1) frontmatter into v2 shape. Lenient on read:
+ * v1 files (epoch times, scope_kind, priority, type: instruction) are mapped
+ * per §19 so old files keep working even before `migrate --to-v2` rewrites
+ * them. Use `planConversion` in v2migrate.ts for the explicit, reporting
+ * migration path.
+ */
+export function normalizeFrontmatter(
+  raw: Record<string, unknown>,
+): Frontmatter {
+  const scope = asScopeKind(raw.scope, raw.scope_kind);
+  let scopeKey =
+    typeof raw.scope_key === "string" && raw.scope_key ? raw.scope_key : scope;
+  if (scopeKey === "user") scopeKey = "personal"; // v1 storage dir → v2
+
+  let type = typeof raw.type === "string" && raw.type ? raw.type : "fact";
+  let role = asRole(raw.role);
+  if (type === "instruction") {
+    // §19: v1 `type: instruction` → content-kind + role split (D11).
+    type = "knowledge";
+    role = "instruction";
+  }
+
+  return {
+    id: String(raw.id),
+    schema_version: 2,
+    scope_key: scopeKey,
+    scope,
+    visibility: asVisibility(raw.visibility, scope),
+    project_name:
+      typeof raw.project_name === "string" ? raw.project_name : scopeKey,
+    type,
+    role,
+    importance: asImportance(raw.importance, raw.priority),
+    status: asStatus(raw.status),
+    tags: Array.isArray(raw.tags)
+      ? raw.tags.filter((t): t is string => typeof t === "string")
+      : [],
+    source: typeof raw.source === "string" ? raw.source : "",
+    created_at: msToRfc3339(timeToMs(raw.created_at)),
+    updated_at: msToRfc3339(timeToMs(raw.updated_at)),
+    supersedes:
+      typeof raw.supersedes === "string" && raw.supersedes ? raw.supersedes : null,
+    superseded_by:
+      typeof raw.superseded_by === "string" && raw.superseded_by
+        ? raw.superseded_by
+        : null,
+  };
+}
+
+export function isTaxonomyType(t: string): boolean {
+  return TAXONOMY.has(t);
+}
+
 export function serialize(fm: Frontmatter, body: string): string {
   const yml = yaml.dump(fm, { lineWidth: -1, quotingType: '"' });
   return `---\n${yml}---\n\n${body.trimEnd()}\n`;
 }
 
-export function parse(raw: string): { fm: Frontmatter; body: string } | null {
+/** Raw frontmatter parse (no normalization) — for migration tooling. */
+export function parseRawFrontmatter(
+  raw: string,
+): { rawFm: Record<string, unknown>; body: string } | null {
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) return null;
   try {
-    const fm = yaml.load(m[1]!) as Frontmatter;
-    if (!fm || typeof fm !== "object" || !fm.id) return null;
-    // Normalize
-    fm.tags = Array.isArray(fm.tags) ? fm.tags : [];
-    fm.type = fm.type ?? "note";
-    fm.source = fm.source ?? "";
+    const rawFm = yaml.load(m[1]!) as Record<string, unknown>;
+    if (!rawFm || typeof rawFm !== "object" || !rawFm.id) return null;
     const body = (m[2] ?? "").replace(/^\n+/, "");
-    return { fm, body };
+    return { rawFm, body };
   } catch {
     return null;
   }
+}
+
+export function parse(raw: string): { fm: Frontmatter; body: string } | null {
+  const parsed = parseRawFrontmatter(raw);
+  if (!parsed) return null;
+  return { fm: normalizeFrontmatter(parsed.rawFm), body: parsed.body };
 }
 
 export function writeMemoryFile(

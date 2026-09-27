@@ -46,25 +46,51 @@ Layout: `memories/<scope_key>/<id>.md` (YAML frontmatter + body) + `index.db` (S
 
 ## Scope keys
 
-- `user` scope key is literal `"user"`.
+- `personal` scope key is literal `"personal"` (v1 called this `user`; renamed in v2, design §19).
 - `project` scope key: `project__<sanitized-name>__<12-hex-sha256>`, seeded from normalized git origin URL, else lowercased cwd. See `src/scope.ts`. Same repo across machines → same key (intentional; enables future git-commit of memories).
+- `org`, `team`, `public` are reserved — the schema rejects writes. See `docs/SCOPES.md`.
 - The scope key **changes** when a repo gains/loses a git origin. `src/index.ts` logs a one-shot warning on load if it finds files under the legacy cwd-only key (`resolveCwdScope`). Use `cli scopes` to enumerate all scope dirs and `cli migrate --from <old>` to reconcile — see `src/store/migrate.ts`. No auto-migration; two unrelated repos at the same cwd would silently merge.
 - Read-only callers must use `memoriesDirPath` (in `src/paths.ts`), never `memoriesDirFor`. The latter `mkdir -p`s the directory as a side effect and will pollute storage with empty scope dirs.
 
 ## Capture / write path invariants
 
 Every write path (tool, keyword hook, CLI `add`) must:
-1. Call `redact(content, cfg.redactPatterns)`.
+1. Call `redact(content, cfg.redactPatterns)`. Built-in provider patterns live in `src/redact.ts` (always on); config `redactPatterns` is for user extras only.
 2. If `hadSecret` → refuse the write (do not save `[REDACTED]` unless the user wrapped it in `<private>…</private>`).
-3. `writeMemoryFile` first, then `readMemoryFile` + `upsertFromFile` to keep FTS in sync.
+3. Check `findDuplicates` (design §3.4): identical content is idempotent (return existing id); near-duplicates (similarity ≥ 0.8) warn but save — suggest `supersede` when the new content replaces the old.
+4. `writeMemoryFile` first, then `readMemoryFile` + `upsertFromFile` to keep FTS in sync.
+
+## Lifecycle invariants (design §3.3)
+
+- Statuses: `active → superseded | deprecated | retracted | archived`. Retrieval excludes `retracted`/`archived`, ranks `active` above `deprecated`.
+- Never hand-write `status: superseded` or half a chain. Use the `supersede` code path (`src/store/lifecycle.ts`): the old record keeps its file, flips to `superseded`, and both sides get `supersedes`/`superseded_by`. Only `active` memories can be superseded.
+- Chain integrity is self-healing: on read, a missing counterpart is auto-completed with a warning; a dangling pointer warns but is never fabricated. Don't "fix" chains by editing frontmatter directly — let the read path do it.
+- Frontmatter is `schema_version: 2`. The SQLite index schema is versioned separately and rebuilds automatically on version change — never hand-edit `index.db`.
 
 Keyword capture fires from `chat.message` on the assistant's `output.parts` text. Patterns live in `src/capture/keywords.ts` / config `keywordPatterns`; regex group 1 is the memory body.
 
 Context injection happens exactly once per session in `experimental.chat.system.transform`, guarded by an in-memory `Set<sessionID>` in `src/index.ts`. It is not persisted — restarting opencode re-injects on the next first turn.
 
-## Design constraints from PLAN.md worth honoring
+## Design constraints — read the frozen design first
 
-MVP is intentionally: no cloud, no embeddings/vector search, no LLM-driven extraction, no knowledge graph. Do not add these without updating `PLAN.md`. Items 1–8 in the v2 roadmap have a rough priority order; prefer extending existing modules over new top-level concepts.
+`docs/V2-DESIGN.md` is the frozen protocol v0.2 (zero open questions). Per its §12:
+AGENTS.md answers "how should AI work here"; the design doc answers "why is it
+built this way" (principles, iron rules, D1–D13 decision log). Before changing
+architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
+schema, MCP tools, CLI contract), read the relevant design section — the decision
+log records what was already considered and rejected.
+
+Still hard: no cloud, no silent sync (explicit pull only), Markdown is the source
+of truth, `personal` scope never leaves the machine. Embeddings are an *optional
+capability* per the design — do not add them (or LLM-driven extraction, or a
+knowledge graph) without updating the design doc first. `PLAN.md` tracks the
+build roadmap; the design doc tracks the *why*.
+
+## Branch workflow
+
+`main` (stable, mirrors npm) ← `V2` (v2 integration) ← `V2-dev-p<n>`
+(phase work; draft PRs into `V2`). Never create `V2/<anything>` — git can't
+hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
 
 ## Style notes
 

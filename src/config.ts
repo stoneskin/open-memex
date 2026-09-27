@@ -23,16 +23,9 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
     "^\\s*TIL[:,]?\\s+(.+)$",
     "^\\s*save\\s+(?:this|to\\s+memory)[:,]?\\s+(.+)$",
   ],
-  redactPatterns: [
-    "sk-[A-Za-z0-9_-]{20,}",
-    "sm_[A-Za-z0-9_-]{20,}",
-    "ghp_[A-Za-z0-9]{30,}",
-    "gho_[A-Za-z0-9]{30,}",
-    "github_pat_[A-Za-z0-9_]{40,}",
-    "AKIA[0-9A-Z]{16}",
-    "xox[baprs]-[A-Za-z0-9-]{10,}",
-    "AIza[0-9A-Za-z_-]{30,}",
-  ],
+  // Built-in provider patterns now live in src/redact.ts (always on).
+  // Add only your own extra patterns here.
+  redactPatterns: [],
   logLevel: "info",
 };
 

@@ -1,6 +1,6 @@
 import { list } from "./search.ts";
 import type { Scope } from "../scope.ts";
-import { USER_SCOPE } from "../scope.ts";
+import { PERSONAL_SCOPE } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
 
 function oneLine(s: string, max = 240): string {
@@ -10,7 +10,7 @@ function oneLine(s: string, max = 240): string {
 
 export function buildContextBlock(scope: Scope, cfg: MyOMemoryConfig): string | null {
   const project = list(scope.key, { limit: cfg.maxProjectMemories });
-  const user = list(USER_SCOPE.key, { limit: cfg.maxProfileItems });
+  const user = list(PERSONAL_SCOPE.key, { limit: cfg.maxProfileItems });
 
   if (project.length === 0 && user.length === 0) return null;
 

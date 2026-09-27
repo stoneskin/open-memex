@@ -4,11 +4,16 @@ import path from "node:path";
 
 export interface Scope {
   key: string;
-  kind: "user" | "project";
+  kind: "personal" | "project" | "org";
   projectName: string;
 }
 
-export const USER_SCOPE: Scope = { key: "user", kind: "user", projectName: "user" };
+/** v2: v1 `user` scope is renamed to `personal` (§19). */
+export const PERSONAL_SCOPE: Scope = {
+  key: "personal",
+  kind: "personal",
+  projectName: "personal",
+};
 
 function normalizeRemote(url: string): string {
   return url

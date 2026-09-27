@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 // Run with:  node --experimental-strip-types src/cli.ts <command>
-import { resolveProjectScope, resolveCwdScope, USER_SCOPE } from "./scope.ts";
+import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE, type Scope } from "./scope.ts";
 import { db, closeDb } from "./store/db.ts";
 import { syncScope, upsertFromFile, deleteFromIndex } from "./store/sync.ts";
 import { migrateScope, scopeHasFiles, type ConflictStrategy } from "./store/migrate.ts";
+import { migrateV2 } from "./store/v2migrate.ts";
+import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
 import { search, list } from "./retrieve/search.ts";
 import {
   writeMemoryFile,
   readMemoryFile,
   deleteMemoryFile,
   ulid,
+  msToRfc3339,
   type Frontmatter,
 } from "./store/markdown.ts";
 import { loadConfig } from "./config.ts";
@@ -22,20 +25,27 @@ function usage(): never {
 
 Usage:
   node --experimental-strip-types src/cli.ts where
-  node --experimental-strip-types src/cli.ts list [--scope project|user] [--type T] [--limit N]
-  node --experimental-strip-types src/cli.ts search "query" [--scope project|user|both] [--type T] [--limit N]
-  node --experimental-strip-types src/cli.ts add "content" [--scope project|user] [--type T] [--tag t1,t2]
+  node --experimental-strip-types src/cli.ts list [--scope project|personal] [--type T] [--limit N]
+  node --experimental-strip-types src/cli.ts search "query" [--scope project|personal|both] [--type T] [--limit N]
+  node --experimental-strip-types src/cli.ts add "content" [--scope project|personal] [--type T] [--tag t1,t2]
+  node --experimental-strip-types src/cli.ts supersede <id> "new content" [--type T] [--tag t1,t2]
+  node --experimental-strip-types src/cli.ts status <id> active|deprecated|retracted|archived
   node --experimental-strip-types src/cli.ts forget <id>
   node --experimental-strip-types src/cli.ts reindex
   node --experimental-strip-types src/cli.ts scopes
   node --experimental-strip-types src/cli.ts migrate [--from <key>] [--to <key>]
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
+  node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
 
 Scope defaults to \`project\` (derived from cwd's git remote or path).
+\`user\` is accepted as a deprecated alias of \`personal\`.
 \`scopes\` lists every project scope dir with its file count — use it to find
 the \`--from\` key when migrating.
 \`migrate\` moves memories between scope keys — useful when a repo gains a
-git remote after memories were already stored under the cwd-based key.`);
+git remote after memories were already stored under the cwd-based key.
+\`migrate --to-v2\` converts v1 memory files to the v2 format (§19):
+user→personal scope rename, epoch→RFC 3339 times, priority→importance,
+type: instruction→role split. Always preview with --dry-run first.`);
   process.exit(1);
 }
 
@@ -57,12 +67,52 @@ function parseFlags(argv: string[]): Record<string, string> {
   return out;
 }
 
+/** CLI `--scope` flag → Scope. `user` is a deprecated alias of `personal`. */
+function resolveCliScope(flags: Record<string, string>, project: Scope): Scope {
+  return flags.scope === "personal" || flags.scope === "user"
+    ? PERSONAL_SCOPE
+    : project;
+}
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd) usage();
 
   const cfg = loadConfig();
   const project = resolveProjectScope(process.cwd());
+
+  // `migrate --to-v2` is a pure file operation (V2-DESIGN §19) — it runs
+  // before the index is opened so it also works where the DB driver
+  // isn't available.
+  if (cmd === "migrate" && rest.includes("--to-v2")) {
+    const flags = parseFlags(rest);
+    const dryRun = flags["dry-run"] === "true";
+    const stats = migrateV2({ dryRun });
+    console.log(
+      `${dryRun ? "DRY RUN: " : ""}scanned ${stats.scanned} files: ` +
+        `${stats.converted} to convert, ${stats.skippedV2} already v2`,
+    );
+    for (const p of stats.plans) {
+      console.log(`\n${p.fm.id}`);
+      console.log(
+        `  ${p.fromPath}${p.toPath !== p.fromPath ? `\n  → ${p.toPath}` : ""}`,
+      );
+      for (const c of p.changes) console.log(`  - ${c}`);
+    }
+    if (stats.legacyBackup) {
+      console.log(
+        `\nlegacy my-o-memory data dir merged; backup kept at:\n  ${stats.legacyBackup}`,
+      );
+    }
+    if (!dryRun && stats.converted > 0) {
+      console.log(
+        `\nindex schema will rebuild automatically on next run; ` +
+          `run \`open-memex reindex\` to verify.`,
+      );
+    }
+    return;
+  }
+
   db();
 
   if (cmd === "where") {
@@ -71,22 +121,22 @@ async function main() {
     console.log(`memories:  ${p.memories}`);
     console.log(`index:     ${p.indexDb}`);
     console.log(`project:   ${project.key}`);
-    console.log(`user:      ${USER_SCOPE.key}`);
+    console.log(`personal:  ${PERSONAL_SCOPE.key}`);
     return;
   }
 
   if (cmd === "reindex") {
     const a = syncScope(project.key);
-    const b = syncScope(USER_SCOPE.key);
+    const b = syncScope(PERSONAL_SCOPE.key);
     console.log(
-      `reindexed. project: +${a.added} ~${a.updated} -${a.removed} (scanned ${a.scanned}), user: +${b.added} ~${b.updated} -${b.removed} (scanned ${b.scanned})`,
+      `reindexed. project: +${a.added} ~${a.updated} -${a.removed} (scanned ${a.scanned}), personal: +${b.added} ~${b.updated} -${b.removed} (scanned ${b.scanned})`,
     );
     return;
   }
 
   if (cmd === "list") {
     const flags = parseFlags(rest);
-    const s = flags.scope === "user" ? USER_SCOPE : project;
+    const s = resolveCliScope(flags, project);
     syncScope(s.key);
     const hits = list(s.key, {
       type: flags.type,
@@ -97,7 +147,8 @@ async function main() {
       return;
     }
     for (const h of hits) {
-      console.log(`[${h.type}] ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+      const dep = h.status === "deprecated" ? " [deprecated]" : "";
+      console.log(`[${h.type}]${dep} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
   }
@@ -107,13 +158,13 @@ async function main() {
     if (!query || query.startsWith("--")) usage();
     const flags = parseFlags(rest.slice(1));
     syncScope(project.key);
-    syncScope(USER_SCOPE.key);
+    syncScope(PERSONAL_SCOPE.key);
     const keys =
-      flags.scope === "user"
-        ? [USER_SCOPE.key]
+      flags.scope === "personal" || flags.scope === "user"
+        ? [PERSONAL_SCOPE.key]
         : flags.scope === "project"
           ? [project.key]
-          : [project.key, USER_SCOPE.key];
+          : [project.key, PERSONAL_SCOPE.key];
     const hits = search(query, {
       scopeKeys: keys,
       limit: flags.limit ? Number(flags.limit) : undefined,
@@ -124,8 +175,9 @@ async function main() {
       return;
     }
     for (const h of hits) {
-      const tag = h.scope_key === USER_SCOPE.key ? "user" : "project";
-      console.log(`[${tag}/${h.type}] ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+      const tag = h.scope_key === PERSONAL_SCOPE.key ? "personal" : "project";
+      const dep = h.status === "deprecated" ? " [deprecated]" : "";
+      console.log(`[${tag}/${h.type}]${dep} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
   }
@@ -134,19 +186,32 @@ async function main() {
     const content = rest[0];
     if (!content || content.startsWith("--")) usage();
     const flags = parseFlags(rest.slice(1));
-    const s = flags.scope === "user" ? USER_SCOPE : project;
+    const s = resolveCliScope(flags, project);
     const { content: red, hadSecret, matchedPattern } = redact(content, cfg.redactPatterns);
     if (hadSecret) {
       console.error(`refused: content matched secret pattern (${matchedPattern}).`);
       process.exit(2);
     }
+    // Dedup on write (§3.4): identical content is idempotent; near-duplicates
+    // warn but still save (use `supersede` when this replaces the old one).
+    const dups = findDuplicates(s.key, red);
+    if (dups.exact) {
+      console.log(`already exists: id=${dups.exact.id} (identical content — not duplicated)`);
+      return;
+    }
     const now = Date.now();
+    const rfc = msToRfc3339(now);
     const fm: Frontmatter = {
       id: ulid(),
+      schema_version: 2,
       scope_key: s.key,
-      scope_kind: s.kind,
+      scope: s.kind === "project" ? "project" : "personal",
+      visibility: s.kind === "project" ? "internal" : "private",
       project_name: s.projectName,
-      type: flags.type ?? "note",
+      type: flags.type ?? "fact",
+      role: "knowledge",
+      importance: "normal",
+      status: "active",
       tags: flags.tag
         ? flags.tag
             .split(",")
@@ -154,13 +219,64 @@ async function main() {
             .filter(Boolean)
         : [],
       source: "cli",
-      created_at: now,
-      updated_at: now,
+      created_at: rfc,
+      updated_at: rfc,
+      supersedes: null,
+      superseded_by: null,
     };
     const { filePath } = writeMemoryFile(fm, red);
     const mf = readMemoryFile(filePath);
     if (mf) upsertFromFile(mf);
     console.log(`saved ${fm.id} -> ${filePath}`);
+    for (const n of dups.near) {
+      console.log(
+        `warning: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id}\n  ${n.snippet}\n  use \`open-memex supersede ${n.id} "new content"\` if this replaces it.`,
+      );
+    }
+    return;
+  }
+
+  if (cmd === "supersede") {
+    const id = rest[0];
+    const content = rest[1];
+    if (!id || !content || content.startsWith("--")) usage();
+    const flags = parseFlags(rest.slice(2));
+    const { content: red, hadSecret, matchedPattern } = redact(content, cfg.redactPatterns);
+    if (hadSecret) {
+      console.error(`refused: content matched secret pattern (${matchedPattern}).`);
+      process.exit(2);
+    }
+    try {
+      const { oldMf, newMf } = supersede(id, {
+        body: red,
+        type: flags.type,
+        tags: flags.tag
+          ? flags.tag.split(",").map((t) => t.trim()).filter(Boolean)
+          : undefined,
+        source: "cli",
+      });
+      upsertFromFile(oldMf);
+      upsertFromFile(newMf);
+      console.log(`superseded ${oldMf.fm.id} → ${newMf.fm.id}`);
+    } catch (e) {
+      console.error(`supersede failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "status") {
+    const id = rest[0];
+    const st = rest[1];
+    if (!id || !st) usage();
+    try {
+      const mf = setStatus(id, st as "active" | "deprecated" | "retracted" | "archived");
+      upsertFromFile(mf);
+      console.log(`status ${id} → ${mf.fm.status}`);
+    } catch (e) {
+      console.error(`status failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
     return;
   }
 
@@ -193,7 +309,7 @@ async function main() {
       const files = fs.readdirSync(dir).filter((f) => f.endsWith(".md")).length;
       const marker =
         name === project.key ? " <- current project"
-        : name === USER_SCOPE.key ? " <- user"
+        : name === PERSONAL_SCOPE.key ? " <- personal"
         : "";
       entries.push({ key: name, files, marker });
     }

@@ -30,8 +30,9 @@ Restart opencode.
 | Tool | What it does |
 |---|---|
 | `memory_add`     | Save a fact, preference, decision, note |
-| `memory_search`  | Keyword search (BM25) across project + user memories |
+| `memory_search`  | Keyword search (BM25) across project + personal memories |
 | `memory_list`    | List memories in a scope, newest first |
+| `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
 | `memory_forget`  | Delete a memory by id |
 
 ## Capture
@@ -43,11 +44,13 @@ Restart opencode.
 ## Scopes
 
 - **project** — scoped to the current repo (keyed off the git origin URL hash, or the cwd if no remote). Default for new memories.
-- **user** — global across all your projects; use for personal preferences.
+- **personal** — global across all your projects, this machine only, never synced. Use for personal preferences. (v1 called this `user`; `migrate --to-v2` renames it.)
+
+See [docs/SCOPES.md](./docs/SCOPES.md) for the full scope model: key derivation, migration, visibility, reserved names.
 
 ## Retrieval
 
-On the first turn of every session, `open-memex` injects a `[OPEN-MEMEX]` block into the system prompt containing top-N recent project memories + top-N user preferences. The agent can also call `memory_search` on demand.
+On the first turn of every session, `open-memex` injects a `[OPEN-MEMEX]` block into the system prompt containing top-N recent project memories + top-N personal preferences. The agent can also call `memory_search` on demand.
 
 ## Storage layout
 
@@ -56,13 +59,17 @@ On the first turn of every session, `open-memex` injects a `[OPEN-MEMEX]` block 
 $XDG_DATA_HOME/open-memex/          (Linux/macOS)
 ├── index.db                         # SQLite FTS5 index (rebuildable)
 └── memories/
-    ├── user/
+    ├── personal/
     │   └── <id>.md
     └── project__<name>__<hash12>/
         └── <id>.md
 ```
 
-Each `.md` file has YAML frontmatter (`id, scope_key, type, tags, created_at, ...`) followed by the memory content. You can edit them by hand — the plugin re-syncs on startup by comparing file mtimes.
+Each `.md` file has v2 YAML frontmatter (`id, scope, scope_key, visibility, role, type,
+importance, status, tags, created_at, updated_at, schema_version`, ...) followed by the
+memory content. You can edit them by hand — the plugin re-syncs on startup by comparing
+file mtimes. Markdown is the source of truth; the SQLite index is derived and rebuildable
+(`open-memex reindex`).
 
 ## Config
 
@@ -77,10 +84,13 @@ node --experimental-strip-types src/cli.ts where
 node --experimental-strip-types src/cli.ts list --scope project
 node --experimental-strip-types src/cli.ts search "auth flow"
 node --experimental-strip-types src/cli.ts add "This repo uses better-sqlite3" --type project-config
+node --experimental-strip-types src/cli.ts supersede <id> "Updated content"
+node --experimental-strip-types src/cli.ts status <id> deprecated
 node --experimental-strip-types src/cli.ts forget <id>
 node --experimental-strip-types src/cli.ts reindex
 node --experimental-strip-types src/cli.ts scopes
 node --experimental-strip-types src/cli.ts migrate --from <old-scope-key> [--dry-run]
+node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
 ```
 
 Or via the npm script: `npm run cli -- list --scope project`.
@@ -88,8 +98,8 @@ Or via the npm script: `npm run cli -- list --scope project`.
 
 ## Status
 
-MVP. See `PLAN.md` for the v2 roadmap (local embeddings, auto-capture, compaction hook, etc).
+v2 alpha (`0.2.0-alpha`): v2 data model + migration, dedup + lifecycle (supersede/status), redaction hardening, CJK bigram retrieval. See `PLAN.md` for the roadmap (local embeddings, auto-capture, compaction hook, etc).
 
 ## License
 
-[MIT](./LICENSE)
+[Apache-2.0](./LICENSE)

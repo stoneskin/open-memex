@@ -86,6 +86,12 @@ capability* per the design — do not add them (or LLM-driven extraction, or a
 knowledge graph) without updating the design doc first. `PLAN.md` tracks the
 build roadmap; the design doc tracks the *why*.
 
+## Branch workflow
+
+`main` (stable, mirrors npm) ← `V2` (v2 integration) ← `V2-dev-p<n>`
+(phase work; draft PRs into `V2`). Never create `V2/<anything>` — git can't
+hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
+
 ## Style notes
 
 - `strict: true`, `verbatimModuleSyntax: false`. Prefer `import type` for types anyway.

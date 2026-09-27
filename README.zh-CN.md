@@ -75,7 +75,7 @@ open-memex init --client vscode
 npx -y open-memex@alpha init --client vscode
 ```
 
-自动写 `.vscode/mcp.json` 和 `.github/copilot-instructions.md`，然后重新加载窗口，
+自动写 `.vscode/mcp.json` 和用户级 Copilot instructions，然后重新加载窗口，
 在 Copilot Chat 的 MCP 面板里确认 `open-memex` server 已启动。
 
 **Cursor：**
@@ -84,7 +84,7 @@ npx -y open-memex@alpha init --client vscode
 open-memex init --client cursor
 ```
 
-自动写 `.cursor/mcp.json` 和 `.github/copilot-instructions.md`。
+自动写 `.cursor/mcp.json` 和用户级 Copilot instructions。
 
 **opencode**（作为普通 MCP 客户端）：
 
@@ -110,7 +110,7 @@ claude mcp add open-memex -- open-memex mcp
 open-memex init --client visualstudio
 ```
 
-写 solution 级 `.mcp.json` 和 `.github/copilot-instructions.md`。需要
+写 solution 级 `.mcp.json` 和用户级 Copilot instructions。需要
 Visual Studio 2022 17.14+ 或 Visual Studio 2026（**仅 Windows**）。
 Visual Studio 也会自动发现 `.vscode/mcp.json` 和 `.cursor/mcp.json`，
 所以上面的 VS Code 配置同样可用。
@@ -120,6 +120,12 @@ Visual Studio 也会自动发现 `.vscode/mcp.json` 和 `.cursor/mcp.json`，
 
 `init` 说明：
 
+- Copilot 记忆 instructions 默认写到**用户级**
+  （`~/.copilot/copilot-instructions.md`；Visual Studio 是
+  `%USERPROFILE%\copilot-instructions.md`）——所有项目生效，永不 checkin
+  到 repo，没装 open-memex 的同事看不到、也不会出错。团队人人都用
+  open-memex 时可用 `--instructions project` 改写
+  `.github/copilot-instructions.md`。
 - 在终端里会交互式询问：配哪个编辑器、是否开启关键词自动捕获、
   是否在首轮注入记忆。`--yes` 全用默认值；脚本 / 非 TTY 环境不提问
   （编辑器默认 VS Code）。
@@ -282,7 +288,7 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 
 > **注意：** MCP 是请求/响应式的——它给 agent 提供 tools，但没有 opencode
 > 插件的关键词自动捕获和首轮上下文注入。想让 agent 主动用记忆，
-> 靠的是 agent 的 instructions（`init` 写的 `.github/copilot-instructions.md`）。
+> 靠的是 agent 的 instructions（`init` 写的 Copilot instructions）。
 
 ## 路线图（Roadmap）
 

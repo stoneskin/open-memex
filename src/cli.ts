@@ -40,15 +40,19 @@ Usage:
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
   open-memex migrate --to-v2 [--dry-run]
   open-memex mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
-  open-memex init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
+  open-memex init [--client vscode|cursor|opencode|visualstudio]
+              [--instructions personal|project] [--force] [--yes]
   open-memex config [set <key> <value>]
   open-memex capture --dry-run "text"
   open-memex doctor
 
 One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
 the MCP config for your editor (\`.vscode/mcp.json\`, \`.cursor/mcp.json\`,
-\`opencode.jsonc\`, or Visual Studio's solution-level \`.mcp.json\`) plus
-\`.github/copilot-instructions.md\` — no copy-paste needed.
+\`opencode.jsonc\`, or Visual Studio's solution-level \`.mcp.json\`) — no copy-paste
+needed. The Copilot memory instructions default to your user-level
+\`~/.copilot/copilot-instructions.md\` (all projects, never checked into a repo);
+\`--instructions project\` writes \`.github/copilot-instructions.md\` instead for
+teams where everyone uses open-memex.
 Existing files are merged, never clobbered; re-running is safe. On a terminal it
 asks which editor to set up and a couple of settings (keyword capture, first-turn
 injection); \`--yes\` accepts all defaults, and non-terminal runs never prompt.
@@ -236,6 +240,7 @@ async function main() {
       client: flags["client"],
       force: flags["force"] === "true",
       yes: flags["yes"] === "true",
+      instructions: flags["instructions"],
     });
     return;
   }

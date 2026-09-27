@@ -1,6 +1,7 @@
 // `open-memex init` — one-command project setup (§17 adoption path).
 // Pure file operation: no DB, no network. Safe to run in any directory.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
@@ -45,6 +46,9 @@ export function resolveMcpCommand(): McpCommand {
 
 const INSTRUCTIONS = `${MARKER}
 # OpenMemex memory
+
+> Applies only when the \`open-memex\` MCP server is available in this session
+> (the \`memory_*\` tools exist). Otherwise ignore this section.
 
 You have a local memory MCP server (\`open-memex\`) with five tools:
 \`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`, \`memory_forget\`.
@@ -186,9 +190,26 @@ function writeVisualStudioMcpJson(root: string, force: boolean): string | null {
   return file;
 }
 
-function writeInstructions(root: string): string {
-  const dir = path.join(root, ".github");
-  const file = path.join(dir, "copilot-instructions.md");
+function writeInstructions(
+  root: string,
+  scope: "personal" | "project",
+  client: string,
+): string {
+  const file =
+    scope === "project"
+      ? path.join(root, ".github", "copilot-instructions.md")
+      : client === "visualstudio"
+        ? path.join(os.homedir(), "copilot-instructions.md")
+        : path.join(os.homedir(), ".copilot", "copilot-instructions.md");
+  if (scope === "personal") {
+    // A previous project-scoped init may have left the section behind — flag it
+    // so the repo can go back to being open-memex-free for teammates.
+    const proj = path.join(root, ".github", "copilot-instructions.md");
+    if (fs.existsSync(proj) && fs.readFileSync(proj, "utf8").includes(MARKER)) {
+      console.log(`  ! project-level instructions still present at ${proj}`);
+      console.log(`    remove the open-memex section there to keep the repo clean.`);
+    }
+  }
   if (fs.existsSync(file)) {
     const cur = fs.readFileSync(file, "utf8");
     if (cur.includes(MARKER)) {
@@ -197,7 +218,7 @@ function writeInstructions(root: string): string {
     }
     fs.writeFileSync(file, cur.replace(/\s+$/, "") + "\n\n" + INSTRUCTIONS);
   } else {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, INSTRUCTIONS);
   }
   console.log(`  + ${file}`);
@@ -254,10 +275,26 @@ async function promptClient(): Promise<string | null> {
   }
 }
 
+/** D22: where the Copilot memory instructions live. Personal (default) is the
+ * Copilot user-level location — all projects, never checked in. */
+async function promptInstructionsScope(): Promise<"personal" | "project"> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    console.log("Where should the Copilot memory instructions live?");
+    console.log("  1) personal — user-level, all projects, never checked into a repo");
+    console.log("  2) project  — .github/copilot-instructions.md, shared with the repo");
+    const ans = (await rl.question("Choice [1]: ")).trim();
+    return ans === "2" ? "project" : "personal";
+  } finally {
+    rl.close();
+  }
+}
+
 export async function initProject(opts: {
   client?: string;
   force: boolean;
   yes: boolean;
+  instructions?: string;
 }): Promise<void> {
   const interactive = !opts.yes && !!process.stdin.isTTY && !!process.stdout.isTTY;
   let client = normalizeClient(opts.client ?? "");
@@ -267,6 +304,16 @@ export async function initProject(opts: {
   }
   if (!client && interactive) client = (await promptClient()) ?? "";
   if (!client && !interactive) client = "vscode"; // historical default for scripts / one-shot npx
+  let scope: "personal" | "project" = "personal";
+  if (opts.instructions) {
+    if (opts.instructions !== "personal" && opts.instructions !== "project") {
+      console.error(`unknown --instructions "${opts.instructions}" (personal|project)`);
+      process.exit(1);
+    }
+    scope = opts.instructions;
+  } else if (interactive) {
+    scope = await promptInstructionsScope();
+  }
   if (interactive) {
     // Install-time settings (D19). Non-default answers persist to the JSONC
     // config file; `open-memex config set` changes them later.
@@ -296,7 +343,9 @@ export async function initProject(opts: {
     writeMcpJson(root, client, opts.force);
     // copilot-instructions.md is VS Code/Cursor-shaped; opencode as a plain MCP
     // consumer already gets the guidance from the tool descriptions (D16).
-    if (client !== "opencode") writeInstructions(root);
+    // D22: personal scope (default) writes to the Copilot user-level location
+    // so the repo stays clean for teammates without open-memex.
+    if (client !== "opencode") writeInstructions(root, scope, client);
   } else {
     console.log("  - editor setup skipped");
   }

@@ -77,7 +77,7 @@ open-memex init --client vscode
 npx -y open-memex@alpha init --client vscode
 ```
 
-Writes `.vscode/mcp.json` and `.github/copilot-instructions.md`, then reload the
+Writes `.vscode/mcp.json` and user-level Copilot instructions, then reload the
 window and confirm the `open-memex` server is started in Copilot Chat's MCP panel.
 
 **Cursor:**
@@ -86,7 +86,7 @@ window and confirm the `open-memex` server is started in Copilot Chat's MCP pane
 open-memex init --client cursor
 ```
 
-Writes `.cursor/mcp.json` and `.github/copilot-instructions.md`.
+Writes `.cursor/mcp.json` and user-level Copilot instructions.
 
 **opencode** (as a plain MCP consumer):
 
@@ -112,7 +112,7 @@ claude mcp add open-memex -- open-memex mcp
 open-memex init --client visualstudio
 ```
 
-Writes solution-level `.mcp.json` and `.github/copilot-instructions.md`. Requires
+Writes solution-level `.mcp.json` and user-level Copilot instructions. Requires
 Visual Studio 2022 17.14+ or Visual Studio 2026 (**Windows-only**). Visual Studio
 also auto-discovers `.vscode/mcp.json` and `.cursor/mcp.json`, so the VS Code setup
 above works too.
@@ -123,6 +123,12 @@ above works too.
 
 `init` notes:
 
+- The Copilot memory instructions default to **user-level**
+  (`~/.copilot/copilot-instructions.md`; `%USERPROFILE%\copilot-instructions.md`
+  for Visual Studio) — they apply to all your projects and are never checked
+  into a repo, so teammates without open-memex see nothing and nothing breaks
+  for them. `--instructions project` writes `.github/copilot-instructions.md`
+  instead, for teams where everyone uses open-memex.
 - On a terminal it interactively asks which editor to set up, whether to enable
   keyword auto-capture, and whether to inject memories on the first turn.
   `--yes` accepts the defaults; scripts / non-TTY never prompt (editor defaults to
@@ -282,7 +288,7 @@ server with cwd set to your project root (`init` handles this for you).
 
 > **Note:** MCP is request/response — it gives the agent tools, not the opencode
 > plugin's automatic keyword capture or first-turn context injection. Proactive
-> memory use depends on the agent's instructions (the `.github/copilot-instructions.md`
+> memory use depends on the agent's instructions (the Copilot instructions
 > that `init` writes).
 
 ## Roadmap

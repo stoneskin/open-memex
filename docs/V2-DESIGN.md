@@ -587,6 +587,16 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   / `npm run mcp` run `src/` directly); `doctor`'s MCP self-check resolves its server
   entry the same way it is running (`dist/mcp.js` vs `src/mcp.ts`). The opencode
   native plugin still loads `src/index.ts` (Bun strips types anywhere). 2026-09-27.*
+- **D22** — `init` writes the Copilot memory instructions to the **user level** by
+  default (`~/.copilot/copilot-instructions.md`; `%USERPROFILE%\copilot-
+  instructions.md` for Visual Studio 2026) instead of the repo-level
+  `.github/copilot-instructions.md`. *Rationale: the repo-level file is checked in,
+  so teammates without open-memex get Copilot errors about missing `memory_*`
+  tools. The user-level location is GitHub's official personal-instructions slot
+  (highest priority, all projects, never in a repo). `--instructions project`
+  keeps the old repo-level behavior for teams where everyone uses open-memex.
+  The instructions carry a guard clause ("ignore this section when the
+  `open-memex` MCP server is not available") as cheap insurance. 2026-09-27.*
 
 ## Open Questions
 

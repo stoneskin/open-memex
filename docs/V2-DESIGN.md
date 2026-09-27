@@ -413,23 +413,23 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
 - **Phase 2A — MCP server (shipped 2026-09-27, D15).** Core/adapters split
   (`src/tools/ops.ts`) · MCP server (`src/mcp.ts`, stdio) exposing all five memory tools —
   read-only-first phasing dropped per D15 · query-aware injection stays host-side.
-  Ships in **`0.2.1-alpha`** (with bin/npx user-friendliness polish per §17 adoption path).
+  Ships in **`0.3.0-alpha`** (with bin/npx user-friendliness polish per §17 adoption path).
 - **Phase 2B — Team sync.** GitProvider · `propose/promote/resolve` · in-repo dir · 1–2 colleague pilot
   (pilot project selection is maintainer-private, not tracked in this doc).
-  Ships in **`0.2.1-beta`**.
+  Ships in **`0.3.0-beta`**.
   Embeddings/rerank run as a **parallel benchmark-gated experiment**, not on the critical path.
 - **Phase 2C — Native agent plugins (candidates, not committed).** Claude Code plugin and/or
   Codex plugin using their hooks systems (`SessionStart` → context injection,
   `UserPromptSubmit` → keyword-triggered search, `Stop`/`PostToolUse` → capture).
-  Gated on real-world signal from 0.2.1-alpha MCP dogfooding.
+  Gated on real-world signal from 0.3.0-alpha MCP dogfooding.
 
 ### Agent integration matrix
 
 | Agent | Integration path | Native hooks? | Status |
 |---|---|---|---|
 | opencode | native plugin (`src/index.ts`) | ✅ keyword capture + first-turn injection | shipped (Phase 1) |
-| VS Code Copilot | MCP server + `.github/copilot-instructions.md` | ❌ — VS Code extension API cannot intercept Copilot Chat (researched 2026-09-27); an extension would add no hook capability, so not worth building | ships `0.2.1-alpha` |
-| Cursor | MCP server + rules | ❌ no chat plugin API | ships `0.2.1-alpha` |
+| VS Code Copilot | MCP server + `.github/copilot-instructions.md` | ❌ — VS Code extension API cannot intercept Copilot Chat (researched 2026-09-27); an extension would add no hook capability, so not worth building | ships `0.3.0-alpha` |
+| Cursor | MCP server + rules | ❌ no chat plugin API | ships `0.3.0-alpha` |
 | Claude Code | MCP server today; plugin + hooks candidate | ✅ `SessionStart` / `UserPromptSubmit` / `PostToolUse` | Phase 2C candidate |
 | Codex (CLI/IDE) | MCP server (`[mcp_servers]` in config.toml / `codex mcp add`) today; plugin + hooks + marketplace candidate | ✅ hooks mirror Claude Code's | Phase 2C candidate |
 

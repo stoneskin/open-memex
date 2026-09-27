@@ -545,6 +545,28 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   the next editor launch; the npx fallback keeps the one-command setup actually
   one-command. 2026-09-27.*
 
+- **D18** — Keyword scope routing: 我 → personal, 我们 → project. Chinese capture
+  keywords are split into two pattern lists: personal patterns (`记住我`/`替我记`/
+  `我觉得`/`我喜欢`, plus legacy `remember for me`/`记住（个人）`) route to the personal
+  scope, while project patterns (`我们认为`/`我们决定`/`帮我们记住`, and the generic
+  `记住…` for `记住我们的…`) route to the current project scope. Personal patterns are
+  scanned first and *claim* the line so the generic `记住…` pattern cannot double-fire;
+  `记住我` uses a `(?!们)` guard so it never swallows `记住我们…`. *Rationale: the
+  user's own rule — "我" is personal, "我们" is the current project — stated 2026-09-27;
+  scanning user messages (never assistant output) with personal-first claim keeps one
+  utterance to one memory. README + repo AGENTS.md keyword sections updated in the same
+  commit. 2026-09-27.*
+- **D19** — `open-memex init` asks setup questions; `open-memex config set` edits settings
+  after install. `init` prompts on a TTY (editor: vscode/cursor/opencode; keyword
+  auto-capture on/off; first-turn injection on/off), `--yes` accepts all defaults, and
+  non-terminal runs never prompt (scripts keep the historical vscode default).
+  Non-default answers persist to the JSONC config file; `open-memex config set <key>
+  <value>` changes them later (validated keys: `maxProjectMemories`, `maxProfileItems`,
+  `injectOnFirstTurn`, `keywordCaptureEnabled`, `logLevel`). `init --client opencode`
+  merges a `type: "local"` MCP entry into project-level `opencode.jsonc` (v1 format).
+  *Rationale: install time is the only moment the user's attention is guaranteed, and a
+  print-only `config` left no path to change settings afterwards. 2026-09-27.*
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

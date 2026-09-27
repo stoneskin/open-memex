@@ -38,14 +38,18 @@ Usage:
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
   node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
   node --experimental-strip-types src/cli.ts mcp [--print-config vscode|cursor|claude|opencode]
-  node --experimental-strip-types src/cli.ts init [--client vscode|cursor] [--force]
-  node --experimental-strip-types src/cli.ts config
+  node --experimental-strip-types src/cli.ts init [--client vscode|cursor|opencode] [--force] [--yes]
+  node --experimental-strip-types src/cli.ts config [set <key> <value>]
   node --experimental-strip-types src/cli.ts capture --dry-run "text"
   node --experimental-strip-types src/cli.ts doctor
 
 One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
-\`.vscode/mcp.json\` and \`.github/copilot-instructions.md\` for the project — no
-copy-paste needed. Existing files are merged, never clobbered; re-running is safe.
+the MCP config for your editor (\`.vscode/mcp.json\`, \`.cursor/mcp.json\`, or
+\`opencode.jsonc\`) plus \`.github/copilot-instructions.md\` — no copy-paste needed.
+Existing files are merged, never clobbered; re-running is safe. On a terminal it
+asks which editor to set up and a couple of settings (keyword capture, first-turn
+injection); \`--yes\` accepts all defaults, and non-terminal runs never prompt.
+\`open-memex config set <key> <value>\` changes those settings after install.
 
 Once installed globally (\`npm i -g open-memex@alpha\`) the \`open-memex\` command is
 available directly: \`open-memex mcp\` starts the stdio MCP server (same five
@@ -195,12 +199,14 @@ async function main() {
   }
 
   // `init` is a pure file operation (§17 adoption path) — no DB needed.
+  // Interactive when on a TTY (asks editor + settings); --yes skips prompts.
   if (cmd === "init") {
     const flags = parseFlags(rest);
     const { initProject } = await import("./init.ts");
     await initProject({
-      client: flags["client"] ?? "vscode",
+      client: flags["client"],
       force: flags["force"] === "true",
+      yes: flags["yes"] === "true",
     });
     return;
   }
@@ -214,7 +220,39 @@ async function main() {
   }
 
   // `config` prints the effective configuration (defaults + file). No DB needed.
+  // `config set <key> <value>` persists a setting to the config file.
   if (cmd === "config") {
+    if (rest[0] === "set") {
+      const [, key, ...valueParts] = rest;
+      const { SETTABLE_KEYS, saveConfig, configFilePath } = await import("./config.ts");
+      const validate = key ? SETTABLE_KEYS[key] : undefined;
+      if (!validate) {
+        console.error(
+          `unknown or unsettable key "${key ?? ""}". Settable keys: ${Object.keys(SETTABLE_KEYS).join(", ")}`,
+        );
+        process.exit(1);
+      }
+      const raw = valueParts.join(" ");
+      if (!raw) {
+        console.error(`usage: open-memex config set <key> <value>`);
+        process.exit(1);
+      }
+      let value: unknown = raw;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        /* keep as string */
+      }
+      try {
+        const saved = validate(value);
+        const file = saveConfig({ [key!]: saved });
+        console.log(`set ${key} = ${JSON.stringify(saved)} (${file})`);
+      } catch (err) {
+        console.error(`invalid value for ${key}: ${(err as Error).message}`);
+        process.exit(1);
+      }
+      return;
+    }
     const cfg = loadConfig();
     console.log(JSON.stringify(cfg, null, 2));
     return;

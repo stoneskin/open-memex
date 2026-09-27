@@ -59,6 +59,64 @@ function stripJsonComments(raw: string): string {
   return out;
 }
 
+/** Where `config set` / interactive `init` persist. Respects MY_O_MEMORY_CONFIG. */
+export function configFilePath(): string {
+  return (
+    process.env.MY_O_MEMORY_CONFIG ??
+    path.join(os.homedir(), ".config", "opencode", "open-memex.jsonc")
+  );
+}
+
+function toBool(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  if (v === "true" || v === "1") return true;
+  if (v === "false" || v === "0") return false;
+  throw new Error("must be true/false");
+}
+
+function toNonNegInt(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0) throw new Error("must be a non-negative integer");
+  return n;
+}
+
+/** Keys users may change via `open-memex config set <key> <value>`, with validators. */
+export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
+  maxProjectMemories: toNonNegInt,
+  maxProfileItems: toNonNegInt,
+  injectOnFirstTurn: toBool,
+  keywordCaptureEnabled: toBool,
+  logLevel: (v) => {
+    if (v !== "info" && v !== "debug") throw new Error('must be "info" or "debug"');
+    return v;
+  },
+};
+
+/** Merge a patch into the config file (creates it if missing). Returns the file path. */
+export function saveConfig(patch: Record<string, unknown>): string {
+  const file = configFilePath();
+  let cur: Record<string, unknown> = {};
+  if (fs.existsSync(file)) {
+    try {
+      cur = JSON.parse(stripJsonComments(fs.readFileSync(file, "utf8"))) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      console.error(`[open-memex] ${file} is not valid JSONC — it will be replaced`);
+    }
+  }
+  const next = { ...cur, ...patch };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    "// Managed by `open-memex config set` / `open-memex init` — edit freely (JSONC).\n" +
+      JSON.stringify(next, null, 2) +
+      "\n",
+  );
+  return file;
+}
+
 /** Path of the config file in effect, or null when using built-in defaults. */
 export function configSource(): string | null {
   const candidates = [

@@ -112,9 +112,17 @@ node --experimental-strip-types src/cli.ts scopes
 node --experimental-strip-types src/cli.ts migrate --from <old-scope-key> [--dry-run]
 node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
 node --experimental-strip-types src/cli.ts config
+node --experimental-strip-types src/cli.ts config set keywordCaptureEnabled false
+node --experimental-strip-types src/cli.ts init [--client vscode|cursor|opencode] [--force] [--yes]
 node --experimental-strip-types src/cli.ts capture --dry-run "记住我喜欢简洁的回答"
 node --experimental-strip-types src/cli.ts doctor
 ```
+
+`init` asks which editor to set up (VS Code / Cursor / opencode) and two settings
+(keyword auto-capture, first-turn injection) when run on a terminal; `--yes`
+accepts all defaults and scripts never prompt. `config set <key> <value>` changes
+settings after install (keys: `maxProjectMemories`, `maxProfileItems`,
+`injectOnFirstTurn`, `keywordCaptureEnabled`, `logLevel`).
 
 Or via the npm script: `npm run cli -- list --scope project`.
 **Note:** flag arguments beyond the first must be passed via direct `node` invocation, not `npm run cli --`, because npm swallows unknown `--flag` args.

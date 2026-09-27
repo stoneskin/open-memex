@@ -3,6 +3,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createInterface } from "node:readline/promises";
+import { DEFAULT_CONFIG, saveConfig } from "./config.ts";
 
 const MARKER = "<!-- open-memex -->";
 
@@ -73,6 +75,7 @@ function projectRoot(): string {
 }
 
 function writeMcpJson(root: string, client: string, force: boolean): string | null {
+  if (client === "opencode") return writeOpencodeMcpJson(root, force);
   const dir = client === "cursor" ? path.join(root, ".cursor") : path.join(root, ".vscode");
   const file = path.join(dir, "mcp.json");
   const sectionKey = client === "cursor" ? "mcpServers" : "servers";
@@ -114,6 +117,39 @@ function writeMcpJson(root: string, client: string, force: boolean): string | nu
   return file;
 }
 
+/** opencode MCP config: project-level opencode.jsonc, `type: "local"` + command array (v1 format). */
+function writeOpencodeMcpJson(root: string, force: boolean): string | null {
+  const file = path.join(root, "opencode.jsonc");
+  let doc: Record<string, unknown> = {};
+  if (fs.existsSync(file)) {
+    try {
+      doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch {
+      console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
+      return null;
+    }
+  }
+  const section = ((doc["mcp"] ??= {}) as Record<string, unknown>);
+  if (section["open-memex"] && !force) {
+    console.log(`  = ${file} already configures open-memex — left as is (use --force to overwrite)`);
+    return file;
+  }
+  // D17: resolve the server command at init time — a one-shot npx leaves no bin behind.
+  const mc = resolveMcpCommand();
+  section["open-memex"] = {
+    type: "local",
+    command: [mc.command, ...mc.args],
+    enabled: true,
+  };
+  fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+  console.log(`  + ${file}`);
+  if (!mc.durable) {
+    console.log(`  ! no durable \`open-memex\` on PATH (one-shot npx?) — wrote an npx-based command.`);
+    console.log(`    For faster startup: \`npm i -g ${ALPHA_TAG}\`, then re-run \`open-memex init --force\`.`);
+  }
+  return file;
+}
+
 function writeInstructions(root: string): string {
   const dir = path.join(root, ".github");
   const file = path.join(dir, "copilot-instructions.md");
@@ -132,15 +168,89 @@ function writeInstructions(root: string): string {
   return file;
 }
 
-export async function initProject(opts: { client: string; force: boolean }): Promise<void> {
-  const client = opts.client.toLowerCase();
-  if (client !== "vscode" && client !== "cursor") {
-    console.error(`unknown client "${opts.client}" (vscode|cursor)`);
+/** Ask a yes/no question. Only called on a TTY when --yes was not passed. */
+async function askBool(q: string, def: boolean): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const hint = def ? "Y/n" : "y/N";
+    const ans = (await rl.question(`${q} [${hint}]: `)).trim().toLowerCase();
+    if (!ans) return def;
+    return ans === "y" || ans === "yes";
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptClient(): Promise<string | null> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const ans = (
+      await rl.question("Which editor? (1) VS Code  (2) Cursor  (3) opencode  (4) skip [1]: ")
+    ).trim();
+    switch (ans) {
+      case "":
+      case "1":
+        return "vscode";
+      case "2":
+        return "cursor";
+      case "3":
+        return "opencode";
+      case "4":
+        return null;
+      default:
+        console.log(`  ? unknown choice "${ans}" — editor setup skipped`);
+        return null;
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+export async function initProject(opts: {
+  client?: string;
+  force: boolean;
+  yes: boolean;
+}): Promise<void> {
+  const interactive = !opts.yes && !!process.stdin.isTTY && !!process.stdout.isTTY;
+  let client = (opts.client ?? "").toLowerCase();
+  if (client && client !== "vscode" && client !== "cursor" && client !== "opencode") {
+    console.error(`unknown client "${opts.client}" (vscode|cursor|opencode)`);
     process.exit(1);
+  }
+  if (!client && interactive) client = (await promptClient()) ?? "";
+  if (!client && !interactive) client = "vscode"; // historical default for scripts / one-shot npx
+  if (interactive) {
+    // Install-time settings (D19). Non-default answers persist to the JSONC
+    // config file; `open-memex config set` changes them later.
+    const patch: Record<string, unknown> = {};
+    const keywordCaptureEnabled = await askBool(
+      "Auto-capture keywords like 记住… / remember… into memory?",
+      DEFAULT_CONFIG.keywordCaptureEnabled,
+    );
+    if (keywordCaptureEnabled !== DEFAULT_CONFIG.keywordCaptureEnabled)
+      patch.keywordCaptureEnabled = keywordCaptureEnabled;
+    const injectOnFirstTurn = await askBool(
+      "Inject relevant memories when a session starts?",
+      DEFAULT_CONFIG.injectOnFirstTurn,
+    );
+    if (injectOnFirstTurn !== DEFAULT_CONFIG.injectOnFirstTurn)
+      patch.injectOnFirstTurn = injectOnFirstTurn;
+    if (Object.keys(patch).length > 0) {
+      const file = saveConfig(patch);
+      console.log(
+        `  + settings saved to ${file} (change later with \`open-memex config set <key> <value>\`)`,
+      );
+    }
   }
   const root = projectRoot();
   console.log(`open-memex init — project root: ${root}`);
-  writeMcpJson(root, client, opts.force);
-  writeInstructions(root);
+  if (client) {
+    writeMcpJson(root, client, opts.force);
+    // copilot-instructions.md is VS Code/Cursor-shaped; opencode as a plain MCP
+    // consumer already gets the guidance from the tool descriptions (D16).
+    if (client !== "opencode") writeInstructions(root);
+  } else {
+    console.log("  - editor setup skipped");
+  }
   console.log(`\nDone. Reload your editor window to start the open-memex MCP server.`);
 }

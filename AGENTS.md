@@ -39,6 +39,8 @@ resolves the server command at init time — npx fallback when no durable bin is
 `open-memex config` prints the effective config, `open-memex capture --dry-run "text"`
 previews keyword capture without writing, `open-memex doctor` runs health checks
 (node version, config, scope resolution, storage writability, MCP handshake).
+`open-memex init` asks editor + two settings on a TTY (`--yes` skips, scripts never
+prompt); `open-memex config set <key> <value>` edits settings after install.
 The bin is a tiny JS launcher (`bin/open-memex.js`) that
 re-execs `src/cli.ts` with type-stripping — no build step, works on Node 22.6+.
 

@@ -56,7 +56,7 @@ Layout: `memories/<scope_key>/<id>.md` (YAML frontmatter + body) + `index.db` (S
 
 Every write path (tool, keyword hook, CLI `add`) must:
 1. Call `redact(content, cfg.redactPatterns)`. Built-in provider patterns live in `src/redact.ts` (always on); config `redactPatterns` is for user extras only.
-2. If `hadSecret` → refuse the write (do not save `[REDACTED]` unless the user wrapped it in `<private>…</private>`).
+2. If `hadSecret` → the matched secret is **masked in place** (first 4 characters kept, the rest replaced with `x`) and the write proceeds; never save the unmasked original. `<private>…</private>` spans are stripped to `[REDACTED]` instead (design D14).
 3. Check `findDuplicates` (design §3.4): identical content is idempotent (return existing id); near-duplicates (similarity ≥ 0.8) warn but save — suggest `supersede` when the new content replaces the old.
 4. `writeMemoryFile` first, then `readMemoryFile` + `upsertFromFile` to keep FTS in sync.
 

@@ -39,7 +39,7 @@ Restart opencode.
 
 - **Keyword triggers** in user messages: `remember ...`, `note that ...`, `TIL ...`, `save this: ...`
 - **Explicit tool calls** by the agent (via `memory_add`)
-- **Redaction**: content inside `<private>...</private>` tags is stripped; content matching secret patterns (API keys, tokens) is refused
+- **Redaction**: content inside `<private>...</private>` tags is stripped; detected secrets (API keys, tokens, high-entropy credentials) are masked in place — first 4 characters kept, the rest replaced with `x` — and the memory is saved
 
 ## Scopes
 

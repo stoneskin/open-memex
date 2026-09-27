@@ -51,12 +51,9 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
         args.content,
         cfg.redactPatterns,
       );
-      if (hadSecret) {
-        return {
-          title: "memory: rejected (secret detected)",
-          output: `Refused to save: content matched a secret pattern (${matchedPattern}). Wrap the sensitive part in <private>...</private> tags or paraphrase, then try again.`,
-        };
-      }
+      const secretNote = hadSecret
+        ? `\nNote: content matched a secret pattern (${matchedPattern}); it was saved with the secret masked (first 4 chars kept, rest replaced with x).`
+        : "";
       const s = resolveScope(args.scope);
       // Dedup on write (§3.4): identical content is idempotent; near-duplicates
       // are reported so the caller can supersede instead of duplicating.
@@ -89,7 +86,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
       const { filePath } = writeMemoryFile(fm, redacted);
       const mf = readMemoryFile(filePath);
       if (mf) upsertFromFile(mf);
-      let output = `Saved to ${s.key} as ${fm.type}. id=${fm.id}`;
+      let output = `Saved to ${s.key} as ${fm.type}. id=${fm.id}${secretNote}`;
       for (const n of dups.near) {
         output += `\nNote: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id} — ${n.snippet}. Use memory_supersede if this replaces it.`;
       }
@@ -185,12 +182,9 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
         args.content,
         cfg.redactPatterns,
       );
-      if (hadSecret) {
-        return {
-          title: "memory: rejected (secret detected)",
-          output: `Refused to save: content matched a secret pattern (${matchedPattern}). Wrap the sensitive part in <private>...</private> tags or paraphrase, then try again.`,
-        };
-      }
+      const secretNote = hadSecret
+        ? ` (secret masked: ${matchedPattern})`
+        : "";
       try {
         const { oldMf, newMf } = supersede(args.id, {
           body: redacted,
@@ -202,7 +196,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
         upsertFromFile(newMf);
         return {
           title: `memory: superseded ${oldMf.fm.id}`,
-          output: `Replaced ${oldMf.fm.id} with ${newMf.fm.id} (old kept as history).`,
+          output: `Replaced ${oldMf.fm.id} with ${newMf.fm.id} (old kept as history).${secretNote}`,
         };
       } catch (e) {
         return {

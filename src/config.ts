@@ -29,10 +29,19 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
     "^\\s*记住(?!（个人）)[：:,，]?\\s*(.+)$",
     "^\\s*(?:请)?(?:记一下|记录一下)[：:,，]?\\s*(.+)$",
     "^\\s*别忘了[：:,，]?\\s*(.+)$",
+    // First-person plural: team/project context, NOT personal
+    "^\\s*我们认为[：:,，]?\\s*(.+)$",
+    "^\\s*我们决定[：:,，]?\\s*(.+)$",
+    "^\\s*帮我们记(?:住|一下)?[：:,，]?\\s*(.+)$",
   ],
   keywordPersonalPatterns: [
     "^\\s*remember\\s+for\\s+me(?:\\s+that)?[:,]?\\s+(.+)$",
     "^\\s*记住（个人）[：:,，]?\\s*(.+)$",
+    // First-person singular: personal scope ("我" → 个人, "我们" → 项目)
+    "^\\s*记住我(?!们)[：:,，]?\\s*(.+)$",
+    "^\\s*替我记(?:住|一下)?[：:,，]?\\s*(.+)$",
+    "^\\s*我觉得[：:,，]?\\s*(.+)$",
+    "^\\s*我喜欢[：:,，]?\\s*(.+)$",
   ],
   // Built-in provider patterns now live in src/redact.ts (always on).
   // Add only your own extra patterns here.

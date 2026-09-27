@@ -57,7 +57,7 @@ Restart opencode.
 
 ## Capture
 
-- **Keyword triggers** in user messages: `remember ...`, `note that ...`, `TIL ...`, `save this: ...`
+- **Keyword triggers** in user messages: `remember ...`, `note that ...`, `TIL ...`, `save this: ...`, plus Chinese （记住/记一下/别忘了）. Scope routing: 我 → personal (记住我/替我记/我觉得/我喜欢), 我们 → project (我们认为/我们决定/帮我们记住)
 - **Explicit tool calls** by the agent (via `memory_add`)
 - **Redaction**: content inside `<private>...</private>` tags is stripped; detected secrets (API keys, tokens, high-entropy credentials) are masked in place — first 4 characters kept, the rest replaced with `x` — and the memory is saved
 

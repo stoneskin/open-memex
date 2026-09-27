@@ -96,9 +96,61 @@ node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
 Or via the npm script: `npm run cli -- list --scope project`.
 **Note:** flag arguments beyond the first must be passed via direct `node` invocation, not `npm run cli --`, because npm swallows unknown `--flag` args.
 
+## MCP server (VS Code, Cursor, Claude Code, …)
+
+The same five memory tools are exposed over the Model Context Protocol via a stdio server — no host-specific plugin needed. Any MCP client can use open-memex.
+
+```
+node --experimental-strip-types src/mcp.ts
+# or: npm run mcp
+```
+
+The project scope is resolved from the process working directory, so configure the server with cwd set to your project root (all three clients below do this for workspace servers).
+
+**VS Code** — add to `.vscode/mcp.json` (workspace) or your user `mcp.json`:
+
+```json
+{
+  "servers": {
+    "open-memex": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["--experimental-strip-types", "/path/to/open-memex/src/mcp.ts"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
+
+Then enable MCP in Copilot Chat; the `memory_*` tools appear automatically.
+
+**Cursor** — Settings → MCP → Add new MCP server:
+
+```json
+{
+  "mcpServers": {
+    "open-memex": {
+      "command": "node",
+      "args": ["--experimental-strip-types", "/path/to/open-memex/src/mcp.ts"],
+      "cwd": "<your project root>"
+    }
+  }
+}
+```
+
+**Claude Code** —
+
+```
+claude mcp add open-memex -- node --experimental-strip-types /path/to/open-memex/src/mcp.ts
+```
+
+Run it from your project root so the project scope resolves correctly.
+
+**Note:** MCP is request/response — it gives the agent tools, not the opencode plugin's automatic keyword capture or first-turn context injection. If you want the agent to consult memory proactively, add an instruction like "search open-memex memory before answering questions about past decisions" to your project's agent instructions file.
+
 ## Status
 
-v2 alpha (`0.2.0-alpha`): v2 data model + migration, dedup + lifecycle (supersede/status), redaction hardening, CJK bigram retrieval. See `PLAN.md` for the roadmap (local embeddings, auto-capture, compaction hook, etc).
+v2 alpha (`0.2.0-alpha`): v2 data model + migration, dedup + lifecycle (supersede/status), redaction hardening, CJK bigram retrieval, generic MCP server (`src/mcp.ts`). See `PLAN.md` for the roadmap (local embeddings, auto-capture, compaction hook, etc).
 
 ## License
 

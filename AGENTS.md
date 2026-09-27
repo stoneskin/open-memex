@@ -4,12 +4,15 @@ Local-first memory plugin for opencode. See `README.md` and `PLAN.md` for user-f
 
 ## Runtime model — read before touching anything
 
-Two runtimes execute the same TypeScript source, with **no build step**:
+Three entry points execute the same TypeScript source, with **no build step**:
 
 - **opencode host** loads `src/index.ts` under embedded **Bun**. SQLite here is `bun:sqlite` (built-in).
-- **CLI** (`src/cli.ts`) and smoke test run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
+- **CLI** (`src/cli.ts`) and smoke tests run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
+- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same five memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
 
 `src/store/db.ts` picks the backend at runtime by sniffing `globalThis.Bun`. Both backends share the same surface (`new Database(path)`, `.exec`, `.prepare().run/all/get`, `.close`). Any DB code you write must stay on that common subset — do not import `better-sqlite3` or `bun:sqlite` directly outside `db.ts`.
+
+Tool logic is host-agnostic and lives in `src/tools/ops.ts` (plain functions + shared zod arg shapes + `TOOL_DESCRIPTIONS`). `src/tools/memory.ts` (opencode) and `src/mcp.ts` are thin adapters — when adding or changing a tool, change `ops.ts` once and both hosts pick it up.
 
 Consequences:
 - Imports **must** use explicit `.ts` extensions (`allowImportingTsExtensions: true`, `moduleResolution: "Bundler"`).
@@ -22,7 +25,9 @@ Consequences:
 npm install                                          # once
 npm run typecheck                                    # tsc --noEmit — the only lint/type gate
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
+npm run mcp                                          # start the stdio MCP server
 node --experimental-strip-types scripts\smoke-pure.ts   # runs pure-logic checks (no sqlite)
+node --experimental-strip-types scripts\smoke-mcp.ts    # MCP handshake + tool round-trip (temp dirs, no real data)
 ```
 
 There is **no `npm test`** and no CI. Verification loop is: `npm run typecheck` + `smoke-pure.ts` + (if touching sqlite) `npm run cli -- reindex` against a scratch `MY_O_MEMORY_HOME`.

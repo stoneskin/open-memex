@@ -37,15 +37,16 @@ Usage:
   node --experimental-strip-types src/cli.ts migrate [--from <key>] [--to <key>]
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
   node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
-  node --experimental-strip-types src/cli.ts mcp [--print-config vscode|cursor|claude|opencode]
-  node --experimental-strip-types src/cli.ts init [--client vscode|cursor|opencode] [--force] [--yes]
+  node --experimental-strip-types src/cli.ts mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
+  node --experimental-strip-types src/cli.ts init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
   node --experimental-strip-types src/cli.ts config [set <key> <value>]
   node --experimental-strip-types src/cli.ts capture --dry-run "text"
   node --experimental-strip-types src/cli.ts doctor
 
 One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
-the MCP config for your editor (\`.vscode/mcp.json\`, \`.cursor/mcp.json\`, or
-\`opencode.jsonc\`) plus \`.github/copilot-instructions.md\` — no copy-paste needed.
+the MCP config for your editor (\`.vscode/mcp.json\`, \`.cursor/mcp.json\`,
+\`opencode.jsonc\`, or Visual Studio's solution-level \`.mcp.json\`) plus
+\`.github/copilot-instructions.md\` — no copy-paste needed.
 Existing files are merged, never clobbered; re-running is safe. On a terminal it
 asks which editor to set up and a couple of settings (keyword capture, first-turn
 injection); \`--yes\` accepts all defaults, and non-terminal runs never prompt.
@@ -147,8 +148,25 @@ function printMcpConfig(client: string): never {
         2,
       ),
     );
+  } else if (c === "visualstudio" || c === "visual-studio") {
+    // D20: Visual Studio (Windows-only) reads solution-level `.mcp.json`.
+    console.log(
+      JSON.stringify(
+        {
+          servers: {
+            "open-memex": {
+              type: "stdio",
+              command: mc.command,
+              args: mc.args,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
   } else {
-    console.error(`unknown client "${client}" (vscode|cursor|claude|opencode)`);
+    console.error(`unknown client "${client}" (vscode|cursor|claude|opencode|visualstudio)`);
     process.exit(1);
   }
   if (!mc.durable) {

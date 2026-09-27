@@ -113,7 +113,7 @@ node --experimental-strip-types src/cli.ts migrate --from <old-scope-key> [--dry
 node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
 node --experimental-strip-types src/cli.ts config
 node --experimental-strip-types src/cli.ts config set keywordCaptureEnabled false
-node --experimental-strip-types src/cli.ts init [--client vscode|cursor|opencode] [--force] [--yes]
+node --experimental-strip-types src/cli.ts init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
 node --experimental-strip-types src/cli.ts capture --dry-run "记住我喜欢简洁的回答"
 node --experimental-strip-types src/cli.ts doctor
 ```

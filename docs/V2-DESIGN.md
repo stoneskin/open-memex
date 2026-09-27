@@ -566,6 +566,13 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   merges a `type: "local"` MCP entry into project-level `opencode.jsonc` (v1 format).
   *Rationale: install time is the only moment the user's attention is guaranteed, and a
   print-only `config` left no path to change settings afterwards. 2026-09-27.*
+- **D20** — `init` / `mcp --print-config` support Visual Studio. Writes solution-level
+  `.mcp.json` with the `"servers"` section (`{ "type": "stdio", "command", "args" }`),
+  per Microsoft Learn (VS 2022 17.14+ / VS 2026, Windows-only). `.github/copilot-
+  instructions.md` is still written — VS's Copilot reads it too. Note VS also
+  auto-discovers `.vscode/mcp.json` and `.cursor/mcp.json`, so repos already set up for
+  VS Code get VS support for free; the explicit `.mcp.json` is the source-controllable
+  option. 2026-09-27.*
 
 ## Open Questions
 

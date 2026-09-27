@@ -76,6 +76,7 @@ function projectRoot(): string {
 
 function writeMcpJson(root: string, client: string, force: boolean): string | null {
   if (client === "opencode") return writeOpencodeMcpJson(root, force);
+  if (client === "visualstudio") return writeVisualStudioMcpJson(root, force);
   const dir = client === "cursor" ? path.join(root, ".cursor") : path.join(root, ".vscode");
   const file = path.join(dir, "mcp.json");
   const sectionKey = client === "cursor" ? "mcpServers" : "servers";
@@ -150,6 +151,41 @@ function writeOpencodeMcpJson(root: string, force: boolean): string | null {
   return file;
 }
 
+/** Visual Studio (Windows-only, 2022 17.14+ / 2026): solution-level `.mcp.json`
+ * with the `"servers"` section, per Microsoft Learn. Source-controllable.
+ * (VS also auto-discovers `.vscode/mcp.json` and `.cursor/mcp.json`.) */
+function writeVisualStudioMcpJson(root: string, force: boolean): string | null {
+  const file = path.join(root, ".mcp.json");
+  let doc: Record<string, unknown> = {};
+  if (fs.existsSync(file)) {
+    try {
+      doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch {
+      console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
+      return null;
+    }
+  }
+  const section = ((doc["servers"] ??= {}) as Record<string, unknown>);
+  if (section["open-memex"] && !force) {
+    console.log(`  = ${file} already configures open-memex — left as is (use --force to overwrite)`);
+    return file;
+  }
+  // D17: resolve the server command at init time — a one-shot npx leaves no bin behind.
+  const mc = resolveMcpCommand();
+  section["open-memex"] = {
+    type: "stdio",
+    command: mc.command,
+    args: mc.args,
+  };
+  fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+  console.log(`  + ${file}`);
+  if (!mc.durable) {
+    console.log(`  ! no durable \`open-memex\` on PATH (one-shot npx?) — wrote an npx-based command.`);
+    console.log(`    For faster startup: \`npm i -g ${ALPHA_TAG}\`, then re-run \`open-memex init --force\`.`);
+  }
+  return file;
+}
+
 function writeInstructions(root: string): string {
   const dir = path.join(root, ".github");
   const file = path.join(dir, "copilot-instructions.md");
@@ -166,6 +202,14 @@ function writeInstructions(root: string): string {
   }
   console.log(`  + ${file}`);
   return file;
+}
+
+export const INIT_CLIENTS = ["vscode", "cursor", "opencode", "visualstudio"] as const;
+
+/** Normalize --client values; accepts "visual-studio" as an alias. */
+export function normalizeClient(c: string): string {
+  const lower = c.toLowerCase();
+  return lower === "visual-studio" ? "visualstudio" : lower;
 }
 
 /** Ask a yes/no question. Only called on a TTY when --yes was not passed. */
@@ -185,7 +229,9 @@ async function promptClient(): Promise<string | null> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
     const ans = (
-      await rl.question("Which editor? (1) VS Code  (2) Cursor  (3) opencode  (4) skip [1]: ")
+      await rl.question(
+        "Which editor? (1) VS Code  (2) Cursor  (3) opencode  (4) Visual Studio  (5) skip [1]: ",
+      )
     ).trim();
     switch (ans) {
       case "":
@@ -196,6 +242,8 @@ async function promptClient(): Promise<string | null> {
       case "3":
         return "opencode";
       case "4":
+        return "visualstudio";
+      case "5":
         return null;
       default:
         console.log(`  ? unknown choice "${ans}" — editor setup skipped`);
@@ -212,9 +260,9 @@ export async function initProject(opts: {
   yes: boolean;
 }): Promise<void> {
   const interactive = !opts.yes && !!process.stdin.isTTY && !!process.stdout.isTTY;
-  let client = (opts.client ?? "").toLowerCase();
-  if (client && client !== "vscode" && client !== "cursor" && client !== "opencode") {
-    console.error(`unknown client "${opts.client}" (vscode|cursor|opencode)`);
+  let client = normalizeClient(opts.client ?? "");
+  if (client && !(INIT_CLIENTS as readonly string[]).includes(client)) {
+    console.error(`unknown client "${opts.client}" (${INIT_CLIENTS.join("|")})`);
     process.exit(1);
   }
   if (!client && interactive) client = (await promptClient()) ?? "";

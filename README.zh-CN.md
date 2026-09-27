@@ -236,6 +236,8 @@ open-memex config set <key> <value>                # 改设置
 open-memex doctor                                  # 环境健康检查
 open-memex capture --dry-run "记住我喜欢简洁的回答"  # 预览关键词捕获
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio
+open-memex --help      # 本帮助
+open-memex --version   # 已安装版本
 ```
 
 记忆操作：

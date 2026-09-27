@@ -20,28 +20,30 @@ import { paths } from "./paths.ts";
 import { redact } from "./redact.ts";
 import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-function usage(): never {
+function usage(exitCode = 1): never {
   console.log(`open-memex CLI
 
 Usage:
-  node --experimental-strip-types src/cli.ts where
-  node --experimental-strip-types src/cli.ts list [--scope project|personal] [--type T] [--limit N]
-  node --experimental-strip-types src/cli.ts search "query" [--scope project|personal|both] [--type T] [--limit N]
-  node --experimental-strip-types src/cli.ts add "content" [--scope project|personal] [--type T] [--tag t1,t2]
-  node --experimental-strip-types src/cli.ts supersede <id> "new content" [--type T] [--tag t1,t2]
-  node --experimental-strip-types src/cli.ts status <id> active|deprecated|retracted|archived
-  node --experimental-strip-types src/cli.ts forget <id>
-  node --experimental-strip-types src/cli.ts reindex
-  node --experimental-strip-types src/cli.ts scopes
-  node --experimental-strip-types src/cli.ts migrate [--from <key>] [--to <key>]
+  open-memex where
+  open-memex list [--scope project|personal] [--type T] [--limit N]
+  open-memex search "query" [--scope project|personal|both] [--type T] [--limit N]
+  open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2]
+  open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
+  open-memex status <id> active|deprecated|retracted|archived
+  open-memex forget <id>
+  open-memex reindex
+  open-memex scopes
+  open-memex migrate [--from <key>] [--to <key>]
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
-  node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
-  node --experimental-strip-types src/cli.ts mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
-  node --experimental-strip-types src/cli.ts init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
-  node --experimental-strip-types src/cli.ts config [set <key> <value>]
-  node --experimental-strip-types src/cli.ts capture --dry-run "text"
-  node --experimental-strip-types src/cli.ts doctor
+  open-memex migrate --to-v2 [--dry-run]
+  open-memex mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
+  open-memex init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
+  open-memex config [set <key> <value>]
+  open-memex capture --dry-run "text"
+  open-memex doctor
 
 One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
 the MCP config for your editor (\`.vscode/mcp.json\`, \`.cursor/mcp.json\`,
@@ -66,7 +68,7 @@ git remote after memories were already stored under the cwd-based key.
 \`migrate --to-v2\` converts v1 memory files to the v2 format (§19):
 user→personal scope rename, epoch→RFC 3339 times, priority→importance,
 type: instruction→role split. Always preview with --dry-run first.`);
-  process.exit(1);
+  process.exit(exitCode);
 }
 
 function parseFlags(argv: string[]): Record<string, string> {
@@ -179,7 +181,16 @@ function printMcpConfig(client: string): never {
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
-  if (!cmd) usage();
+  if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") usage(0);
+
+  if (cmd === "--version" || cmd === "-v") {
+    // package.json sits two levels above this file in both layouts
+    // (src/cli.ts and dist/cli.js).
+    const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    console.log(`open-memex ${pkg.version}`);
+    return;
+  }
 
   const cfg = loadConfig();
   const project = resolveProjectScope(process.cwd());

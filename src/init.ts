@@ -272,7 +272,7 @@ export async function initProject(opts: {
     // config file; `open-memex config set` changes them later.
     const patch: Record<string, unknown> = {};
     const keywordCaptureEnabled = await askBool(
-      "Auto-capture keywords like 记住… / remember… into memory?",
+      "Auto-capture keywords like remember… / note that… into memory?",
       DEFAULT_CONFIG.keywordCaptureEnabled,
     );
     if (keywordCaptureEnabled !== DEFAULT_CONFIG.keywordCaptureEnabled)

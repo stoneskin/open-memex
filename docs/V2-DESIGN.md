@@ -413,8 +413,10 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
 - **Phase 2A — MCP server (shipped 2026-09-27, D15).** Core/adapters split
   (`src/tools/ops.ts`) · MCP server (`src/mcp.ts`, stdio) exposing all five memory tools —
   read-only-first phasing dropped per D15 · query-aware injection stays host-side.
+  Ships in **`0.2.1-alpha`** (with bin/npx user-friendliness polish per §17 adoption path).
 - **Phase 2B — Team sync.** GitProvider · `propose/promote/resolve` · in-repo dir · 1–2 colleague pilot
   (pilot project selection is maintainer-private, not tracked in this doc).
+  Ships in **`0.2.1-beta`**.
   Embeddings/rerank run as a **parallel benchmark-gated experiment**, not on the critical path.
 - **Phase 3 — Org layer.** Org memory repo · curator convention · `examples/remote-server/` ·
   distill-to-AGENTS.md assist.

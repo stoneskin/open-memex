@@ -418,6 +418,37 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
   (pilot project selection is maintainer-private, not tracked in this doc).
   Ships in **`0.2.1-beta`**.
   Embeddings/rerank run as a **parallel benchmark-gated experiment**, not on the critical path.
+- **Phase 2C — Native agent plugins (candidates, not committed).** Claude Code plugin and/or
+  Codex plugin using their hooks systems (`SessionStart` → context injection,
+  `UserPromptSubmit` → keyword-triggered search, `Stop`/`PostToolUse` → capture).
+  Gated on real-world signal from 0.2.1-alpha MCP dogfooding.
+
+### Agent integration matrix
+
+| Agent | Integration path | Native hooks? | Status |
+|---|---|---|---|
+| opencode | native plugin (`src/index.ts`) | ✅ keyword capture + first-turn injection | shipped (Phase 1) |
+| VS Code Copilot | MCP server + `.github/copilot-instructions.md` | ❌ — VS Code extension API cannot intercept Copilot Chat (researched 2026-09-27); an extension would add no hook capability, so not worth building | ships `0.2.1-alpha` |
+| Cursor | MCP server + rules | ❌ no chat plugin API | ships `0.2.1-alpha` |
+| Claude Code | MCP server today; plugin + hooks candidate | ✅ `SessionStart` / `UserPromptSubmit` / `PostToolUse` | Phase 2C candidate |
+| Codex (CLI/IDE) | MCP server (`[mcp_servers]` in config.toml / `codex mcp add`) today; plugin + hooks + marketplace candidate | ✅ hooks mirror Claude Code's | Phase 2C candidate |
+
+### Competitive landscape (for future positioning)
+
+Coding-agent memory is crowded; open-memex's wedge is **zero-cloud, zero-account,
+zero-embedding-download**, with repo-native markdown as source of truth (maintainer
+requirement: personal data never touches third-party services). Benchmarks to track:
+
+| Product | Scale / backing (Sep 2026) | Shape | Gap vs open-memex |
+|---|---|---|---|
+| Mem0 | ~50k+★, $24M Series A (YC) | universal memory SDK/API, vector+graph, cloud-first | cloud dependency; not repo-native for coding agents |
+| Letta (ex-MemGPT) | ~24k★, $10M seed | stateful agent platform, memory blocks | agent runtime, not a drop-in coding-agent memory |
+| Zep / Graphiti | ~20–30k★, $12M seed | temporal knowledge graph, enterprise | heavy infra; overkill as a coding vault |
+| Cognee | ~15–30k★, $7.5M seed | graph ECL pipelines | ingest-oriented, no coding-agent hooks |
+| Supermemory | ~15k★, $2.6M seed | consumer second-brain + SaaS API | cloud SaaS |
+| atlaso-labs/codex | Codex marketplace | long-term memory plugin for Codex (hooks + MCP + cloud-sync upsell) | **direct comparable** for a future Codex plugin; their cloud upsell vs our local-first |
+
+(Star counts / funding as of Sep 2026 — re-verify before quoting publicly.)
 - **Phase 3 — Org layer.** Org memory repo · curator convention · `examples/remote-server/` ·
   distill-to-AGENTS.md assist.
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo

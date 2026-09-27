@@ -142,6 +142,26 @@ ok("wrapped secret does not trigger", r4.hadSecret === false);
 const r5 = redact("foo CUSTOM123 bar", ["CUSTOM\\d+"]);
 ok("user pattern detected", r5.hadSecret === true && r5.matchedPattern === "CUSTOM\\d+", r5.matchedPattern);
 
+console.log("== redact masking (D14) ==");
+// Secrets are masked in place (first 4 chars kept, rest → x), never refused.
+const m1 = redact("deploy uses key=sk-1234567890abcdefghij1234 in prod", []);
+ok("mask: detected", m1.hadSecret === true && m1.matchedPattern === "openai-key", m1.matchedPattern);
+ok("mask: prefix kept", m1.content.includes("sk-1"), m1.content);
+ok("mask: rest x'd", m1.content.includes("sk-1xxxxxxxxxxxxxxxxxxxxx"), m1.content);
+ok("mask: full secret gone", !m1.content.includes("1234567890abcdefghij"));
+ok("mask: surrounding text kept", m1.content.startsWith("deploy uses key=") && m1.content.includes(" in prod"));
+// User patterns mask too.
+ok("mask: user pattern", redact("foo CUSTOM123 bar", ["CUSTOM\\d+"]).content.includes("CUSTxxxxx"));
+// High-entropy: value masked, name kept.
+const r6 = redact('deploy_key = "aB3dE5fG7hJ9kL2mN4pQ6rS8tU0vW2xY4zA6bC8dE0"', []);
+ok("mask: entropy value masked", r6.content.includes("aB3dxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"), r6.content);
+ok("mask: entropy name kept", r6.content.includes("deploy_key ="));
+// URLs are never masked, even when another secret is present in the same text.
+const r7 = redact("see https://api.example.com/v1/users/list and key=sk-1234567890abcdefghij1234", []);
+ok("mask: mixed url+secret detected", r7.hadSecret === true, r7.matchedPattern);
+ok("mask: url intact", r7.content.includes("https://api.example.com/v1/users/list"), r7.content);
+ok("mask: second secret also masked", !r7.content.includes("sk-1234567890"), r7.content);
+
 console.log("== keywords ==");
 const hits1 = detectKeywords("remember that this repo uses Bun, not Node", DEFAULT_CONFIG);
 ok("basic remember matched", hits1.length === 1);

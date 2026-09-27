@@ -287,7 +287,7 @@ instructions are never candidates.)
 | Explicit tools | `memory_add/update/forget` (soft delete) · `search/get/list/status` · `propose/promote` · `resolve`. Write tools confirm with the user; read tools are open. |
 | Keyword triggers | `remember …`, `note that …`, `TIL …`, `save this: …` + Chinese `记住` `记得` `保存一下` … |
 | Implicit (opt-in) | end-of-session "should I remember X?"; implicit captures default to `confidence: low` and appear in a separate list view for batch cleanup (regret window). |
-| Redaction (hard) | `<private>…</private>` stripped; secret patterns refuse the write; pre-commit hook scans shared scopes. |
+| Redaction (hard) | `<private>…</private>` stripped; secret patterns are **masked in place** (first 4 chars kept, rest → `x`) and the write proceeds (D14); pre-commit hook scans shared scopes. |
 
 ---
 
@@ -474,6 +474,14 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
   `autoPull: true`, a failed pull never blocks the session and every pull emits a receipt.
   *Rationale: a memory pull can change agent behavior, so it must be a deliberate, visible act —
   predictable offline-first beats silent freshness. Unanimous 5/5 in round-4 AI review, 2026-09-26.*
+- **D14** — Secret detection masks instead of refusing. A write-path secret hit is **masked in
+  place** (first 4 characters kept, the rest replaced with `x`, length-preserving) and the write
+  proceeds with a notice; `<private>…</private>` spans are still stripped to `[REDACTED]`.
+  Amends the v0.2 rule "secret patterns refuse the write" (§8, §11). *Rationale: a refused write
+  loses the surrounding context the user asked to remember; a prefix-masked secret stays
+  recognizable (which key it was) while the credential itself is not recoverable from the file.
+  Supersedes the refusal behavior; applies to every write path (tools, keyword capture, CLI).
+  2026-09-27.*
 
 ## Open Questions
 

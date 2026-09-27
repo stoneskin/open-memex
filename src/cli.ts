@@ -188,12 +188,9 @@ async function main() {
     const flags = parseFlags(rest.slice(1));
     const s = resolveCliScope(flags, project);
     const { content: red, hadSecret, matchedPattern } = redact(content, cfg.redactPatterns);
-    if (hadSecret) {
-      console.error(`refused: content matched secret pattern (${matchedPattern}).`);
-      process.exit(2);
-    }
     // Dedup on write (§3.4): identical content is idempotent; near-duplicates
     // warn but still save (use `supersede` when this replaces the old one).
+    // Secrets are masked (first 4 chars kept) and the write proceeds.
     const dups = findDuplicates(s.key, red);
     if (dups.exact) {
       console.log(`already exists: id=${dups.exact.id} (identical content — not duplicated)`);
@@ -228,6 +225,11 @@ async function main() {
     const mf = readMemoryFile(filePath);
     if (mf) upsertFromFile(mf);
     console.log(`saved ${fm.id} -> ${filePath}`);
+    if (hadSecret) {
+      console.log(
+        `warning: content matched secret pattern (${matchedPattern}); saved with the secret masked (first 4 chars kept).`,
+      );
+    }
     for (const n of dups.near) {
       console.log(
         `warning: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id}\n  ${n.snippet}\n  use \`open-memex supersede ${n.id} "new content"\` if this replaces it.`,
@@ -242,10 +244,6 @@ async function main() {
     if (!id || !content || content.startsWith("--")) usage();
     const flags = parseFlags(rest.slice(2));
     const { content: red, hadSecret, matchedPattern } = redact(content, cfg.redactPatterns);
-    if (hadSecret) {
-      console.error(`refused: content matched secret pattern (${matchedPattern}).`);
-      process.exit(2);
-    }
     try {
       const { oldMf, newMf } = supersede(id, {
         body: red,
@@ -258,6 +256,11 @@ async function main() {
       upsertFromFile(oldMf);
       upsertFromFile(newMf);
       console.log(`superseded ${oldMf.fm.id} → ${newMf.fm.id}`);
+      if (hadSecret) {
+        console.log(
+          `warning: content matched secret pattern (${matchedPattern}); saved with the secret masked (first 4 chars kept).`,
+        );
+      }
     } catch (e) {
       console.error(`supersede failed: ${(e as Error).message}`);
       process.exit(2);

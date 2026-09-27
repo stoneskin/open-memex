@@ -1,7 +1,8 @@
 /**
- * Redaction: secrets must never land in memory files or the index.
+ * Redaction: secrets must never land in memory files or the index in
+ * readable form.
  *
- * Three layers, checked in order by redact():
+ * Layers, in order:
  *   1. <private>...</private> regions are stripped first (explicit opt-out —
  *      the author marked this span as sensitive, so it is replaced with
  *      [REDACTED] before any detection runs).
@@ -10,8 +11,11 @@
  *   4. High-entropy assignment heuristic (catches secrets whose provider we
  *      don't have a pattern for, e.g. `deploy_key = "aB3d..."`).
  *
- * Any hit refuses the whole write — a memory with a hole in it is worse
- * than no memory, because the hole invites reconstruction.
+ * A detected secret does NOT refuse the write: the matched string is masked
+ * in place — first 4 characters kept, the rest replaced with 'x' — and the
+ * write proceeds with the masked content. hadSecret reports that masking
+ * happened so callers can surface a notice. A partially-masked memory still
+ * identifies which credential it referred to without storing the secret.
  */
 
 export interface SecretPattern {
@@ -139,10 +143,26 @@ export function findHighEntropySecret(text: string): string | null {
   for (const m of text.matchAll(ASSIGNMENT_RE)) {
     const name = m[1];
     const value = m[2];
-    if (value.includes("://")) continue; // URL, not a secret
-    if (shannonEntropy(value) >= 4.5) return `high-entropy-secret:${name}`;
+    if (!isSuspectAssignmentValue(value, m[0], m.index ?? 0, text)) continue;
+    return `high-entropy-secret:${name}`;
   }
   return null;
+}
+
+/**
+ * Shared benign-value rule for detection AND masking: a URL (e.g. the value
+ * after "https:") or a low-entropy value must never be touched. Note the
+ * "://" check: ASSIGNMENT_RE consumes the colon of "https:" as the separator,
+ * so the captured value starts with "//..." — check for "://" in the
+ * original text around the match, not just inside the value.
+ */
+function isSuspectAssignmentValue(value: string, fullMatch: string, offset: number, text: string): boolean {
+  if (value.includes("://")) return false;
+  // Reconstruct what preceded the value inside the match (name + separator);
+  // if the text right before the value looks like scheme://, it is a URL.
+  const before = text.slice(Math.max(0, offset - 12), offset);
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:(\/\/)?$/.test(before.trim()) || before.includes("://")) return false;
+  return shannonEntropy(value) >= 4.5;
 }
 
 export function stripPrivate(text: string): string {
@@ -154,18 +174,66 @@ export function stripPrivate(text: string): string {
   return out;
 }
 
+/**
+ * Mask a matched secret: keep the first 4 characters, replace the rest
+ * with 'x' (length-preserving). "sk-1234567890abcdefghij" → "sk-1xxxxxxxxxxxxx".
+ */
+function maskMatch(m: string): string {
+  return m.slice(0, 4) + "x".repeat(Math.max(0, m.length - 4));
+}
+
+/** Apply the builtin patterns as masking (global, all matches). */
+function maskBuiltin(content: string): string {
+  let out = content;
+  for (const p of BUILTIN_SECRET_PATTERNS) {
+    const re = compile(p);
+    if (!re) continue;
+    const g = new RegExp(re.source, re.flags + "g");
+    out = out.replace(g, (m) => maskMatch(m));
+  }
+  return out;
+}
+
+/** Apply user patterns as masking. Invalid regexes are ignored. */
+function maskUser(content: string, patterns: string[]): string {
+  let out = content;
+  for (const p of patterns) {
+    try {
+      out = out.replace(new RegExp(p, "g"), (m) => maskMatch(m));
+    } catch {
+      // ignore malformed regex
+    }
+  }
+  return out;
+}
+
+/** Mask the value side of high-entropy assignments (name stays readable).
+ *  Uses the exact same benign-value rule as detection, so URLs and
+ *  low-entropy values are never touched even when another secret triggers. */
+function maskEntropy(content: string): string {
+  return content.replace(
+    ASSIGNMENT_RE,
+    (m, name: string, value: string, offset: number) => {
+      if (!isSuspectAssignmentValue(value, m, offset, content)) return m;
+      return m.split(value).join(maskMatch(value));
+    },
+  );
+}
+
 export function redact(
   text: string,
   patterns: string[],
 ): { content: string; hadSecret: boolean; matchedPattern: string | null } {
   const stripped = stripPrivate(text);
+  // Detection (for reporting) runs in priority order: builtin → user → entropy.
   const builtin = findBuiltinSecret(stripped);
-  if (builtin)
-    return { content: stripped, hadSecret: true, matchedPattern: builtin };
-  const user = findSecret(stripped, patterns);
-  if (user) return { content: stripped, hadSecret: true, matchedPattern: user };
-  const entropic = findHighEntropySecret(stripped);
-  if (entropic)
-    return { content: stripped, hadSecret: true, matchedPattern: entropic };
-  return { content: stripped, hadSecret: false, matchedPattern: null };
+  const user = builtin ? null : findSecret(stripped, patterns);
+  const entropic =
+    builtin || user ? null : findHighEntropySecret(stripped);
+  const matched = builtin ?? user ?? entropic;
+  if (!matched) return { content: stripped, hadSecret: false, matchedPattern: null };
+  // Masking runs every family over the text (not just the reported one) so
+  // multiple credentials in one memory are all masked.
+  const masked = maskEntropy(maskUser(maskBuiltin(stripped), patterns));
+  return { content: masked, hadSecret: true, matchedPattern: matched };
 }

@@ -63,8 +63,13 @@ const plugin: Plugin = async ({ worktree, directory }) => {
 
       const hits = detectKeywords(text, cfg);
       for (const h of hits) {
-        const { content, hadSecret } = redact(h.content, cfg.redactPatterns);
-        if (hadSecret || content.length === 0) continue;
+        const { content, hadSecret, matchedPattern } = redact(h.content, cfg.redactPatterns);
+        // Secrets are masked (first 4 chars kept) and the capture proceeds;
+        // skip only when nothing usable remains.
+        if (content.length === 0) continue;
+        if (hadSecret && cfg.logLevel === "debug") {
+          console.log(`[open-memex] keyword capture masked secret (${matchedPattern})`);
+        }
         // Dedup (§3.4): skip exact duplicates captured before.
         if (findDuplicates(scope.key, content).exact) continue;
         const now = Date.now();

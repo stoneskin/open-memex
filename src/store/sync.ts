@@ -1,17 +1,31 @@
 import fs from "node:fs";
 import { db } from "./db.ts";
-import { iterMemoryFiles, readMemoryFile, type MemoryFile } from "./markdown.ts";
+import { cjkIndexText } from "../retrieve/cjk.ts";
+import { contentHash, repairChain } from "./lifecycle.ts";
+import {
+  iterMemoryFiles,
+  readMemoryFile,
+  timeToMs,
+  type MemoryFile,
+} from "./markdown.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope_kind, project_name, type, tags, content, source, file_path, mtime_ms, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
-    scope_kind   = excluded.scope_kind,
+    scope        = excluded.scope,
+    visibility   = excluded.visibility,
     project_name = excluded.project_name,
     type         = excluded.type,
+    role         = excluded.role,
+    importance   = excluded.importance,
+    status       = excluded.status,
     tags         = excluded.tags,
     content      = excluded.content,
+    cjk          = excluded.cjk,
+    content_hash = excluded.content_hash,
+    superseded_by = excluded.superseded_by,
     source       = excluded.source,
     file_path    = excluded.file_path,
     mtime_ms     = excluded.mtime_ms,
@@ -19,20 +33,50 @@ const UPSERT_SQL = `
 `;
 
 export function upsertFromFile(mf: MemoryFile): void {
-  const { fm, body, filePath, mtimeMs } = mf;
+  // Chain integrity (§3.3): every write path through Core validates the
+  // supersedes/superseded_by pair and auto-completes a missing side.
+  const { warnings, repaired } = repairChain(mf);
+  for (const w of warnings) console.warn(`[open-memex] chain: ${w}`);
+  const mtimeOf = (m: MemoryFile): number => {
+    try {
+      return fs.statSync(m.filePath).mtimeMs;
+    } catch {
+      return m.mtimeMs; // file vanished mid-repair; keep the old mtime
+    }
+  };
+  writeRow(
+    mf,
+    repaired.some((r) => r.filePath === mf.filePath) ? mtimeOf(mf) : mf.mtimeMs,
+  );
+  for (const r of repaired) {
+    if (r.filePath === mf.filePath) continue;
+    writeRow(r, mtimeOf(r));
+  }
+}
+
+function writeRow(mf: MemoryFile, mtimeMs: number): void {
+  const { fm, body, filePath } = mf;
+  const tags = (fm.tags ?? []).join(",");
   db().prepare(UPSERT_SQL).run(
     fm.id,
     fm.scope_key,
-    fm.scope_kind,
+    fm.scope,
+    fm.visibility,
     fm.project_name,
     fm.type,
-    (fm.tags ?? []).join(","),
+    fm.role,
+    fm.importance,
+    fm.status,
+    tags,
     body,
+    cjkIndexText(body + "\n" + tags),
+    contentHash(body),
+    fm.superseded_by ?? null,
     fm.source ?? "",
     filePath,
     mtimeMs,
-    fm.created_at,
-    fm.updated_at,
+    timeToMs(fm.created_at),
+    timeToMs(fm.updated_at),
   );
 }
 

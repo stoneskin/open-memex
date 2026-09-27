@@ -23,18 +23,25 @@ function loadDatabase(): AnyDatabaseCtor {
 
 let _db: AnyDatabase | null = null;
 
-const SCHEMA = `
+const TABLE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS memories (
   id           TEXT PRIMARY KEY,
   scope_key    TEXT NOT NULL,
-  scope_kind   TEXT NOT NULL,
-  project_name TEXT NOT NULL,
-  type         TEXT NOT NULL DEFAULT 'note',
+  scope        TEXT NOT NULL,
+  visibility   TEXT NOT NULL DEFAULT 'private',
+  project_name TEXT NOT NULL DEFAULT '',
+  type         TEXT NOT NULL DEFAULT 'fact',
+  role         TEXT NOT NULL DEFAULT 'knowledge',
+  importance   TEXT NOT NULL DEFAULT 'normal',
+  status       TEXT NOT NULL DEFAULT 'active',
   tags         TEXT NOT NULL DEFAULT '',
   content      TEXT NOT NULL,
+  cjk          TEXT NOT NULL DEFAULT '',
+  content_hash TEXT NOT NULL DEFAULT '',
+  superseded_by TEXT,
   source       TEXT NOT NULL DEFAULT '',
   file_path    TEXT NOT NULL,
-  mtime_ms     INTEGER NOT NULL,
+  mtime_ms     REAL NOT NULL,
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );
@@ -42,11 +49,20 @@ CREATE TABLE IF NOT EXISTS memories (
 CREATE INDEX IF NOT EXISTS idx_memories_scope_updated
   ON memories(scope_key, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
+CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
+`;
 
+// The `cjk` column holds pre-tokenized CJK unigrams+bigrams (see
+// src/retrieve/cjk.ts). FTS5's unicode61 treats a CJK run as one token, so
+// without this column CJK substring search cannot work. Kept as a separate
+// column (rather than a custom tokenizer) so both runtimes stay on stock
+// SQLite with zero native dependencies.
+const FTS_SCHEMA = `
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
   content,
   tags,
   type,
+  cjk,
   scope_key UNINDEXED,
   content='memories',
   content_rowid='rowid',
@@ -54,22 +70,52 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
 );
 
 CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-  INSERT INTO memories_fts(rowid, content, tags, type, scope_key)
-  VALUES (new.rowid, new.content, new.tags, new.type, new.scope_key);
+  INSERT INTO memories_fts(rowid, content, tags, type, cjk, scope_key)
+  VALUES (new.rowid, new.content, new.tags, new.type, new.cjk, new.scope_key);
 END;
 
 CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-  INSERT INTO memories_fts(memories_fts, rowid, content, tags, type, scope_key)
-  VALUES ('delete', old.rowid, old.content, old.tags, old.type, old.scope_key);
+  INSERT INTO memories_fts(memories_fts, rowid, content, tags, type, cjk, scope_key)
+  VALUES ('delete', old.rowid, old.content, old.tags, old.type, old.cjk, old.scope_key);
 END;
 
 CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-  INSERT INTO memories_fts(memories_fts, rowid, content, tags, type, scope_key)
-  VALUES ('delete', old.rowid, old.content, old.tags, old.type, old.scope_key);
-  INSERT INTO memories_fts(rowid, content, tags, type, scope_key)
-  VALUES (new.rowid, new.content, new.tags, new.type, new.scope_key);
+  INSERT INTO memories_fts(memories_fts, rowid, content, tags, type, cjk, scope_key)
+  VALUES ('delete', old.rowid, old.content, old.tags, old.type, old.cjk, old.scope_key);
+  INSERT INTO memories_fts(rowid, content, tags, type, cjk, scope_key)
+  VALUES (new.rowid, new.content, new.tags, new.type, new.cjk, new.scope_key);
 END;
 `;
+
+/** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
+const SCHEMA_VERSION = 5;
+
+function userVersion(d: AnyDatabase): number {
+  const row = d.prepare("PRAGMA user_version").get() as { user_version: number };
+  return row.user_version;
+}
+
+/**
+ * Any schema change: the query layer is fully derived from markdown (D1),
+ * so wipe it and let the next syncScope() repopulate. The markdown files
+ * themselves are untouched — `migrate --to-v2` handles the file format.
+ * NOTE ordering matters: triggers are dropped BEFORE the wipe, and the FTS
+ * table is rebuilt after. FTS5's 'delete' command corrupts
+ * (SQLITE_CORRUPT_VTAB) when it targets a rowid that was never indexed, so
+ * the wipe must not fire any FTS trigger while the index is out of sync
+ * with the table (found 2026-09-26).
+ */
+function rebuildIndexSchema(d: AnyDatabase): void {
+  d.exec(`DROP TRIGGER IF EXISTS memories_ai;
+          DROP TRIGGER IF EXISTS memories_ad;
+          DROP TRIGGER IF EXISTS memories_au;`);
+  d.exec("DELETE FROM memories");
+  d.exec(`DROP TABLE IF EXISTS memories_fts;`);
+  d.exec(`DROP TABLE IF EXISTS memories;`);
+  d.exec(TABLE_SCHEMA);
+  d.exec(FTS_SCHEMA);
+  d.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+}
 
 export function db(): AnyDatabase {
   if (_db) return _db;
@@ -79,7 +125,9 @@ export function db(): AnyDatabase {
   d.exec("PRAGMA journal_mode = WAL;");
   d.exec("PRAGMA synchronous = NORMAL;");
   d.exec("PRAGMA foreign_keys = ON;");
-  d.exec(SCHEMA);
+  d.exec(TABLE_SCHEMA);
+  d.exec(FTS_SCHEMA);
+  if (userVersion(d) < SCHEMA_VERSION) rebuildIndexSchema(d);
   _db = d;
   return d;
 }

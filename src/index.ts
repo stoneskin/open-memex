@@ -1,6 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { loadConfig } from "./config.ts";
-import { resolveProjectScope, resolveCwdScope, USER_SCOPE, type Scope } from "./scope.ts";
+import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE, type Scope } from "./scope.ts";
 import { db } from "./store/db.ts";
 import { syncScope, upsertFromFile } from "./store/sync.ts";
 import { scopeHasFiles } from "./store/migrate.ts";
@@ -8,10 +8,12 @@ import {
   writeMemoryFile,
   readMemoryFile,
   ulid,
+  msToRfc3339,
   type Frontmatter,
 } from "./store/markdown.ts";
 import { buildContextBlock } from "./retrieve/inject.ts";
 import { detectKeywords } from "./capture/keywords.ts";
+import { findDuplicates } from "./store/lifecycle.ts";
 import { redact } from "./redact.ts";
 import { makeTools } from "./tools/memory.ts";
 
@@ -24,7 +26,7 @@ const plugin: Plugin = async ({ worktree, directory }) => {
   try {
     db();
     syncScope(scope.key);
-    syncScope(USER_SCOPE.key);
+    syncScope(PERSONAL_SCOPE.key);
     if (cfg.logLevel === "debug") {
       console.log(`[open-memex] loaded. scope=${scope.key}`);
     }
@@ -61,27 +63,46 @@ const plugin: Plugin = async ({ worktree, directory }) => {
 
       const hits = detectKeywords(text, cfg);
       for (const h of hits) {
-        const { content, hadSecret } = redact(h.content, cfg.redactPatterns);
-        if (hadSecret || content.length === 0) continue;
+        const { content, hadSecret, matchedPattern } = redact(h.content, cfg.redactPatterns);
+        // Secrets are masked (first 4 chars kept) and the capture proceeds;
+        // skip only when nothing usable remains.
+        if (content.length === 0) continue;
+        if (hadSecret && cfg.logLevel === "debug") {
+          console.log(`[open-memex] keyword capture masked secret (${matchedPattern})`);
+        }
+        // Personal patterns ("remember for me" / "记住（个人）") force the personal scope.
+        const target = h.personal ? PERSONAL_SCOPE : scope;
+        // Dedup (§3.4): skip exact duplicates captured before.
+        if (findDuplicates(target.key, content).exact) continue;
         const now = Date.now();
+        const rfc = msToRfc3339(now);
         const fm: Frontmatter = {
           id: ulid(),
-          scope_key: scope.key,
-          scope_kind: scope.kind,
-          project_name: scope.projectName,
-          type: "note",
+          schema_version: 2,
+          scope_key: target.key,
+          scope: target.kind === "project" ? "project" : "personal",
+          visibility: target.kind === "project" ? "internal" : "private",
+          project_name: target.projectName,
+          type: "fact",
+          role: "knowledge",
+          importance: "normal",
+          status: "active",
           tags: ["keyword"],
           source: "keyword",
-          created_at: now,
-          updated_at: now,
+          created_at: rfc,
+          updated_at: rfc,
+          supersedes: null,
+          superseded_by: null,
         };
         try {
           const { filePath } = writeMemoryFile(fm, content);
           const mf = readMemoryFile(filePath);
           if (mf) upsertFromFile(mf);
-          if (cfg.logLevel === "debug") {
-            console.log(`[open-memex] captured keyword memory ${fm.id}`);
-          }
+          // Capture feedback: always visible (not debug-only) — the user said
+          // "记住…", they should see that it landed. The opencode plugin API
+          // offers no toast channel, so the plugin log is the feedback surface.
+          const preview = content.length > 60 ? content.slice(0, 60) + "…" : content;
+          console.log(`[open-memex] remembered → ${target.kind} scope: "${preview}"`);
         } catch (err) {
           console.error("[open-memex] keyword capture failed:", err);
         }

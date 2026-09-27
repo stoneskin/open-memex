@@ -7,7 +7,10 @@ export interface MyOMemoryConfig {
   maxProfileItems: number;
   injectOnFirstTurn: boolean;
   keywordCaptureEnabled: boolean;
+  /** Patterns whose capture group 1 becomes the memory body; saved to the current scope. */
   keywordPatterns: string[];
+  /** Same shape, but hits are forced into the personal scope (e.g. "remember for me"). */
+  keywordPersonalPatterns: string[];
   redactPatterns: string[];
   logLevel: "debug" | "info" | "warn" | "error";
 }
@@ -18,21 +21,31 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   injectOnFirstTurn: true,
   keywordCaptureEnabled: true,
   keywordPatterns: [
-    "^\\s*remember(?:\\s+that)?[:,]?\\s+(.+)$",
+    "^\\s*remember(?!\\s+for\\s+me)(?:\\s+that)?[:,]?\\s+(.+)$",
     "^\\s*(?:please\\s+)?(?:note|don'?t\\s+forget)(?:\\s+that)?[:,]?\\s+(.+)$",
     "^\\s*TIL[:,]?\\s+(.+)$",
     "^\\s*save\\s+(?:this|to\\s+memory)[:,]?\\s+(.+)$",
+    // Chinese equivalents
+    "^\\s*记住(?!（个人）)[：:,，]?\\s*(.+)$",
+    "^\\s*(?:请)?(?:记一下|记录一下)[：:,，]?\\s*(.+)$",
+    "^\\s*别忘了[：:,，]?\\s*(.+)$",
+    // First-person plural: team/project context, NOT personal
+    "^\\s*我们认为[：:,，]?\\s*(.+)$",
+    "^\\s*我们决定[：:,，]?\\s*(.+)$",
+    "^\\s*帮我们记(?:住|一下)?[：:,，]?\\s*(.+)$",
   ],
-  redactPatterns: [
-    "sk-[A-Za-z0-9_-]{20,}",
-    "sm_[A-Za-z0-9_-]{20,}",
-    "ghp_[A-Za-z0-9]{30,}",
-    "gho_[A-Za-z0-9]{30,}",
-    "github_pat_[A-Za-z0-9_]{40,}",
-    "AKIA[0-9A-Z]{16}",
-    "xox[baprs]-[A-Za-z0-9-]{10,}",
-    "AIza[0-9A-Za-z_-]{30,}",
+  keywordPersonalPatterns: [
+    "^\\s*remember\\s+for\\s+me(?:\\s+that)?[:,]?\\s+(.+)$",
+    "^\\s*记住（个人）[：:,，]?\\s*(.+)$",
+    // First-person singular: personal scope ("我" → 个人, "我们" → 项目)
+    "^\\s*记住我(?!们)[：:,，]?\\s*(.+)$",
+    "^\\s*替我记(?:住|一下)?[：:,，]?\\s*(.+)$",
+    "^\\s*我觉得[：:,，]?\\s*(.+)$",
+    "^\\s*我喜欢[：:,，]?\\s*(.+)$",
   ],
+  // Built-in provider patterns now live in src/redact.ts (always on).
+  // Add only your own extra patterns here.
+  redactPatterns: [],
   logLevel: "info",
 };
 
@@ -46,15 +59,80 @@ function stripJsonComments(raw: string): string {
   return out;
 }
 
-export function loadConfig(): MyOMemoryConfig {
+/** Where `config set` / interactive `init` persist. Respects MY_O_MEMORY_CONFIG. */
+export function configFilePath(): string {
+  return (
+    process.env.MY_O_MEMORY_CONFIG ??
+    path.join(os.homedir(), ".config", "opencode", "open-memex.jsonc")
+  );
+}
+
+function toBool(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  if (v === "true" || v === "1") return true;
+  if (v === "false" || v === "0") return false;
+  throw new Error("must be true/false");
+}
+
+function toNonNegInt(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0) throw new Error("must be a non-negative integer");
+  return n;
+}
+
+/** Keys users may change via `open-memex config set <key> <value>`, with validators. */
+export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
+  maxProjectMemories: toNonNegInt,
+  maxProfileItems: toNonNegInt,
+  injectOnFirstTurn: toBool,
+  keywordCaptureEnabled: toBool,
+  logLevel: (v) => {
+    if (v !== "info" && v !== "debug") throw new Error('must be "info" or "debug"');
+    return v;
+  },
+};
+
+/** Merge a patch into the config file (creates it if missing). Returns the file path. */
+export function saveConfig(patch: Record<string, unknown>): string {
+  const file = configFilePath();
+  let cur: Record<string, unknown> = {};
+  if (fs.existsSync(file)) {
+    try {
+      cur = JSON.parse(stripJsonComments(fs.readFileSync(file, "utf8"))) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      console.error(`[open-memex] ${file} is not valid JSONC — it will be replaced`);
+    }
+  }
+  const next = { ...cur, ...patch };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    "// Managed by `open-memex config set` / `open-memex init` — edit freely (JSONC).\n" +
+      JSON.stringify(next, null, 2) +
+      "\n",
+  );
+  return file;
+}
+
+/** Path of the config file in effect, or null when using built-in defaults. */
+export function configSource(): string | null {
   const candidates = [
     process.env.MY_O_MEMORY_CONFIG,
     path.join(os.homedir(), ".config", "opencode", "open-memex.jsonc"),
     path.join(os.homedir(), ".config", "opencode", "open-memex.json"),
   ].filter(Boolean) as string[];
-
   for (const p of candidates) {
-    if (!fs.existsSync(p)) continue;
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+export function loadConfig(): MyOMemoryConfig {
+  const p = configSource();
+  if (p) {
     try {
       const raw = fs.readFileSync(p, "utf8");
       const parsed = JSON.parse(stripJsonComments(raw)) as Partial<MyOMemoryConfig>;

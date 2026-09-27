@@ -10,14 +10,15 @@ plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, …).
 
 ## Install
 
-**From npm** (stable release):
+**From npm:**
 
 ```
-npm install -g open-memex
+npm install -g open-memex         # latest stable (0.1.0)
+npm install -g open-memex@alpha   # prerelease (0.2.0-alpha): v2 data model, CJK retrieval, redaction hardening
 ```
 
-The npm release tracks `main` (currently `0.1.0`: opencode plugin + CLI). The MCP server
-is new in `0.2.0-alpha` and not on npm yet — to try it now, install from source:
+Note: the published `alpha` predates the MCP server — for the MCP server, install from
+source for now (it will ride the next `alpha` publish):
 
 **From source** (latest dev, includes the MCP server):
 

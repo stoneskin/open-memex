@@ -7,7 +7,10 @@ export interface MyOMemoryConfig {
   maxProfileItems: number;
   injectOnFirstTurn: boolean;
   keywordCaptureEnabled: boolean;
+  /** Patterns whose capture group 1 becomes the memory body; saved to the current scope. */
   keywordPatterns: string[];
+  /** Same shape, but hits are forced into the personal scope (e.g. "remember for me"). */
+  keywordPersonalPatterns: string[];
   redactPatterns: string[];
   logLevel: "debug" | "info" | "warn" | "error";
 }
@@ -18,10 +21,18 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   injectOnFirstTurn: true,
   keywordCaptureEnabled: true,
   keywordPatterns: [
-    "^\\s*remember(?:\\s+that)?[:,]?\\s+(.+)$",
+    "^\\s*remember(?!\\s+for\\s+me)(?:\\s+that)?[:,]?\\s+(.+)$",
     "^\\s*(?:please\\s+)?(?:note|don'?t\\s+forget)(?:\\s+that)?[:,]?\\s+(.+)$",
     "^\\s*TIL[:,]?\\s+(.+)$",
     "^\\s*save\\s+(?:this|to\\s+memory)[:,]?\\s+(.+)$",
+    // Chinese equivalents
+    "^\\s*记住(?!（个人）)[：:,，]?\\s*(.+)$",
+    "^\\s*(?:请)?(?:记一下|记录一下)[：:,，]?\\s*(.+)$",
+    "^\\s*别忘了[：:,，]?\\s*(.+)$",
+  ],
+  keywordPersonalPatterns: [
+    "^\\s*remember\\s+for\\s+me(?:\\s+that)?[:,]?\\s+(.+)$",
+    "^\\s*记住（个人）[：:,，]?\\s*(.+)$",
   ],
   // Built-in provider patterns now live in src/redact.ts (always on).
   // Add only your own extra patterns here.

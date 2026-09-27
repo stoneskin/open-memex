@@ -70,17 +70,19 @@ const plugin: Plugin = async ({ worktree, directory }) => {
         if (hadSecret && cfg.logLevel === "debug") {
           console.log(`[open-memex] keyword capture masked secret (${matchedPattern})`);
         }
+        // Personal patterns ("remember for me" / "记住（个人）") force the personal scope.
+        const target = h.personal ? PERSONAL_SCOPE : scope;
         // Dedup (§3.4): skip exact duplicates captured before.
-        if (findDuplicates(scope.key, content).exact) continue;
+        if (findDuplicates(target.key, content).exact) continue;
         const now = Date.now();
         const rfc = msToRfc3339(now);
         const fm: Frontmatter = {
           id: ulid(),
           schema_version: 2,
-          scope_key: scope.key,
-          scope: scope.kind === "project" ? "project" : "personal",
-          visibility: scope.kind === "project" ? "internal" : "private",
-          project_name: scope.projectName,
+          scope_key: target.key,
+          scope: target.kind === "project" ? "project" : "personal",
+          visibility: target.kind === "project" ? "internal" : "private",
+          project_name: target.projectName,
           type: "fact",
           role: "knowledge",
           importance: "normal",

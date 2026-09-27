@@ -14,11 +14,13 @@ plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, …).
 
 ```
 npm install -g open-memex         # latest stable (0.1.0)
-npm install -g open-memex@alpha   # prerelease (0.2.0-alpha): v2 data model, CJK retrieval, redaction hardening
+npm install -g open-memex@alpha   # prerelease channel — 0.2.0-alpha today (v2 data model,
+                                 # CJK retrieval, redaction hardening); 0.3.0-alpha next
+                                 # (MCP server, bin/CLI, init)
 ```
 
-Note: the published `alpha` predates the MCP server — for the MCP server, install from
-source for now (it will ride the next `alpha` publish):
+Note: the published `alpha` (`0.2.0-alpha`) predates the MCP server — for the MCP server,
+install from source for now (it will ride the `0.3.0-alpha` publish):
 
 **From source** (latest dev, includes the MCP server):
 
@@ -123,13 +125,13 @@ Start it:
 
 ```
 open-memex mcp                        # after `npm i -g open-memex@alpha`
-npx open-memex@alpha mcp              # no install needed
+npx open-memex@alpha mcp              # no install needed (once 0.3.0-alpha is published)
 ```
 
 Don't know what to paste into your client? This prints a copy-paste config snippet:
 
 ```
-open-memex mcp --print-config vscode|cursor|claude
+open-memex mcp --print-config vscode|cursor|claude|opencode
 ```
 
 The project scope is resolved from the process working directory, so configure the server
@@ -185,8 +187,15 @@ npx open-memex@alpha init
 # or, after a global install: open-memex init
 ```
 
+> Requires the `0.3.0-alpha` publish (not on npm yet) — until then, run from a source
+> checkout: `node --experimental-strip-types src/cli.ts init`.
+
 This writes `.vscode/mcp.json` and `.github/copilot-instructions.md` for you — no
 copy-paste. Existing files are merged, never clobbered, so re-running is safe.
+No global install? `init` detects that and writes an `npx -y open-memex@alpha mcp`
+server command instead, so the setup keeps working after a one-shot npx run
+(slower startup; `npm i -g open-memex@alpha` and `open-memex init --force` to switch
+to the direct command later).
 Then reload your VS Code window and check the `open-memex` server is started in
 Copilot Chat's tools / MCP panel.
 
@@ -210,7 +219,14 @@ on the agent's instructions (step 3 above).
 
 ## Status
 
-v2 alpha (`0.2.0-alpha`): v2 data model + migration, dedup + lifecycle (supersede/status), redaction hardening, CJK bigram retrieval, generic MCP server (`src/mcp.ts`). See `PLAN.md` for the roadmap (local embeddings, auto-capture, compaction hook, etc).
+`0.2.0-alpha` (on npm now): v2 data model + migration, dedup + lifecycle (supersede/status),
+redaction hardening, CJK bigram retrieval.
+
+`0.3.0-alpha` (next, in development on `V2-dev-p2`): generic MCP server (`src/mcp.ts`),
+`open-memex` bin/CLI, `init` one-command setup, Chinese keyword capture, `config` /
+`capture --dry-run` CLI helpers.
+
+See `PLAN.md` for the roadmap (local embeddings, auto-capture, compaction hook, etc).
 
 ## License
 

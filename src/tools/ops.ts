@@ -33,10 +33,11 @@ export interface ToolResult {
 /** LLM-facing tool descriptions, shared by the opencode plugin and the MCP server. */
 export const TOOL_DESCRIPTIONS = {
   memory_add:
-    "Save a fact, preference, decision, or note to persistent local memory. Call this whenever the user tells you something you should remember in future sessions (project conventions, tool choices, personal preferences, error fixes). Keep each memory to one self-contained statement.",
+    "Save a fact, preference, decision, or note to persistent local memory. Call this PROACTIVELY whenever the user shares something worth remembering across sessions — project conventions, tool choices, personal preferences, decisions made, error fixes and their causes. Do not wait to be asked. Keep each memory to one self-contained statement. Default scope is the current project; use the personal scope for facts about the user that apply across all projects.",
   memory_search:
-    "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or personal scope. Use before asking the user something they may have told you before.",
-  memory_list: "List memories in a scope, newest first. Useful for browsing.",
+    "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or personal scope. Call before asking the user about past decisions, conventions, or preferences they may have told you before — try a few keyword variants, including the user's own language, when the first search comes up empty.",
+  memory_list:
+    "List memories in a scope, newest first. Useful for browsing what is remembered, or verifying that a save landed.",
   memory_supersede:
     "Replace an existing memory with a newer version. The old memory is kept as history (status: superseded) and retrieval returns the new one. Use when a saved fact becomes outdated and should be replaced rather than duplicated.",
   memory_forget: "Delete a memory by id. Use when the user asks to forget something.",

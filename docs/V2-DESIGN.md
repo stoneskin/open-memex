@@ -536,6 +536,14 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   Native plugins (opencode now; Claude Code / Codex as Phase 2C candidates) remain as
   hook-enhanced paths, but opencode is also supported as a plain MCP consumer of
   `open-memex mcp`, keeping one unified tool surface. 2026-09-27.
+- **D17** — `open-memex init` resolves the MCP server command at init time. A durable
+  `open-memex` on PATH (outside npm's ephemeral `_npx` cache) → `command: "open-memex"`;
+  otherwise (one-shot `npx open-memex@alpha init`) → `command: "npx", args: ["-y",
+  "open-memex@alpha", "mcp"]` plus a hint to `npm i -g` + re-run `init --force`.
+  `mcp --print-config` uses the same resolution. *Rationale: a one-shot npx run leaves
+  no bin behind, so writing `command: "open-memex"` would produce a dead MCP server on
+  the next editor launch; the npx fallback keeps the one-command setup actually
+  one-command. 2026-09-27.*
 
 ## Open Questions
 

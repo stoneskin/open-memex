@@ -18,6 +18,7 @@ import {
 import { loadConfig } from "./config.ts";
 import { paths } from "./paths.ts";
 import { redact } from "./redact.ts";
+import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
 
 function usage(): never {
@@ -36,8 +37,10 @@ Usage:
   node --experimental-strip-types src/cli.ts migrate [--from <key>] [--to <key>]
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
   node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
-  node --experimental-strip-types src/cli.ts mcp [--print-config vscode|cursor|claude]
+  node --experimental-strip-types src/cli.ts mcp [--print-config vscode|cursor|claude|opencode]
   node --experimental-strip-types src/cli.ts init [--client vscode|cursor] [--force]
+  node --experimental-strip-types src/cli.ts config
+  node --experimental-strip-types src/cli.ts capture --dry-run "text"
 
 One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
 \`.vscode/mcp.json\` and \`.github/copilot-instructions.md\` for the project — no
@@ -89,6 +92,8 @@ function resolveCliScope(flags: Record<string, string>, project: Scope): Scope {
  * (`npm i -g open-memex@alpha`) so the `open-memex` command is on PATH. */
 function printMcpConfig(client: string): never {
   const c = client.toLowerCase();
+  // D17: resolve the server command the same way `init` does.
+  const mc = resolveMcpCommand();
   if (c === "vscode") {
     console.log(
       JSON.stringify(
@@ -96,8 +101,8 @@ function printMcpConfig(client: string): never {
           servers: {
             "open-memex": {
               type: "stdio",
-              command: "open-memex",
-              args: ["mcp"],
+              command: mc.command,
+              args: mc.args,
               cwd: "${workspaceFolder}",
             },
           },
@@ -111,7 +116,7 @@ function printMcpConfig(client: string): never {
       JSON.stringify(
         {
           mcpServers: {
-            "open-memex": { command: "open-memex", args: ["mcp"] },
+            "open-memex": { command: mc.command, args: mc.args },
           },
         },
         null,
@@ -119,10 +124,32 @@ function printMcpConfig(client: string): never {
       ),
     );
   } else if (c === "claude") {
-    console.log("claude mcp add open-memex -- open-memex mcp");
+    console.log(`claude mcp add open-memex -- ${mc.command} ${mc.args.join(" ")}`);
+  } else if (c === "opencode") {
+    // D16: opencode as a plain MCP consumer (alternative to the native plugin).
+    console.log(
+      JSON.stringify(
+        {
+          mcp: {
+            "open-memex": {
+              type: "local",
+              command: [mc.command, ...mc.args],
+              enabled: true,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
   } else {
-    console.error(`unknown client "${client}" (vscode|cursor|claude)`);
+    console.error(`unknown client "${client}" (vscode|cursor|claude|opencode)`);
     process.exit(1);
+  }
+  if (!mc.durable) {
+    console.error(
+      `\n# note: no durable \`open-memex\` on PATH — snippet uses npx. \`npm i -g open-memex@alpha\` for faster startup.`,
+    );
   }
   process.exit(0);
 }
@@ -174,6 +201,39 @@ async function main() {
       client: flags["client"] ?? "vscode",
       force: flags["force"] === "true",
     });
+    return;
+  }
+
+  // `config` prints the effective configuration (defaults + file). No DB needed.
+  if (cmd === "config") {
+    const cfg = loadConfig();
+    console.log(JSON.stringify(cfg, null, 2));
+    return;
+  }
+
+  // `capture --dry-run "text"` previews keyword capture without writing. No DB needed.
+  if (cmd === "capture") {
+    if (rest[0] !== "--dry-run") {
+      console.error(`usage: open-memex capture --dry-run "text"`);
+      process.exit(1);
+    }
+    const cfg = loadConfig();
+    const { detectKeywords } = await import("./capture/keywords.ts");
+    const text = rest.slice(1).join(" ");
+    const hits = detectKeywords(text, cfg);
+    if (hits.length === 0) {
+      console.log("no keyword triggers — nothing would be captured.");
+      return;
+    }
+    for (const h of hits) {
+      const r = redact(h.content, cfg.redactPatterns);
+      console.log(`- pattern:      ${h.pattern}`);
+      console.log(`  scope:        ${h.personal ? "personal (forced by pattern)" : "current scope"}`);
+      console.log(`  secret hit:   ${r.hadSecret ? `yes (${r.matchedPattern}) — will be masked` : "no"}`);
+      console.log(
+        `  body:         ${r.content.slice(0, 160)}${r.content.length > 160 ? "…" : ""}`,
+      );
+    }
     return;
   }
 

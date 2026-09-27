@@ -25,6 +25,13 @@ export interface SecretPattern {
   source: string;
   /** Optional RegExp flags, e.g. "i". */
   flags?: string;
+  /**
+   * Capture-group index holding the secret value. When set, masking replaces
+   * only that group — the credential name stays readable (D14: a masked
+   * memory should still identify which key it referred to). Default: mask
+   * the whole match.
+   */
+  valueGroup?: number;
 }
 
 /**
@@ -60,8 +67,9 @@ export const BUILTIN_SECRET_PATTERNS: SecretPattern[] = [
   {
     id: "aws-secret-access-key",
     source:
-      "aws[_-]?secret[_-]?access[_-]?key[\"']?\\s*[:=]\\s*[\"']?[A-Za-z0-9/+=]{40}",
+      "(aws[_-]?secret[_-]?access[_-]?key)([\"']?\\s*[:=]\\s*[\"']?)([A-Za-z0-9/+=]{40})",
     flags: "i",
+    valueGroup: 3,
   },
   { id: "slack-token", source: `${TOKEN_BOUNDARY}xox[baprs]-[A-Za-z0-9-]{10,}` },
   { id: "google-api-key", source: `${TOKEN_BOUNDARY}AIza[0-9A-Za-z_-]{30,}` },
@@ -75,7 +83,19 @@ export const BUILTIN_SECRET_PATTERNS: SecretPattern[] = [
     id: "stripe-webhook-secret",
     source: `${TOKEN_BOUNDARY}whsec_[A-Za-z0-9]{20,}`,
   },
-  { id: "private-key-block", source: "-----BEGIN [A-Z ]*PRIVATE KEY-----" },
+  {
+    id: "private-key-block",
+    // Whole block: masking only the BEGIN header would leave the base64 body
+    // readable in the memory file. Non-greedy so two blocks mask separately.
+    source:
+      "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----",
+  },
+  {
+    id: "private-key-truncated",
+    // No END marker: mask from the header to end of text. A header without a
+    // body is still key material; over-masking is the safe direction.
+    source: "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*$",
+  },
   {
     id: "jwt",
     source: `${TOKEN_BOUNDARY}eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}`,
@@ -83,8 +103,9 @@ export const BUILTIN_SECRET_PATTERNS: SecretPattern[] = [
   {
     id: "generic-secret-assignment",
     source:
-      "(api[_-]?key|secret|passwd|password|auth[_-]?token|access[_-]?token)[\"']?\\s*[:=]\\s*[\"']?[A-Za-z0-9_\\-./+=]{16,}[\"']?",
+      "(api[_-]?key|secret|passwd|password|auth[_-]?token|access[_-]?token)([\"']?\\s*[:=]\\s*[\"']?)([A-Za-z0-9_\\-./+=]{16,})([\"']?)",
     flags: "i",
+    valueGroup: 3,
   },
 ];
 
@@ -157,6 +178,9 @@ export function findHighEntropySecret(text: string): string | null {
  * original text around the match, not just inside the value.
  */
 function isSuspectAssignmentValue(value: string, fullMatch: string, offset: number, text: string): boolean {
+  // Bare URL: ASSIGNMENT_RE consumed the scheme colon ("https:") as the
+  // separator, so the match itself starts with "scheme://".
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(fullMatch)) return false;
   if (value.includes("://")) return false;
   // Reconstruct what preceded the value inside the match (name + separator);
   // if the text right before the value looks like scheme://, it is a URL.
@@ -189,7 +213,19 @@ function maskBuiltin(content: string): string {
     const re = compile(p);
     if (!re) continue;
     const g = new RegExp(re.source, re.flags + "g");
-    out = out.replace(g, (m) => maskMatch(m));
+    if (p.valueGroup == null) {
+      out = out.replace(g, (m) => maskMatch(m));
+    } else {
+      // Mask only the secret-value group; the credential name stays readable.
+      out = out.replace(g, (...args: unknown[]) => {
+        const m = args[0] as string;
+        const val = args[p.valueGroup as number] as string | undefined;
+        if (!val) return m;
+        const idx = m.lastIndexOf(val);
+        if (idx < 0) return m;
+        return m.slice(0, idx) + maskMatch(val) + m.slice(idx + val.length);
+      });
+    }
   }
   return out;
 }

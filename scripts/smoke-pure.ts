@@ -85,7 +85,8 @@ const builtinSamples: Array<[string, string]> = [
   ["npm-token", "t=npm_12345678901234567890123456789012"],
   ["gitlab-pat", "t=glpat-12345678901234567890ab"],
   ["stripe-webhook-secret", "s=whsec_12345678901234567890"],
-  ["private-key-block", "-----BEGIN RSA PRIVATE KEY-----"],
+  ["private-key-block", "-----BEGIN RSA PRIVATE KEY-----\nQUJD\n-----END RSA PRIVATE KEY-----"],
+  ["private-key-truncated", "-----BEGIN RSA PRIVATE KEY-----"],
   ["generic-secret-assignment", 'password = "hunter2hunter2hunter2"'],
 ];
 for (const [id, sample] of builtinSamples) {
@@ -161,6 +162,26 @@ const r7 = redact("see https://api.example.com/v1/users/list and key=sk-12345678
 ok("mask: mixed url+secret detected", r7.hadSecret === true, r7.matchedPattern);
 ok("mask: url intact", r7.content.includes("https://api.example.com/v1/users/list"), r7.content);
 ok("mask: second secret also masked", !r7.content.includes("sk-1234567890"), r7.content);
+// Bare high-entropy URL: the scheme colon must not turn the URL into a secret.
+const r8 = redact("see https://aB3dEfGhIjKlMnOpQrStUvWx0123456789abcdef for details", []);
+ok("mask: bare url untouched", r8.hadSecret === false && r8.content.includes("https://aB3dEfGhIjKlMnOpQrStUvWx0123456789abcdef"), r8.content);
+// Private key: the WHOLE block is masked, body must not survive in readable form.
+const pemBody = "MIIEpAIBAAKCAQEA7bXprGBcW2l5K3R8vN0mQw0F3xY2vBn5T6uI7oP8a9S0dF1gH";
+const r9 = redact(`note: server key\n-----BEGIN RSA PRIVATE KEY-----\n${pemBody}\n-----END RSA PRIVATE KEY-----\nafter`, []);
+ok("mask: pem detected", r9.hadSecret === true && r9.matchedPattern === "private-key-block", r9.matchedPattern);
+ok("mask: pem body gone", !r9.content.includes(pemBody), r9.content);
+ok("mask: pem surrounding kept", r9.content.includes("note: server key") && r9.content.includes("after"));
+// Truncated key (no END marker): masked to end of text.
+const r10 = redact(`note\n-----BEGIN RSA PRIVATE KEY-----\n${pemBody}\ntrailing prose`, []);
+ok("mask: truncated pem detected", r10.hadSecret === true, r10.matchedPattern);
+ok("mask: truncated pem body gone", !r10.content.includes(pemBody) && !r10.content.includes("trailing prose"), r10.content);
+// Name-including patterns mask the value only; the name stays readable (D14).
+const r11 = redact('api_key = "supersecretvalue123456"', []);
+ok("mask: generic name kept", r11.content.includes("api_key ="), r11.content);
+ok("mask: generic value masked", !r11.content.includes("supersecretvalue123456") && r11.content.includes("supexxxxxxxxxxxxxxxx"), r11.content);
+const r12 = redact('aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCY1234567890"', []);
+ok("mask: aws name kept", r12.content.includes("aws_secret_access_key ="), r12.content);
+ok("mask: aws value masked", !r12.content.includes("wJalrXUtnFEMI"), r12.content);
 
 console.log("== keywords ==");
 const hits1 = detectKeywords("remember that this repo uses Bun, not Node", DEFAULT_CONFIG);

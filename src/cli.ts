@@ -18,24 +18,50 @@ import {
 import { loadConfig } from "./config.ts";
 import { paths } from "./paths.ts";
 import { redact } from "./redact.ts";
+import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-function usage(): never {
+function usage(exitCode = 1): never {
   console.log(`open-memex CLI
 
 Usage:
-  node --experimental-strip-types src/cli.ts where
-  node --experimental-strip-types src/cli.ts list [--scope project|personal] [--type T] [--limit N]
-  node --experimental-strip-types src/cli.ts search "query" [--scope project|personal|both] [--type T] [--limit N]
-  node --experimental-strip-types src/cli.ts add "content" [--scope project|personal] [--type T] [--tag t1,t2]
-  node --experimental-strip-types src/cli.ts supersede <id> "new content" [--type T] [--tag t1,t2]
-  node --experimental-strip-types src/cli.ts status <id> active|deprecated|retracted|archived
-  node --experimental-strip-types src/cli.ts forget <id>
-  node --experimental-strip-types src/cli.ts reindex
-  node --experimental-strip-types src/cli.ts scopes
-  node --experimental-strip-types src/cli.ts migrate [--from <key>] [--to <key>]
+  open-memex where
+  open-memex list [--scope project|personal] [--type T] [--limit N]
+  open-memex search "query" [--scope project|personal|both] [--type T] [--limit N]
+  open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2]
+  open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
+  open-memex status <id> active|deprecated|retracted|archived
+  open-memex forget <id>
+  open-memex reindex
+  open-memex scopes
+  open-memex migrate [--from <key>] [--to <key>]
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
-  node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
+  open-memex migrate --to-v2 [--dry-run]
+  open-memex mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
+  open-memex init [--client vscode|cursor|opencode|visualstudio]
+              [--instructions personal|project] [--force] [--yes]
+  open-memex config [set <key> <value>]
+  open-memex capture --dry-run "text"
+  open-memex doctor
+
+One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
+the MCP config for your editor (\`.vscode/mcp.json\`, \`.cursor/mcp.json\`,
+\`opencode.jsonc\`, or Visual Studio's solution-level \`.mcp.json\`) — no copy-paste
+needed. The Copilot memory instructions default to your user-level
+\`~/.copilot/copilot-instructions.md\` (all projects, never checked into a repo);
+\`--instructions project\` writes \`.github/copilot-instructions.md\` instead for
+teams where everyone uses open-memex.
+Existing files are merged, never clobbered; re-running is safe. On a terminal it
+asks which editor to set up and a couple of settings (keyword capture, first-turn
+injection); \`--yes\` accepts all defaults, and non-terminal runs never prompt.
+\`open-memex config set <key> <value>\` changes those settings after install.
+
+Once installed globally (\`npm i -g open-memex@alpha\`) the \`open-memex\` command is
+available directly: \`open-memex mcp\` starts the stdio MCP server (same five
+memory_* tools as the opencode plugin); \`open-memex mcp --print-config <client>\`
+prints a copy-paste MCP client config snippet.
 
 Scope defaults to \`project\` (derived from cwd's git remote or path).
 \`user\` is accepted as a deprecated alias of \`personal\`.
@@ -46,7 +72,7 @@ git remote after memories were already stored under the cwd-based key.
 \`migrate --to-v2\` converts v1 memory files to the v2 format (§19):
 user→personal scope rename, epoch→RFC 3339 times, priority→importance,
 type: instruction→role split. Always preview with --dry-run first.`);
-  process.exit(1);
+  process.exit(exitCode);
 }
 
 function parseFlags(argv: string[]): Record<string, string> {
@@ -74,9 +100,101 @@ function resolveCliScope(flags: Record<string, string>, project: Scope): Scope {
     : project;
 }
 
+/** Print a copy-paste MCP client config snippet. Requires a global install
+ * (`npm i -g open-memex@alpha`) so the `open-memex` command is on PATH. */
+function printMcpConfig(client: string): never {
+  const c = client.toLowerCase();
+  // D17: resolve the server command the same way `init` does.
+  const mc = resolveMcpCommand();
+  if (c === "vscode") {
+    console.log(
+      JSON.stringify(
+        {
+          servers: {
+            "open-memex": {
+              type: "stdio",
+              command: mc.command,
+              args: mc.args,
+              cwd: "${workspaceFolder}",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  } else if (c === "cursor") {
+    console.log(
+      JSON.stringify(
+        {
+          mcpServers: {
+            "open-memex": { command: mc.command, args: mc.args },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  } else if (c === "claude") {
+    console.log(`claude mcp add open-memex -- ${mc.command} ${mc.args.join(" ")}`);
+  } else if (c === "opencode") {
+    // D16: opencode as a plain MCP consumer (alternative to the native plugin).
+    console.log(
+      JSON.stringify(
+        {
+          mcp: {
+            "open-memex": {
+              type: "local",
+              command: [mc.command, ...mc.args],
+              enabled: true,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  } else if (c === "visualstudio" || c === "visual-studio") {
+    // D20: Visual Studio (Windows-only) reads solution-level `.mcp.json`.
+    console.log(
+      JSON.stringify(
+        {
+          servers: {
+            "open-memex": {
+              type: "stdio",
+              command: mc.command,
+              args: mc.args,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    console.error(`unknown client "${client}" (vscode|cursor|claude|opencode|visualstudio)`);
+    process.exit(1);
+  }
+  if (!mc.durable) {
+    console.error(
+      `\n# note: no durable \`open-memex\` on PATH — snippet uses npx. \`npm i -g open-memex@alpha\` for faster startup.`,
+    );
+  }
+  process.exit(0);
+}
+
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
-  if (!cmd) usage();
+  if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") usage(0);
+
+  if (cmd === "--version" || cmd === "-v") {
+    // package.json sits two levels above this file in both layouts
+    // (src/cli.ts and dist/cli.js).
+    const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    console.log(`open-memex ${pkg.version}`);
+    return;
+  }
 
   const cfg = loadConfig();
   const project = resolveProjectScope(process.cwd());
@@ -110,6 +228,106 @@ async function main() {
           `run \`open-memex reindex\` to verify.`,
       );
     }
+    return;
+  }
+
+  // `init` is a pure file operation (§17 adoption path) — no DB needed.
+  // Interactive when on a TTY (asks editor + settings); --yes skips prompts.
+  if (cmd === "init") {
+    const flags = parseFlags(rest);
+    const { initProject } = await import("./init.ts");
+    await initProject({
+      client: flags["client"],
+      force: flags["force"] === "true",
+      yes: flags["yes"] === "true",
+      instructions: flags["instructions"],
+    });
+    return;
+  }
+
+  // `doctor` runs environment health checks — no DB needed (it self-contains).
+  if (cmd === "doctor") {
+    const { runDoctor } = await import("./doctor.ts");
+    const ok = await runDoctor();
+    if (!ok) process.exitCode = 1;
+    return;
+  }
+
+  // `config` prints the effective configuration (defaults + file). No DB needed.
+  // `config set <key> <value>` persists a setting to the config file.
+  if (cmd === "config") {
+    if (rest[0] === "set") {
+      const [, key, ...valueParts] = rest;
+      const { SETTABLE_KEYS, saveConfig, configFilePath } = await import("./config.ts");
+      const validate = key ? SETTABLE_KEYS[key] : undefined;
+      if (!validate) {
+        console.error(
+          `unknown or unsettable key "${key ?? ""}". Settable keys: ${Object.keys(SETTABLE_KEYS).join(", ")}`,
+        );
+        process.exit(1);
+      }
+      const raw = valueParts.join(" ");
+      if (!raw) {
+        console.error(`usage: open-memex config set <key> <value>`);
+        process.exit(1);
+      }
+      let value: unknown = raw;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        /* keep as string */
+      }
+      try {
+        const saved = validate(value);
+        const file = saveConfig({ [key!]: saved });
+        console.log(`set ${key} = ${JSON.stringify(saved)} (${file})`);
+      } catch (err) {
+        console.error(`invalid value for ${key}: ${(err as Error).message}`);
+        process.exit(1);
+      }
+      return;
+    }
+    const cfg = loadConfig();
+    console.log(JSON.stringify(cfg, null, 2));
+    return;
+  }
+
+  // `capture --dry-run "text"` previews keyword capture without writing. No DB needed.
+  if (cmd === "capture") {
+    if (rest[0] !== "--dry-run") {
+      console.error(`usage: open-memex capture --dry-run "text"`);
+      process.exit(1);
+    }
+    const cfg = loadConfig();
+    const { detectKeywords } = await import("./capture/keywords.ts");
+    const text = rest.slice(1).join(" ");
+    const hits = detectKeywords(text, cfg);
+    if (hits.length === 0) {
+      console.log("no keyword triggers — nothing would be captured.");
+      return;
+    }
+    for (const h of hits) {
+      const r = redact(h.content, cfg.redactPatterns);
+      console.log(`- pattern:      ${h.pattern}`);
+      console.log(`  scope:        ${h.personal ? "personal (forced by pattern)" : "current scope"}`);
+      console.log(`  secret hit:   ${r.hadSecret ? `yes (${r.matchedPattern}) — will be masked` : "no"}`);
+      console.log(
+        `  body:         ${r.content.slice(0, 160)}${r.content.length > 160 ? "…" : ""}`,
+      );
+    }
+    return;
+  }
+
+  // `mcp` starts the stdio MCP server (same tools as the opencode plugin).
+  // Branched before db() — runMcpServer() does its own init, and stdout must
+  // stay clean for the MCP protocol.
+  if (cmd === "mcp") {
+    const flags = parseFlags(rest);
+    if (flags["print-config"]) {
+      printMcpConfig(flags["print-config"] === "true" ? "vscode" : flags["print-config"]);
+    }
+    const { runMcpServer } = await import("./mcp.ts");
+    await runMcpServer();
     return;
   }
 
@@ -224,7 +442,7 @@ async function main() {
     const { filePath } = writeMemoryFile(fm, red);
     const mf = readMemoryFile(filePath);
     if (mf) upsertFromFile(mf);
-    console.log(`saved ${fm.id} -> ${filePath}`);
+    console.log(`saved ${fm.id} [${s.kind}] -> ${filePath}`);
     if (hadSecret) {
       console.log(
         `warning: content matched secret pattern (${matchedPattern}); saved with the secret masked (first 4 chars kept).`,

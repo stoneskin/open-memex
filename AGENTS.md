@@ -1,15 +1,22 @@
 # AGENTS.md
 
-Local-first memory plugin for opencode. See `README.md` and `PLAN.md` for user-facing docs and the roadmap. This file lists only the non-obvious things an agent needs to work in this repo.
+Local-first memory plugin for opencode. See `README.md` (English) and `README.zh-CN.md` (Chinese)
+for user-facing docs; `docs/V2-DESIGN.md` §18 for the roadmap. This file lists only the non-obvious things an agent needs to work in this repo.
 
 ## Runtime model — read before touching anything
 
-Two runtimes execute the same TypeScript source, with **no build step**:
+Three entry points execute the same TypeScript source. **Development is build-free**;
+the published npm package ships pre-compiled JS (`npm run build` → `dist/`,
+via `prepublishOnly` — Node refuses `--experimental-strip-types` for files under
+`node_modules`, so a global install cannot run `src/` directly):
 
 - **opencode host** loads `src/index.ts` under embedded **Bun**. SQLite here is `bun:sqlite` (built-in).
-- **CLI** (`src/cli.ts`) and smoke test run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
+- **CLI** (`src/cli.ts`) and smoke tests run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
+- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same five memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
 
 `src/store/db.ts` picks the backend at runtime by sniffing `globalThis.Bun`. Both backends share the same surface (`new Database(path)`, `.exec`, `.prepare().run/all/get`, `.close`). Any DB code you write must stay on that common subset — do not import `better-sqlite3` or `bun:sqlite` directly outside `db.ts`.
+
+Tool logic is host-agnostic and lives in `src/tools/ops.ts` (plain functions + shared zod arg shapes + `TOOL_DESCRIPTIONS`). `src/tools/memory.ts` (opencode) and `src/mcp.ts` are thin adapters — when adding or changing a tool, change `ops.ts` once and both hosts pick it up.
 
 Consequences:
 - Imports **must** use explicit `.ts` extensions (`allowImportingTsExtensions: true`, `moduleResolution: "Bundler"`).
@@ -22,8 +29,27 @@ Consequences:
 npm install                                          # once
 npm run typecheck                                    # tsc --noEmit — the only lint/type gate
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
+npm run mcp                                          # start the stdio MCP server
 node --experimental-strip-types scripts\smoke-pure.ts   # runs pure-logic checks (no sqlite)
+node --experimental-strip-types scripts\smoke-mcp.ts    # MCP handshake + tool round-trip (temp dirs, no real data)
 ```
+
+After `npm i -g open-memex@alpha` (or `npm link` from source), the `open-memex` bin is on
+PATH: `open-memex mcp` starts the MCP server, `open-memex mcp --print-config <client>`
+prints a client config snippet (client: vscode|cursor|claude|opencode|visualstudio),
+`open-memex init [--client vscode|cursor|opencode|visualstudio] [--instructions personal|project] [--force] [--yes]`
+one-command project setup (editor MCP config + Copilot memory instructions;
+instructions default to user-level ~/.copilot/copilot-instructions.md so the repo
+stays clean for teammates without open-memex — D22; resolves the server command
+at init time — npx fallback when no durable bin is on PATH, D17),
+`open-memex config` prints the effective config, `open-memex capture --dry-run "text"`
+previews keyword capture without writing, `open-memex doctor` runs health checks
+(node version, config, scope resolution, storage writability, MCP handshake).
+`open-memex init` asks editor + two settings on a TTY (`--yes` skips, scripts never
+prompt); `open-memex config set <key> <value>` edits settings after install.
+The published `open-memex` bin points at `dist/cli.js` (compiled at publish time).
+From a source checkout, `npm run cli` / `npm run mcp` still run `src/` directly
+with type-stripping — no build step needed for development.
 
 There is **no `npm test`** and no CI. Verification loop is: `npm run typecheck` + `smoke-pure.ts` + (if touching sqlite) `npm run cli -- reindex` against a scratch `MY_O_MEMORY_HOME`.
 
@@ -67,7 +93,7 @@ Every write path (tool, keyword hook, CLI `add`) must:
 - Chain integrity is self-healing: on read, a missing counterpart is auto-completed with a warning; a dangling pointer warns but is never fabricated. Don't "fix" chains by editing frontmatter directly — let the read path do it.
 - Frontmatter is `schema_version: 2`. The SQLite index schema is versioned separately and rebuilds automatically on version change — never hand-edit `index.db`.
 
-Keyword capture fires from `chat.message` on the assistant's `output.parts` text. Patterns live in `src/capture/keywords.ts` / config `keywordPatterns`; regex group 1 is the memory body.
+Keyword capture fires from `chat.message` on the user's message parts (`UserMessage`). Patterns live in `src/capture/keywords.ts` / config `keywordPatterns`; regex group 1 is the memory body. Scope routing: personal patterns (`cfg.keywordPersonalPatterns`) force the personal scope — the rule is 我 → personal (记住我/替我记/我觉得/我喜欢/remember for me), 我们 → current scope (我们认为/我们决定/帮我们记住); personal patterns run first and claim their line so a generic trigger can't double-fire.
 
 Context injection happens exactly once per session in `experimental.chat.system.transform`, guarded by an in-memory `Set<sessionID>` in `src/index.ts`. It is not persisted — restarting opencode re-injects on the next first turn.
 
@@ -83,7 +109,7 @@ log records what was already considered and rejected.
 Still hard: no cloud, no silent sync (explicit pull only), Markdown is the source
 of truth, `personal` scope never leaves the machine. Embeddings are an *optional
 capability* per the design — do not add them (or LLM-driven extraction, or a
-knowledge graph) without updating the design doc first. `PLAN.md` tracks the
+knowledge graph) without updating the design doc first. `docs/V2-DESIGN.md` §18 tracks the
 build roadmap; the design doc tracks the *why*.
 
 ## Branch workflow
@@ -97,3 +123,9 @@ hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
 - `strict: true`, `verbatimModuleSyntax: false`. Prefer `import type` for types anyway.
 - Log prefix is `[open-memex]`. Gate verbose logs behind `cfg.logLevel === "debug"`.
 - Windows is a first-class target (this workspace is Windows). Use `node:path` and never hardcode `/`.
+- **Docs ship with code.** Every code change updates the docs it affects in the same commit:
+  new/changed tools → `README.md` + `README.zh-CN.md` tool tables + MCP section (keep both
+  languages in sync); behavior changes → both READMEs
+  and the frozen `docs/V2-DESIGN.md` (append a `D<n>` decision entry, never rewrite history);
+  new commands → README CLI sections + this file's Commands. A change without its docs
+  is not done.

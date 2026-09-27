@@ -70,17 +70,19 @@ const plugin: Plugin = async ({ worktree, directory }) => {
         if (hadSecret && cfg.logLevel === "debug") {
           console.log(`[open-memex] keyword capture masked secret (${matchedPattern})`);
         }
+        // Personal patterns ("remember for me" / "记住（个人）") force the personal scope.
+        const target = h.personal ? PERSONAL_SCOPE : scope;
         // Dedup (§3.4): skip exact duplicates captured before.
-        if (findDuplicates(scope.key, content).exact) continue;
+        if (findDuplicates(target.key, content).exact) continue;
         const now = Date.now();
         const rfc = msToRfc3339(now);
         const fm: Frontmatter = {
           id: ulid(),
           schema_version: 2,
-          scope_key: scope.key,
-          scope: scope.kind === "project" ? "project" : "personal",
-          visibility: scope.kind === "project" ? "internal" : "private",
-          project_name: scope.projectName,
+          scope_key: target.key,
+          scope: target.kind === "project" ? "project" : "personal",
+          visibility: target.kind === "project" ? "internal" : "private",
+          project_name: target.projectName,
           type: "fact",
           role: "knowledge",
           importance: "normal",
@@ -96,9 +98,11 @@ const plugin: Plugin = async ({ worktree, directory }) => {
           const { filePath } = writeMemoryFile(fm, content);
           const mf = readMemoryFile(filePath);
           if (mf) upsertFromFile(mf);
-          if (cfg.logLevel === "debug") {
-            console.log(`[open-memex] captured keyword memory ${fm.id}`);
-          }
+          // Capture feedback: always visible (not debug-only) — the user said
+          // "记住…", they should see that it landed. The opencode plugin API
+          // offers no toast channel, so the plugin log is the feedback surface.
+          const preview = content.length > 60 ? content.slice(0, 60) + "…" : content;
+          console.log(`[open-memex] remembered → ${target.kind} scope: "${preview}"`);
         } catch (err) {
           console.error("[open-memex] keyword capture failed:", err);
         }

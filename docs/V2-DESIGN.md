@@ -40,6 +40,11 @@ Decisions log; Prior Art; solo-dev adoption path.
 - **MCP is an interface, not the identity.** MCP / CLI / REST / SDK are access layers over the protocol,
   so the project is never locked to one transport or one agent tool (opencode, VS Code Copilot, Cursor,
   Claude Code, Windsurf, …).
+- **Company lens:** at organizational scale the same pain is tribal knowledge — senior engineers'
+  hard-won experience evaporates when they move on, and every incident gets re-debugged by someone
+  new. The current phase therefore prioritizes *capture*: valuable knowledge must land in memory
+  first, because team/org sharing, onboarding, and incident learning all build on that foundation.
+  (No capture, nothing to inherit.)
 
 ### Non-goals
 
@@ -410,11 +415,47 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
   VS Code MCP-server support; corporate Copilot local-tool support. **Hard gate before Phase 2.**
 - **Phase 1 — Local hardening (1–2 wks).** CJK default (bigram+FTS5) · v1→v2 migration · dedup +
   lifecycle · redaction hardening · scope docs. No external dependencies.
-- **Phase 2A — Read-only MCP.** Core/adapters split · MCP server (search/get/list/status) ·
-  query-aware injection.
+- **Phase 2A — MCP server (shipped 2026-09-27, D15).** Core/adapters split
+  (`src/tools/ops.ts`) · MCP server (`src/mcp.ts`, stdio) exposing all five memory tools —
+  read-only-first phasing dropped per D15 · query-aware injection stays host-side.
+  Ships in **`0.3.0-alpha`** (with bin/npx user-friendliness polish per §17 adoption path).
 - **Phase 2B — Team sync.** GitProvider · `propose/promote/resolve` · in-repo dir · 1–2 colleague pilot
   (pilot project selection is maintainer-private, not tracked in this doc).
+  Ships in **`0.3.0-beta`**.
   Embeddings/rerank run as a **parallel benchmark-gated experiment**, not on the critical path.
+- **Phase 2C — Native agent plugins (candidates, not committed).** Claude Code plugin and/or
+  Codex plugin as hook-enhanced paths over the same MCP tool surface (`SessionStart` →
+  context injection, `UserPromptSubmit` → keyword-triggered search, `Stop`/`PostToolUse` →
+  capture); per D16, no host-specific extraction intelligence — opencode is likewise
+  supported as a plain MCP consumer. Gated on real-world signal from 0.3.0-alpha MCP
+  dogfooding.
+
+### Agent integration matrix
+
+| Agent | Integration path | Native hooks? | Status |
+|---|---|---|---|
+| opencode | native plugin (`src/index.ts`) | ✅ keyword capture + first-turn injection | shipped (Phase 1) |
+| VS Code Copilot | MCP server + `.github/copilot-instructions.md` | ❌ — VS Code extension API cannot intercept Copilot Chat (researched 2026-09-27); an extension would add no hook capability, so not worth building | ships `0.3.0-alpha` |
+| Cursor | MCP server + rules | ❌ no chat plugin API | ships `0.3.0-alpha` |
+| Claude Code | MCP server today; plugin + hooks candidate | ✅ `SessionStart` / `UserPromptSubmit` / `PostToolUse` | Phase 2C candidate |
+| Codex (CLI/IDE) | MCP server (`[mcp_servers]` in config.toml / `codex mcp add`) today; plugin + hooks + marketplace candidate | ✅ hooks mirror Claude Code's | Phase 2C candidate |
+
+### Competitive landscape (for future positioning)
+
+Coding-agent memory is crowded; open-memex's wedge is **zero-cloud, zero-account,
+zero-embedding-download**, with repo-native markdown as source of truth (maintainer
+requirement: personal data never touches third-party services). Benchmarks to track:
+
+| Product | Scale / backing (Sep 2026) | Shape | Gap vs open-memex |
+|---|---|---|---|
+| Mem0 | ~50k+★, $24M Series A (YC) | universal memory SDK/API, vector+graph, cloud-first | cloud dependency; not repo-native for coding agents |
+| Letta (ex-MemGPT) | ~24k★, $10M seed | stateful agent platform, memory blocks | agent runtime, not a drop-in coding-agent memory |
+| Zep / Graphiti | ~20–30k★, $12M seed | temporal knowledge graph, enterprise | heavy infra; overkill as a coding vault |
+| Cognee | ~15–30k★, $7.5M seed | graph ECL pipelines | ingest-oriented, no coding-agent hooks |
+| Supermemory | ~15k★, $2.6M seed | consumer second-brain + SaaS API | cloud SaaS |
+| atlaso-labs/codex | Codex marketplace | long-term memory plugin for Codex (hooks + MCP + cloud-sync upsell) | **direct comparable** for a future Codex plugin; their cloud upsell vs our local-first |
+
+(Star counts / funding as of Sep 2026 — re-verify before quoting publicly.)
 - **Phase 3 — Org layer.** Org memory repo · curator convention · `examples/remote-server/` ·
   distill-to-AGENTS.md assist.
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
@@ -482,6 +523,80 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
   recognizable (which key it was) while the credential itself is not recoverable from the file.
   Supersedes the refusal behavior; applies to every write path (tools, keyword capture, CLI).
   2026-09-27.*
+- **D15** — Phase 2A MCP server ships with all five tools, not read-only first. The MCP server
+  (`src/mcp.ts`, stdio) exposes `memory_add` / `memory_search` / `memory_list` /
+  `memory_supersede` / `memory_forget` — amends the §18 roadmap's "Read-only MCP" phasing.
+  *Rationale: the write path is the same Core (redact/D14, dedup, lifecycle) already shipped and
+  dogfooded in the opencode plugin, so a separate read-only stage adds process cost without
+  reducing risk. Core/adapters split implemented as `src/tools/ops.ts` (host-agnostic logic +
+  shared zod schemas); the opencode plugin and the MCP server are thin adapters over it.
+  Query-aware injection stays host-side: MCP is request/response and offers no hooks, so
+  proactive memory use depends on the host's agent instructions. 2026-09-27.*
+- **D16** — No separate LLM extraction pass; memory intelligence lives in model-driven tool
+  calls. A dedicated post-session extraction (opencode `session.idle` hook → hidden session
+  → host model) was evaluated and rejected: the model's own decision to call `memory_add`
+  *is* the LLM judgment of "worth remembering", so a second pass is redundant and
+  host-specific. Investment goes into the shared layer instead — `TOOL_DESCRIPTIONS` in
+  `src/tools/ops.ts` and each host's agent instructions — so every host benefits at once.
+  Native plugins (opencode now; Claude Code / Codex as Phase 2C candidates) remain as
+  hook-enhanced paths, but opencode is also supported as a plain MCP consumer of
+  `open-memex mcp`, keeping one unified tool surface. 2026-09-27.
+- **D17** — `open-memex init` resolves the MCP server command at init time. A durable
+  `open-memex` on PATH (outside npm's ephemeral `_npx` cache) → `command: "open-memex"`;
+  otherwise (one-shot `npx open-memex@alpha init`) → `command: "npx", args: ["-y",
+  "open-memex@alpha", "mcp"]` plus a hint to `npm i -g` + re-run `init --force`.
+  `mcp --print-config` uses the same resolution. *Rationale: a one-shot npx run leaves
+  no bin behind, so writing `command: "open-memex"` would produce a dead MCP server on
+  the next editor launch; the npx fallback keeps the one-command setup actually
+  one-command. 2026-09-27.*
+
+- **D18** — Keyword scope routing: 我 → personal, 我们 → project. Chinese capture
+  keywords are split into two pattern lists: personal patterns (`记住我`/`替我记`/
+  `我觉得`/`我喜欢`, plus legacy `remember for me`/`记住（个人）`) route to the personal
+  scope, while project patterns (`我们认为`/`我们决定`/`帮我们记住`, and the generic
+  `记住…` for `记住我们的…`) route to the current project scope. Personal patterns are
+  scanned first and *claim* the line so the generic `记住…` pattern cannot double-fire;
+  `记住我` uses a `(?!们)` guard so it never swallows `记住我们…`. *Rationale: the
+  user's own rule — "我" is personal, "我们" is the current project — stated 2026-09-27;
+  scanning user messages (never assistant output) with personal-first claim keeps one
+  utterance to one memory. README + repo AGENTS.md keyword sections updated in the same
+  commit. 2026-09-27.*
+- **D19** — `open-memex init` asks setup questions; `open-memex config set` edits settings
+  after install. `init` prompts on a TTY (editor: vscode/cursor/opencode; keyword
+  auto-capture on/off; first-turn injection on/off), `--yes` accepts all defaults, and
+  non-terminal runs never prompt (scripts keep the historical vscode default).
+  Non-default answers persist to the JSONC config file; `open-memex config set <key>
+  <value>` changes them later (validated keys: `maxProjectMemories`, `maxProfileItems`,
+  `injectOnFirstTurn`, `keywordCaptureEnabled`, `logLevel`). `init --client opencode`
+  merges a `type: "local"` MCP entry into project-level `opencode.jsonc` (v1 format).
+  *Rationale: install time is the only moment the user's attention is guaranteed, and a
+  print-only `config` left no path to change settings afterwards. 2026-09-27.*
+- **D20** — `init` / `mcp --print-config` support Visual Studio. Writes solution-level
+  `.mcp.json` with the `"servers"` section (`{ "type": "stdio", "command", "args" }`),
+  per Microsoft Learn (VS 2022 17.14+ / VS 2026, Windows-only). `.github/copilot-
+  instructions.md` is still written — VS's Copilot reads it too. Note VS also
+  auto-discovers `.vscode/mcp.json` and `.cursor/mcp.json`, so repos already set up for
+  VS Code get VS support for free; the explicit `.mcp.json` is the source-controllable
+  option. 2026-09-27.*
+- **D21** — The published npm package ships pre-compiled JS (`tsc -p tsconfig.build.json`
+  → `dist/`, via `prepublishOnly`; bin points at `dist/cli.js`). *Rationale: Node's
+  `--experimental-strip-types` refuses files under `node_modules`
+  (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so the old launcher
+  (`bin/open-memex.js` re-execing `src/cli.ts`) crashed on every global install —
+  reported 2026-09-27 on Node v22.12.0. Development stays build-free (`npm run cli`
+  / `npm run mcp` run `src/` directly); `doctor`'s MCP self-check resolves its server
+  entry the same way it is running (`dist/mcp.js` vs `src/mcp.ts`). The opencode
+  native plugin still loads `src/index.ts` (Bun strips types anywhere). 2026-09-27.*
+- **D22** — `init` writes the Copilot memory instructions to the **user level** by
+  default (`~/.copilot/copilot-instructions.md`; `%USERPROFILE%\copilot-
+  instructions.md` for Visual Studio 2026) instead of the repo-level
+  `.github/copilot-instructions.md`. *Rationale: the repo-level file is checked in,
+  so teammates without open-memex get Copilot errors about missing `memory_*`
+  tools. The user-level location is GitHub's official personal-instructions slot
+  (highest priority, all projects, never in a repo). `--instructions project`
+  keeps the old repo-level behavior for teams where everyone uses open-memex.
+  The instructions carry a guard clause ("ignore this section when the
+  `open-memex` MCP server is not available") as cheap insurance. 2026-09-27.*
 
 ## Open Questions
 

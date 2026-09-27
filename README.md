@@ -176,7 +176,21 @@ claude mcp add open-memex -- open-memex mcp
 > Source install? Replace `"command": "open-memex"` with `"command": "node"` and
 > `"args": ["--experimental-strip-types", "/absolute/path/to/open-memex/src/mcp.ts"]`.
 
-### VS Code setup, step by step
+### VS Code setup
+
+**One command** — from your project root:
+
+```
+npx open-memex@alpha init
+# or, after a global install: open-memex init
+```
+
+This writes `.vscode/mcp.json` and `.github/copilot-instructions.md` for you — no
+copy-paste. Existing files are merged, never clobbered, so re-running is safe.
+Then reload your VS Code window and check the `open-memex` server is started in
+Copilot Chat's tools / MCP panel.
+
+**Manual setup**, if you prefer:
 
 1. Add the server to `.vscode/mcp.json` as above (use the absolute path to your clone).
 2. Open Copilot Chat, click the tools / MCP icon, and make sure the `open-memex` server

@@ -37,6 +37,11 @@ Usage:
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
   node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
   node --experimental-strip-types src/cli.ts mcp [--print-config vscode|cursor|claude]
+  node --experimental-strip-types src/cli.ts init [--client vscode|cursor] [--force]
+
+One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
+\`.vscode/mcp.json\` and \`.github/copilot-instructions.md\` for the project — no
+copy-paste needed. Existing files are merged, never clobbered; re-running is safe.
 
 Once installed globally (\`npm i -g open-memex@alpha\`) the \`open-memex\` command is
 available directly: \`open-memex mcp\` starts the stdio MCP server (same five
@@ -158,6 +163,17 @@ async function main() {
           `run \`open-memex reindex\` to verify.`,
       );
     }
+    return;
+  }
+
+  // `init` is a pure file operation (§17 adoption path) — no DB needed.
+  if (cmd === "init") {
+    const flags = parseFlags(rest);
+    const { initProject } = await import("./init.ts");
+    await initProject({
+      client: flags["client"] ?? "vscode",
+      force: flags["force"] === "true",
+    });
     return;
   }
 

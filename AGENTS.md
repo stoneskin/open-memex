@@ -32,7 +32,9 @@ node --experimental-strip-types scripts\smoke-mcp.ts    # MCP handshake + tool r
 
 After `npm i -g open-memex@alpha` (or `npm link` from source), the `open-memex` bin is on
 PATH: `open-memex mcp` starts the MCP server, `open-memex mcp --print-config <client>`
-prints a client config snippet. The bin is a tiny JS launcher (`bin/open-memex.js`) that
+prints a client config snippet, `open-memex init [--client vscode|cursor] [--force]`
+one-command project setup (.vscode/mcp.json + .github/copilot-instructions.md).
+The bin is a tiny JS launcher (`bin/open-memex.js`) that
 re-execs `src/cli.ts` with type-stripping — no build step, works on Node 22.6+.
 
 There is **no `npm test`** and no CI. Verification loop is: `npm run typecheck` + `smoke-pure.ts` + (if touching sqlite) `npm run cli -- reindex` against a scratch `MY_O_MEMORY_HOME`.

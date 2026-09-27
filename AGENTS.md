@@ -1,6 +1,7 @@
 # AGENTS.md
 
-Local-first memory plugin for opencode. See `README.md` and `PLAN.md` for user-facing docs and the roadmap. This file lists only the non-obvious things an agent needs to work in this repo.
+Local-first memory plugin for opencode. See `README.md` (English) and `README.zh-CN.md` (Chinese)
+for user-facing docs; `docs/V2-DESIGN.md` §18 for the roadmap. This file lists only the non-obvious things an agent needs to work in this repo.
 
 ## Runtime model — read before touching anything
 
@@ -102,7 +103,7 @@ log records what was already considered and rejected.
 Still hard: no cloud, no silent sync (explicit pull only), Markdown is the source
 of truth, `personal` scope never leaves the machine. Embeddings are an *optional
 capability* per the design — do not add them (or LLM-driven extraction, or a
-knowledge graph) without updating the design doc first. `PLAN.md` tracks the
+knowledge graph) without updating the design doc first. `docs/V2-DESIGN.md` §18 tracks the
 build roadmap; the design doc tracks the *why*.
 
 ## Branch workflow
@@ -117,7 +118,8 @@ hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
 - Log prefix is `[open-memex]`. Gate verbose logs behind `cfg.logLevel === "debug"`.
 - Windows is a first-class target (this workspace is Windows). Use `node:path` and never hardcode `/`.
 - **Docs ship with code.** Every code change updates the docs it affects in the same commit:
-  new/changed tools → `README.md` tool table + MCP section; behavior changes → `README.md`
+  new/changed tools → `README.md` + `README.zh-CN.md` tool tables + MCP section (keep both
+  languages in sync); behavior changes → both READMEs
   and the frozen `docs/V2-DESIGN.md` (append a `D<n>` decision entry, never rewrite history);
-  new commands → `README.md` CLI section + this file's Commands. A change without its docs
+  new commands → README CLI sections + this file's Commands. A change without its docs
   is not done.

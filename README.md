@@ -1,65 +1,172 @@
 # open-memex
 
+[中文文档](./README.zh-CN.md)
+
 Local-first persistent memory for AI coding agents: an [opencode](https://opencode.ai) plugin
-plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, …).
+plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, Visual Studio, …).
 
 - **Markdown files** as the source of truth (human-editable, git-friendly)
 - **SQLite FTS5** as a rebuildable index (BM25 keyword search, via `better-sqlite3`)
 - **Zero cloud**, zero account, zero third-party API
 - Loads directly under opencode's embedded Bun runtime; CLI and MCP server run under Node — no build step, no Bun install
 
-## Install
+## Installation
 
-**From npm:**
+### Requirements
 
+- **Node.js ≥ 22.6** (`open-memex doctor` verifies this for you)
+
+### Step 1 — Install the CLI
+
+**npm (recommended):**
+
+```sh
+npm install -g open-memex@alpha
 ```
-npm install -g open-memex         # latest stable (0.1.0)
-npm install -g open-memex@alpha   # prerelease channel — 0.2.0-alpha today (v2 data model,
-                                 # CJK retrieval, redaction hardening); 0.3.0-alpha next
-                                 # (MCP server, bin/CLI, init)
+
+This installs the `0.3.0-alpha` prerelease channel. (`latest` still points at the older
+`0.1.0` stable.)
+
+**No install — run via npx:**
+
+```sh
+npx -y open-memex@alpha <command>   # e.g. npx -y open-memex@alpha init --client vscode
 ```
 
-Note: the published `alpha` (`0.2.0-alpha`) predates the MCP server — for the MCP server,
-install from source for now (it will ride the `0.3.0-alpha` publish):
+**From source** (bleeding edge, `V2-dev-p2` branch):
 
-**From source** (latest dev, includes the MCP server):
-
-```
+```sh
 git clone -b V2-dev-p2 https://github.com/stoneskin/open-memex.git
 cd open-memex
 npm install
+node --experimental-strip-types src/cli.ts <command>
 ```
 
-Then wire it into your agent:
+> The `0.3.0-alpha` npm publish is cut from this branch — if `npx` still resolves an
+> older alpha, install from source until the publish lands.
 
-- **opencode** — add to `~/.config/opencode/opencode.jsonc`:
+#### "`open-memex` is not recognized" — PATH setup
 
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["file:///c:/github/open-memex/src/index.ts"]
-}
+A global `npm install -g` puts the `open-memex` launcher in npm's global bin folder.
+If your terminal can't find it, that folder isn't on your `PATH`:
+
+1. Find the folder: `npm config get prefix`
+   - **Windows:** the launcher (`open-memex.cmd`) sits directly in that folder, e.g.
+     `C:\Users\<you>\AppData\Roaming\npm`
+   - **macOS / Linux:** it's in `<prefix>/bin`, e.g. `/usr/local/bin` or
+     `~/.nvm/versions/node/v22.x.x/bin`
+2. Add it to `PATH`:
+   - **Windows:** Settings → System → About → Advanced system settings →
+     Environment Variables → add the folder to the *User* `Path` → **restart the
+     terminal**. Verify with `where open-memex`.
+   - **macOS / Linux:** add `export PATH="$(npm prefix -g)/bin:$PATH"` to
+     `~/.zshrc` (or `~/.bashrc`), restart the shell, verify with
+     `command -v open-memex`.
+3. No admin rights / don't want to touch `PATH`? Use the npx form above — npx
+   resolves the package itself and needs no `PATH` changes.
+
+### Step 2 — One-command setup for your editor
+
+Run from your **project root** (so the project scope resolves to this repo):
+
+**VS Code** (Copilot):
+
+```sh
+open-memex init --client vscode
+# …or without a global install:
+npx -y open-memex@alpha init --client vscode
 ```
 
-Restart opencode.
+Writes `.vscode/mcp.json` and `.github/copilot-instructions.md`, then reload the
+window and confirm the `open-memex` server is started in Copilot Chat's MCP panel.
 
-- **VS Code / Cursor / Claude Code** — see [MCP server](#mcp-server-vs-code-cursor-claude-code-) below.
+**Cursor:**
 
-## Tools the plugin exposes to the agent
+```sh
+open-memex init --client cursor
+```
+
+Writes `.cursor/mcp.json` and `.github/copilot-instructions.md`.
+
+**opencode** (as a plain MCP consumer):
+
+```sh
+open-memex init --client opencode
+```
+
+Writes project-level `opencode.jsonc` (`type: "local"`). Prefer the native plugin
+instead? Add `"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]` to
+`~/.config/opencode/opencode.jsonc` — you get keyword auto-capture and first-turn
+context injection on top of the tools.
+
+**Claude Code** (from your project root):
+
+```sh
+claude mcp add open-memex -- open-memex mcp
+# …or print the config snippet: open-memex mcp --print-config claude
+```
+
+**Visual Studio** (from your solution directory):
+
+```sh
+open-memex init --client visualstudio
+```
+
+Writes solution-level `.mcp.json` and `.github/copilot-instructions.md`. Requires
+Visual Studio 2022 17.14+ or Visual Studio 2026 (**Windows-only**). Visual Studio
+also auto-discovers `.vscode/mcp.json` and `.cursor/mcp.json`, so the VS Code setup
+above works too.
+
+**Codex:** no `init` client yet — add the server manually via
+`open-memex mcp --print-config` as a starting point (`[mcp_servers]` in
+`config.toml`, or `codex mcp add`).
+
+`init` notes:
+
+- On a terminal it interactively asks which editor to set up, whether to enable
+  keyword auto-capture, and whether to inject memories on the first turn.
+  `--yes` accepts the defaults; scripts / non-TTY never prompt (editor defaults to
+  VS Code).
+- Existing config files are **merged, never clobbered** — re-running is safe.
+  `--force` overwrites.
+- With no durable `open-memex` on `PATH` (e.g. one-shot npx), `init` writes an
+  `npx -y open-memex@alpha mcp` server command into the config so the setup keeps
+  working. `npm i -g open-memex@alpha` + `open-memex init --force` switches to the
+  faster direct command later.
+
+### Step 3 — Verify it works
+
+```sh
+open-memex doctor
+```
+
+Checks: Node version, config source, scope resolution for the current directory,
+storage writability, then boots a real MCP server and runs `initialize` +
+`tools/list` against it — all five tools must show up.
+
+## Tools the agent gets
 
 | Tool | What it does |
 |---|---|
-| `memory_add`     | Save a fact, preference, decision, note |
-| `memory_search`  | Keyword search (BM25) across project + personal memories |
-| `memory_list`    | List memories in a scope, newest first |
+| `memory_add`       | Save a fact, preference, decision, note |
+| `memory_search`    | Keyword search (BM25) across project + personal memories |
+| `memory_list`      | List memories in a scope, newest first |
 | `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
-| `memory_forget`  | Delete a memory by id |
+| `memory_forget`    | Delete a memory by id |
 
 ## Capture
 
-- **Keyword triggers** in user messages: `remember ...`, `note that ...`, `TIL ...`, `save this: ...`, plus Chinese （记住/记一下/别忘了）. Scope routing: 我 → personal (记住我/替我记/我觉得/我喜欢), 我们 → project (我们认为/我们决定/帮我们记住)
+- **Keyword triggers** in user messages (opencode native plugin): `remember …`,
+  `note that …`, `don't forget …`, `TIL …`, `save this …`, plus Chinese
+  `记住…` / `记一下` / `记录一下` / `别忘了…`.
+  Scope routing: first-person singular goes **personal** (`remember for me`,
+  `记住我…`, `替我记…`, `我觉得…`, `我喜欢…`); first-person plural goes to the
+  current **project** scope (`我们认为…`, `我们决定…`, `帮我们记住…`).
 - **Explicit tool calls** by the agent (via `memory_add`)
-- **Redaction**: content inside `<private>...</private>` tags is stripped; detected secrets (API keys, tokens, high-entropy credentials) are masked in place — first 4 characters kept, the rest replaced with `x` — and the memory is saved
+- **Redaction**: content inside `<private>…</private>` tags is stripped; detected
+  secrets (API keys, tokens, high-entropy credentials) are masked in place — first
+  4 characters kept, the rest replaced with `x` — and the memory is saved.
+  Preview what a message would capture with `open-memex capture --dry-run "…"`.
 
 ## Scopes
 
@@ -86,158 +193,114 @@ $XDG_DATA_HOME/open-memex/          (Linux/macOS)
 ```
 
 Each `.md` file has v2 YAML frontmatter (`id, scope, scope_key, visibility, role, type,
-importance, status, tags, created_at, updated_at, schema_version`, ...) followed by the
+importance, status, tags, created_at, updated_at, schema_version`, …) followed by the
 memory content. You can edit them by hand — the plugin re-syncs on startup by comparing
 file mtimes. Markdown is the source of truth; the SQLite index is derived and rebuildable
 (`open-memex reindex`).
 
 ## Config
 
-Optional file at `~/.config/opencode/open-memex.jsonc`. See `PLAN.md` for defaults.
+Optional file at `~/.config/opencode/open-memex.jsonc` (override path with
+`MY_O_MEMORY_CONFIG`; override storage root with `MY_O_MEMORY_HOME`).
 
-## CLI
+Defaults:
 
-Runs under Node 22 with the built-in experimental TypeScript loader (no build step).
-
-```
-node --experimental-strip-types src/cli.ts where
-node --experimental-strip-types src/cli.ts list --scope project
-node --experimental-strip-types src/cli.ts search "auth flow"
-node --experimental-strip-types src/cli.ts add "This repo uses better-sqlite3" --type project-config
-node --experimental-strip-types src/cli.ts supersede <id> "Updated content"
-node --experimental-strip-types src/cli.ts status <id> deprecated
-node --experimental-strip-types src/cli.ts forget <id>
-node --experimental-strip-types src/cli.ts reindex
-node --experimental-strip-types src/cli.ts scopes
-node --experimental-strip-types src/cli.ts migrate --from <old-scope-key> [--dry-run]
-node --experimental-strip-types src/cli.ts migrate --to-v2 [--dry-run]
-node --experimental-strip-types src/cli.ts config
-node --experimental-strip-types src/cli.ts config set keywordCaptureEnabled false
-node --experimental-strip-types src/cli.ts init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
-node --experimental-strip-types src/cli.ts capture --dry-run "记住我喜欢简洁的回答"
-node --experimental-strip-types src/cli.ts doctor
+```jsonc
+{
+  "maxProjectMemories": 8,    // top-N project memories injected on first turn
+  "maxProfileItems": 5,       // top-N personal items injected on first turn
+  "injectOnFirstTurn": true,  // [OPEN-MEMEX] system-prompt block
+  "keywordCaptureEnabled": true,
+  "logLevel": "info"          // info | debug
+}
 ```
 
-`init` asks which editor to set up (VS Code / Cursor / opencode) and two settings
-(keyword auto-capture, first-turn injection) when run on a terminal; `--yes`
-accepts all defaults and scripts never prompt. `config set <key> <value>` changes
-settings after install (keys: `maxProjectMemories`, `maxProfileItems`,
-`injectOnFirstTurn`, `keywordCaptureEnabled`, `logLevel`).
+`open-memex config` prints the effective config (defaults + file).
+Change a setting after install:
 
-Or via the npm script: `npm run cli -- list --scope project`.
-**Note:** flag arguments beyond the first must be passed via direct `node` invocation, not `npm run cli --`, because npm swallows unknown `--flag` args.
+```sh
+open-memex config set keywordCaptureEnabled false
+open-memex config set maxProjectMemories 12
+```
 
-## MCP server (VS Code, Cursor, Claude Code, …)
+Settable keys: `maxProjectMemories`, `maxProfileItems`, `injectOnFirstTurn`,
+`keywordCaptureEnabled`, `logLevel`. Full design: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
 
-The same five memory tools are exposed over the Model Context Protocol via a stdio server —
+## CLI reference
+
+Setup & health:
+
+```sh
+open-memex init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
+open-memex config                                  # print effective config
+open-memex config set <key> <value>                # change a setting
+open-memex doctor                                  # environment health check
+open-memex capture --dry-run "记住我喜欢简洁的回答"  # preview keyword capture
+open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio
+```
+
+Memory operations:
+
+```sh
+open-memex add "This repo uses better-sqlite3" --type project-config
+open-memex search "auth flow"
+open-memex list --scope project
+open-memex supersede <id> "Updated content"
+open-memex status <id> deprecated
+open-memex forget <id>
+```
+
+Maintenance:
+
+```sh
+open-memex where        # show storage + config paths
+open-memex scopes       # list project scopes with memory counts
+open-memex reindex      # rebuild the SQLite index from markdown
+open-memex migrate --to-v2 [--dry-run]   # v1 data → v2
+```
+
+The CLI runs under Node 22 with the built-in experimental TypeScript loader (no build
+step). From a source checkout, prefix every command with
+`node --experimental-strip-types src/cli.ts` (or `npm run cli -- <command>` for
+simple cases — npm swallows unknown `--flag` args, so prefer direct `node`).
+
+## MCP server
+
+The same five memory tools over the Model Context Protocol via a stdio server —
 no host-specific plugin needed. Any MCP client can use open-memex.
 
-Start it:
-
-```
-open-memex mcp                        # after `npm i -g open-memex@alpha`
-npx open-memex@alpha mcp              # no install needed (once 0.3.0-alpha is published)
+```sh
+open-memex mcp               # after a global install
+npx -y open-memex@alpha mcp  # no install needed
 ```
 
-Don't know what to paste into your client? This prints a copy-paste config snippet:
+The project scope is resolved from the process working directory, so configure the
+server with cwd set to your project root (`init` handles this for you).
 
-```
-open-memex mcp --print-config vscode|cursor|claude|opencode
-```
+> **Note:** MCP is request/response — it gives the agent tools, not the opencode
+> plugin's automatic keyword capture or first-turn context injection. Proactive
+> memory use depends on the agent's instructions (the `.github/copilot-instructions.md`
+> that `init` writes).
 
-The project scope is resolved from the process working directory, so configure the server
-with cwd set to your project root (all three clients below do this for workspace servers).
+## Roadmap
 
-### MCP config
+**`0.3.0-alpha` (this release):** generic MCP server, `open-memex` bin/CLI, one-command
+`init` setup, Chinese keyword capture with personal/project routing, `config` /
+`capture --dry-run` / `doctor` helpers, Visual Studio support.
 
-**VS Code** — create `.vscode/mcp.json` in your project (workspace scope) or add to your
-user `mcp.json` (or run `open-memex mcp --print-config vscode`):
+**Coming — `0.3.0-beta`:** team sync — shared memory via git (`propose` / `promote` /
+`resolve` workflow, in-repo memory dir), 1–2 colleague pilot.
 
-```json
-{
-  "servers": {
-    "open-memex": {
-      "type": "stdio",
-      "command": "open-memex",
-      "args": ["mcp"],
-      "cwd": "${workspaceFolder}"
-    }
-  }
-}
-```
+**Coming — `0.3.0` (stable):** org layer — org memory repo, curator convention,
+distill-to-AGENTS.md assist.
 
-**Cursor** — Settings → MCP → Add new MCP server (or `open-memex mcp --print-config cursor`):
+**Future (signal-gated, no version committed):** native agent plugins (Claude Code /
+Codex hooks as enhancement paths over the same MCP tools); local embeddings as a
+benchmark-gated experiment (no embedding model is ever downloaded without explicit
+opt-in); cloud `RemoteProvider` customization only if multi-repo sharing, ACL, or
+compliance needs demand it.
 
-```json
-{
-  "mcpServers": {
-    "open-memex": {
-      "command": "open-memex",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-**Claude Code** — run from your project root so the project scope resolves correctly
-(or `open-memex mcp --print-config claude`):
-
-```
-claude mcp add open-memex -- open-memex mcp
-```
-
-> Source install? Replace `"command": "open-memex"` with `"command": "node"` and
-> `"args": ["--experimental-strip-types", "/absolute/path/to/open-memex/src/mcp.ts"]`.
-
-### VS Code setup
-
-**One command** — from your project root:
-
-```
-npx open-memex@alpha init
-# or, after a global install: open-memex init
-```
-
-> Requires the `0.3.0-alpha` publish (not on npm yet) — until then, run from a source
-> checkout: `node --experimental-strip-types src/cli.ts init`.
-
-This writes `.vscode/mcp.json` and `.github/copilot-instructions.md` for you — no
-copy-paste. Existing files are merged, never clobbered, so re-running is safe.
-No global install? `init` detects that and writes an `npx -y open-memex@alpha mcp`
-server command instead, so the setup keeps working after a one-shot npx run
-(slower startup; `npm i -g open-memex@alpha` and `open-memex init --force` to switch
-to the direct command later).
-Then reload your VS Code window and check the `open-memex` server is started in
-Copilot Chat's tools / MCP panel.
-
-**Manual setup**, if you prefer:
-
-1. Add the server to `.vscode/mcp.json` as above (use the absolute path to your clone).
-2. Open Copilot Chat, click the tools / MCP icon, and make sure the `open-memex` server
-   is started and its `memory_*` tools are enabled.
-3. Make Copilot consult memory proactively: create `.github/copilot-instructions.md`
-   in your project root with something like:
-
-```markdown
-Before answering questions about past decisions, conventions, or things I told you
-before, search open-memex memory (`memory_search`). When I tell you something worth
-remembering (preferences, decisions, fixes), save it with `memory_add`.
-```
-
-**Note:** MCP is request/response — it gives the agent tools, not the opencode plugin's
-automatic keyword capture or first-turn context injection. Proactive memory use depends
-on the agent's instructions (step 3 above).
-
-## Status
-
-`0.2.0-alpha` (on npm now): v2 data model + migration, dedup + lifecycle (supersede/status),
-redaction hardening, CJK bigram retrieval.
-
-`0.3.0-alpha` (next, in development on `V2-dev-p2`): generic MCP server (`src/mcp.ts`),
-`open-memex` bin/CLI, `init` one-command setup, Chinese keyword capture, `config` /
-`capture --dry-run` CLI helpers.
-
-See `PLAN.md` for the roadmap (local embeddings, auto-capture, compaction hook, etc).
+Design details: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md) (append-only decision log D1–D20).
 
 ## License
 

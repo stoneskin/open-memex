@@ -87,21 +87,13 @@ personal idea ──propose──▶ proposed ──┬──promote──▶ ap
                                    rejected ──resubmit──▶ proposed
 ```
 
-- `open-memex propose <id...> --to project`: **copies** one or more personal
-  memories into `.ai/open-memex/` as review candidates (`review_state:
-  proposed`, each with its own new id, `derived_from` pointing back at the
-  personal original). **Copy, not move — the personal original stays.**
-  All-or-nothing: a bad id aborts the whole batch. It never creates a branch
-  on its own — it prints one set of `git checkout -b` / `git add` /
-  `gh pr create` commands covering all proposed files for you to run.
-  No surprise branches. Solo devs can use `--local-approve` to self-approve
-  and skip the PR.
-  - Keep the three jobs straight: **propose crosses the boundary**
-    (personal → project, the only step that moves a copy across);
-    **promote only flips the status label** on a file already in
-    `.ai/open-memex/` (`proposed → approved → published`) — it never moves
-    files between directories; **git does the transport** (branch, push, PR,
-    merge — all human-run).
+- `open-memex propose <id> --to project`: **copies** a personal memory into
+  `.ai/open-memex/` as a review candidate (`review_state: proposed`, new id,
+  `derived_from` pointing back at the personal original). **Copy, not move —
+  the personal original stays.** It never creates a branch on its own — it
+  prints the `git checkout -b` / `git add` / `gh pr create` commands for you
+  to run. No surprise branches. Solo devs can use `--local-approve` to
+  self-approve and skip the PR.
 - A promotion PR contains **only memory files, no code**, reviewed and audited
   separately from code PRs. Reviewers check "is this true? is it safe to share?
   any secrets?" — things a code PR's CI never checks.

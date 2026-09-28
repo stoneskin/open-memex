@@ -65,10 +65,8 @@ export interface ProposeResult {
 }
 
 /**
- * Copy one personal memory into the project scope as a review candidate.
+ * Copy a personal memory into the project scope as a review candidate.
  * The source memory is untouched (copy, not move — D25).
- * Batch-friendly: validates nothing, copies one — use proposeMemories()
- * for the all-or-nothing multi-id path.
  */
 export function proposeMemory(
   sourceId: string,
@@ -76,27 +74,18 @@ export function proposeMemory(
 ): ProposeResult {
   const src = findMemoryFile(sourceId);
   if (!src) fail(`no memory found with id "${sourceId}".`);
-  return copyPersonalToProject(sourceId, src.fm, src.body, opts);
-}
-
-function copyPersonalToProject(
-  sourceId: string,
-  srcFm: Frontmatter,
-  srcBody: string,
-  opts: { localApprove?: boolean } = {},
-): ProposeResult {
-  if (srcFm.scope === "project")
+  if (src.fm.scope === "project")
     fail(`memory "${sourceId}" is already in project scope — nothing to propose.`);
-  if (srcFm.scope === "org")
+  if (src.fm.scope === "org")
     fail(`memory "${sourceId}" is already shared at org scope.`);
-  if (srcFm.status === "retracted" || srcFm.status === "archived")
-    fail(`memory "${sourceId}" is ${srcFm.status} — cannot propose it.`);
+  if (src.fm.status === "retracted" || src.fm.status === "archived")
+    fail(`memory "${sourceId}" is ${src.fm.status} — cannot propose it.`);
 
   const project = resolveProjectScope(projectRoot());
   const author = currentAuthor();
   const now = new Date().toISOString();
   const fm: Frontmatter = {
-    ...srcFm,
+    ...src.fm,
     id: ulid(),
     scope: "project",
     scope_key: project.key,
@@ -108,39 +97,11 @@ function copyPersonalToProject(
     review_state: opts.localApprove ? "approved" : "proposed",
     proposed_by: author,
     approved_by: opts.localApprove ? author : null,
-    derived_from: srcFm.id,
+    derived_from: src.fm.id,
   };
-  const { filePath } = writeMemoryFile(fm, srcBody);
-  upsertFromFile({ fm, body: srcBody, filePath, mtimeMs: Date.now() });
+  const { filePath } = writeMemoryFile(fm, src.body);
+  upsertFromFile({ fm, body: src.body, filePath, mtimeMs: Date.now() });
   return { id: fm.id, filePath, reviewState: fm.review_state };
-}
-
-/**
- * Propose several personal memories at once — one branch, one PR.
- * All-or-nothing: every id is validated before anything is copied, so a bad
- * id never leaves a half-proposed batch behind.
- */
-export function proposeMemories(
-  sourceIds: string[],
-  opts: { localApprove?: boolean } = {},
-): { sourceId: string; result: ProposeResult }[] {
-  if (sourceIds.length === 0) fail("propose needs at least one memory id.");
-  const seen = new Set<string>();
-  const sources = sourceIds.map((sourceId) => {
-    if (seen.has(sourceId)) fail(`duplicate id "${sourceId}" — list each memory once.`);
-    seen.add(sourceId);
-    const src = findMemoryFile(sourceId);
-    if (!src) fail(`no memory found with id "${sourceId}".`);
-    if (src.fm.scope !== "personal")
-      fail(`only personal memories can be proposed (memory "${sourceId}" is ${src.fm.scope}).`);
-    if (src.fm.status === "retracted" || src.fm.status === "archived")
-      fail(`memory "${sourceId}" is ${src.fm.status} — cannot propose it.`);
-    return { sourceId, fm: src.fm, body: src.body };
-  });
-  return sources.map(({ sourceId, fm, body }) => ({
-    sourceId,
-    result: copyPersonalToProject(sourceId, fm, body, opts),
-  }));
 }
 
 // ---------------------------------------------------------------------------

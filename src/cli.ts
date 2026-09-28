@@ -6,7 +6,7 @@ import { syncScope, upsertFromFile, deleteFromIndex } from "./store/sync.ts";
 import { migrateScope, scopeHasFiles, type ConflictStrategy } from "./store/migrate.ts";
 import { migrateV2 } from "./store/v2migrate.ts";
 import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
-import { proposeMemories, promoteMemory, listConflicts, resolveConflict } from "./review.ts";
+import { proposeMemory, promoteMemory, listConflicts, resolveConflict } from "./review.ts";
 import { search, list } from "./retrieve/search.ts";
 import {
   writeMemoryFile,
@@ -34,7 +34,7 @@ Usage:
   open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
   open-memex status <id> active|deprecated|retracted|archived
   open-memex forget <id>
-  open-memex propose <id...> --to project [--local-approve]
+  open-memex propose <id> --to project [--local-approve]
   open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
   open-memex resolve [id-or-path]
   open-memex reindex
@@ -534,42 +534,24 @@ async function main() {
     return;
   }
 
-/** Positional args with flags (and their values) skipped. */
-function positionalArgs(argv: string[]): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (a.startsWith("--")) {
-      const val = argv[i + 1];
-      if (val !== undefined && !val.startsWith("--")) i++; // skip the flag's value
-    } else {
-      out.push(a);
-    }
-  }
-  return out;
-}
-
   if (cmd === "propose") {
     const flags = parseFlags(rest);
-    const ids = positionalArgs(rest);
-    if (ids.length === 0) usage();
+    const id = rest.find((a) => !a.startsWith("--"));
+    if (!id) usage();
     const to = flags.to ?? "project";
     if (to !== "project") {
       console.error(`propose --to "${to}" is not supported yet (org sharing is Phase 4).`);
       process.exit(2);
     }
     try {
-      const batch = proposeMemories(ids, { localApprove: flags["local-approve"] === "true" });
-      const files = batch.map(({ result: r }) => path.relative(process.cwd(), r.filePath));
-      for (const { sourceId, result: r } of batch) {
-        console.log(`proposed ${sourceId} → ${r.id}  [${r.reviewState}]`);
-      }
-      const short = batch.map(({ result: r }) => r.id.slice(0, 8)).join(" ");
-      console.log(`Next (one branch, one PR — open-memex never opens one for you):`);
-      console.log(`  git checkout -b mem/propose-${batch[0].result.id.slice(0, 8)}`);
-      console.log(`  git add ${files.join(" ")}`);
-      console.log(`  git commit -m "mem: propose ${batch.length} memories (${short})" && git push -u origin HEAD`);
-      console.log(`  gh pr create --title "mem: propose ${batch.length} memories" --body "Proposed from personal: ${ids.join(", ")}."`);
+      const r = proposeMemory(id, { localApprove: flags["local-approve"] === "true" });
+      console.log(`proposed ${id} → ${r.id}  [${r.reviewState}]`);
+      console.log(`  file: ${r.filePath}`);
+      console.log(`Next (review happens in a PR — open-memex never opens one for you):`);
+      console.log(`  git checkout -b mem/propose-${r.id.slice(0, 8)}`);
+      console.log(`  git add ${path.relative(process.cwd(), r.filePath)}`);
+      console.log(`  git commit -m "mem: propose ${r.id.slice(0, 8)}" && git push -u origin HEAD`);
+      console.log(`  gh pr create --title "mem: propose …" --body "Proposed from personal memory ${id}."`);
     } catch (e) {
       console.error(`propose failed: ${(e as Error).message}`);
       process.exit(2);

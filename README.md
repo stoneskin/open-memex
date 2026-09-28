@@ -273,10 +273,7 @@ open-memex forget <id>
 Team review workflow (Phase 2B — memories live in `<repo>/.ai/open-memex/`):
 
 ```sh
-open-memex propose <id...> --to project [--local-approve]
-# propose one or several personal memories at once (one branch, one PR);
-# each is copied with its own new id. All-or-nothing: a bad id aborts the
-# whole batch, never a half-proposed one.
+open-memex propose <id> --to project [--local-approve]
 # copy a personal memory into the project scope as a review candidate
 # (never moves — the personal original stays). Prints the git/gh commands
 # for you to run; open-memex never opens a PR itself.

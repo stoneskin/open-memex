@@ -617,9 +617,7 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   `proposed_by` / `approved_by` / `derived_from` / `review_note` provenance;
   the SQLite index carries `review_state` (schema v6, rebuilt from markdown —
   D1). (2) `propose` **copies** personal → project (new id, never moves — the
-  personal original stays private); one call takes several ids (one branch,
-  one PR; all-or-nothing — a bad id aborts the whole batch);
-  `--local-approve` skips the PR for solo
+  personal original stays private); `--local-approve` skips the PR for solo
   devs. (3) `promote` advances exactly one step up the ladder
   (`proposed → approved → published`), `--reject`s with a note (also from
   `approved`, withdrawing approval before merge), or `--resubmit`s a rejected

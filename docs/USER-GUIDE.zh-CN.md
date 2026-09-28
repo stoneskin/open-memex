@@ -77,17 +77,11 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
                               rejected ──resubmit──▶ proposed
 ```
 
-- `open-memex propose <id...> --to project`：把一条或多条 personal 记忆**复制**到
-  `.ai/open-memex/` 进入评审（`review_state: proposed`，每条独立新 id，
+- `open-memex propose <id> --to project`：把一条 personal 记忆**复制**到
+  `.ai/open-memex/` 进入评审（`review_state: proposed`，新 id，
   `derived_from` 指回 personal 原件）。**复制而非移动——personal 原件保留。**
-  全有或全无：id 有错整批回滚。它不会自动建分支——只打印一套
-  `git checkout -b` / `git add` / `gh pr create` 命令（覆盖所有 propose 的文件）
-  让你手动跑，不搞惊喜分支。单人开发可用 `--local-approve` 自批，跳过 PR。
-  - 三个动作分工要分清：**propose 是跨界**（personal → project，
-    唯一跨越"私有/共享"边界的动作）；**promote 只改状态标签**
-    （文件一直在 `.ai/open-memex/` 里没动过，只是 `review_state`
-    从 proposed → approved → published）——它不在目录之间搬文件；
-    **git 负责运输**（分支、push、PR、合并，全是人手动做）。
+  它不会自动建分支——只打印 `git checkout -b` / `git add` / `gh pr create`
+  命令让你手动跑，不搞惊喜分支。单人开发可用 `--local-approve` 自批，跳过 PR。
 - 晋升 PR **只含记忆文件，不含代码**，跟代码 PR 分开评审、分开审计。
   审的是"这条是真的吗？能给全团队看吗？有没有 secret？"——代码 PR 的 CI 不会查这些。
 - "要求修改"不需要命令：PR 开着的时候，作者直接改同一个文件（自己改，

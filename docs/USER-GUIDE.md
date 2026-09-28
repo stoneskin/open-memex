@@ -79,12 +79,12 @@ A personal observation becomes team knowledge by exactly one road —
 **explicit promotion, never automatic sync**:
 
 ```
-personal idea ──propose──▶ proposed ──┬──promote──▶ approved ──promote──▶ published/shared
-                                      │                        │
-                                   --reject                 --reject
-                                      │                        │  (approval withdrawn
-                                      ▼                        │   before merge)
-                                   rejected ──resubmit──▶ proposed
+personal idea ──propose──▶ proposed ──promote──▶ approved ──promote──▶ published/shared
+                                │                                              │
+                             rejected                              (PR review is
+                                │                               the review mechanism)
+                                ▼
+                     curator promotes to org level later (Phase 4)
 ```
 
 - `open-memex propose <id> --to project`: **copies** a personal memory into
@@ -97,23 +97,10 @@ personal idea ──propose──▶ proposed ──┬──promote──▶ ap
 - A promotion PR contains **only memory files, no code**, reviewed and audited
   separately from code PRs. Reviewers check "is this true? is it safe to share?
   any secrets?" — things a code PR's CI never checks.
-- "Request changes" needs no command: while the PR is open, the author edits
-  the same file (directly, or by asking their agent in chat), commits, and
-  pushes. The state stays `proposed`; the PR is the review mechanism.
 - `open-memex promote <id>`: advances the memory one step up the ladder
   (`proposed → approved → published`). `--reject --note "..."` rejects with a
-  reason (also allowed from `approved`, before merge — withdrawing approval).
-  After the PR merges, run `promote <id>` once more to mark it `published`.
-  (Lifting project memories to org level is Phase 4.)
-- **A rejection never deletes anything.** The file stays on your branch; what
-  happens next is the human's call:
-  1. **Accept**: close the PR and delete the branch — the file goes with it
-     (the local index cleans itself up on the next sync);
-  2. **Revise and resubmit**: edit the file, run
-     `open-memex promote <id> --resubmit`, commit, push — review continues on
-     the same PR;
-  3. **Keep as a record**: leave it; it stays visible with a `[rejected]` tag
-     and your note, so the team can see what was considered and why not.
+  reason. After the PR merges, run `promote <id>` once more to mark it
+  `published`. (Lifting project memories to org level is Phase 4.)
 - `open-memex resolve [id]`: with no argument, lists conflicted memory files;
   with an id, attempts a **field-level 3-way merge** of the YAML frontmatter
   (`tags` union, `updated_at` takes latest, body merged when only one side

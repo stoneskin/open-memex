@@ -15,8 +15,8 @@ import { projectRoot } from "../paths.ts";
 import { loadConfig } from "../config.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
     scope        = excluded.scope,
@@ -32,6 +32,7 @@ const UPSERT_SQL = `
     content_hash = excluded.content_hash,
     superseded_by = excluded.superseded_by,
     source       = excluded.source,
+    review_state = excluded.review_state,
     file_path    = excluded.file_path,
     mtime_ms     = excluded.mtime_ms,
     updated_at   = excluded.updated_at
@@ -82,6 +83,7 @@ function writeRow(mf: MemoryFile, mtimeMs: number): void {
     mtimeMs,
     timeToMs(fm.created_at),
     timeToMs(fm.updated_at),
+    fm.review_state ?? "draft",
   );
 }
 

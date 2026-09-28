@@ -35,7 +35,7 @@ Usage:
   open-memex status <id> active|deprecated|retracted|archived
   open-memex forget <id>
   open-memex propose <id> --to project [--local-approve]
-  open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
+  open-memex promote <id> [--reject] [--note "..."] [--by NAME]
   open-memex resolve [id-or-path]
   open-memex reindex
   open-memex scopes
@@ -566,19 +566,12 @@ async function main() {
     try {
       const r = promoteMemory(id, {
         reject: flags.reject === "true",
-        resubmit: flags.resubmit === "true",
         note: flags.note,
         by: flags.by,
       });
       console.log(`promote ${r.id}: ${r.from} → ${r.to}`);
       if (r.to === "published") {
         console.log(`  merged to the shared branch? Teammates pick it up with an explicit pull.`);
-      }
-      if (r.to === "rejected") {
-        console.log(`  not deleted — the file stays on your branch. Your call:`);
-        console.log(`  accept: close the PR and delete the branch;`);
-        console.log(`  revise: edit the file, then \`open-memex promote ${r.id} --resubmit\`;`);
-        console.log(`  keep: leave it as a [rejected] record.`);
       }
     } catch (e) {
       console.error(`promote failed: ${(e as Error).message}`);

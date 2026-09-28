@@ -69,12 +69,12 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
 个人观察变成团队知识只有一条路——**显式晋升，绝不自动同步**：
 
 ```
-个人想法 ──propose──▶ proposed ──┬──promote──▶ approved ──promote──▶ 已发布/共享
-                                 │                         │
-                              --reject                  --reject
-                                 │                         │  （合并前可撤回批准）
-                                 ▼                         ▼
-                              rejected ──resubmit──▶ proposed
+个人想法 ──propose──▶ proposed ──promote──▶ approved ──promote──▶ 已发布/共享
+                          │                                              │
+                        驳回                                  （PR 评审就是评审机制）
+                          │
+                          ▼
+                 curator 再往 org 级提升（Phase 4）
 ```
 
 - `open-memex propose <id> --to project`：把一条 personal 记忆**复制**到
@@ -84,19 +84,10 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
   命令让你手动跑，不搞惊喜分支。单人开发可用 `--local-approve` 自批，跳过 PR。
 - 晋升 PR **只含记忆文件，不含代码**，跟代码 PR 分开评审、分开审计。
   审的是"这条是真的吗？能给全团队看吗？有没有 secret？"——代码 PR 的 CI 不会查这些。
-- "要求修改"不需要命令：PR 开着的时候，作者直接改同一个文件（自己改，
-  或在 chat 里让 agent 改），commit、push。状态一直是 `proposed`，
-  PR 本身就是评审机制。
 - `open-memex promote <id>`：把记忆往阶梯上推一步
-  （`proposed → approved → published`）。`--reject --note "..."` 驳回并附注原因
-  （合并前也可从 `approved` 驳回，即撤回批准）。PR 合并后，再跑一次
-  `promote <id>` 标记为 `published`。（project 记忆提升到 org 级是 Phase 4 的事。）
-- **驳回不删任何东西。**文件留在你的分支上，之后怎么处理由人决定：
-  1. **接受**：关 PR、删分支——文件跟着走（本地索引下次 sync 自己清掉）；
-  2. **改完重提**：改文件，跑 `open-memex promote <id> --resubmit`，
-     commit、push——同一个 PR 里继续评审；
-  3. **留作记录**：不动它；它带着 `[rejected]` 标签和你的注记一直可见，
-     团队以后能看到"这个考虑过，为啥没要"。
+  （`proposed → approved → published`）。`--reject --note "..."` 驳回并附注原因。
+  PR 合并后，再跑一次 `promote <id>` 标记为 `published`。（project 记忆提升到
+  org 级是 Phase 4 的事。）
 - `open-memex resolve [id]`：不带参数列出冲突中的记忆文件；带 id 则尝试
   **字段级 3-way 合并** YAML frontmatter（`tags` 取并集、`updated_at` 取最新、
   只有一边改了 body 才合）。语义冲突——两边改了同一字段或 body 各改各的——

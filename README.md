@@ -277,11 +277,8 @@ open-memex propose <id> --to project [--local-approve]
 # copy a personal memory into the project scope as a review candidate
 # (never moves — the personal original stays). Prints the git/gh commands
 # for you to run; open-memex never opens a PR itself.
-open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
-# advance one step: proposed → approved → published (or reject with a note).
-# A rejection never deletes the file — your call: accept it (close the PR,
-# delete the branch), revise + --resubmit for another round, or keep it as
-# a [rejected] record.
+open-memex promote <id> [--reject] [--note "..."] [--by NAME]
+# advance one step: proposed → approved → published (or reject with a note)
 open-memex resolve [id-or-path]
 # list conflicted memory files, or field-level 3-way merge one of them.
 # Semantic conflicts are reported, never auto-resolved.

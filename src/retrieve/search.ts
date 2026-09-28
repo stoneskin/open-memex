@@ -11,6 +11,7 @@ export interface SearchHit {
   score: number;
   updated_at: number;
   status: string;
+  review_state: string;
 }
 
 interface RawRow {
@@ -24,6 +25,7 @@ interface RawRow {
   score: number;
   status: string;
   superseded_by: string | null;
+  review_state: string;
 }
 
 function toHit(r: RawRow): SearchHit {
@@ -37,6 +39,7 @@ function toHit(r: RawRow): SearchHit {
     score: r.score,
     updated_at: r.updated_at,
     status: r.status,
+    review_state: r.review_state ?? "draft",
   };
 }
 
@@ -54,7 +57,7 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
     const r = db()
       .prepare(
         `SELECT id, scope_key, project_name, type, tags, updated_at, status,
-                superseded_by, substr(content, 1, 240) AS snippet
+                superseded_by, review_state, substr(content, 1, 240) AS snippet
          FROM memories WHERE id = ?`,
       )
       .get(id) as
@@ -130,7 +133,7 @@ export function search(
 
   const sql = `
     SELECT m.id, m.scope_key, m.project_name, m.type, m.tags, m.updated_at,
-           m.status, m.superseded_by,
+           m.status, m.superseded_by, m.review_state,
            snippet(memories_fts, 0, '[', ']', ' ... ', 12) AS snippet,
            bm25(memories_fts) AS score
     FROM memories_fts
@@ -155,6 +158,7 @@ export function search(
     updated_at: number;
     status: string;
     superseded_by: string | null;
+    review_state: string;
     snippet: string;
     score: number;
   }>;
@@ -173,7 +177,7 @@ export function list(
   const typeFilter = opts.type ? ` AND type = ?` : "";
   const sql = `
     SELECT id, scope_key, project_name, type, tags, updated_at, status,
-           superseded_by, substr(content, 1, 240) AS snippet
+           superseded_by, review_state, substr(content, 1, 240) AS snippet
     FROM memories
     WHERE scope_key = ?${typeFilter}
     ORDER BY updated_at DESC
@@ -194,6 +198,7 @@ export function list(
     updated_at: number;
     status: string;
     superseded_by: string | null;
+    review_state: string;
     snippet: string;
   }>;
 

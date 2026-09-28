@@ -30,7 +30,7 @@ npm install                                          # once
 npm run typecheck                                    # tsc --noEmit — the only lint/type gate
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
 npm run cli -- propose <id> --to project [--local-approve]   # copy personal → project review
-npm run cli -- promote <id> [--reject] [--resubmit] [--note "..."]        # proposed → approved → published
+npm run cli -- promote <id> [--reject] [--note "..."]        # proposed → approved → published
 npm run cli -- resolve [id-or-path]                          # list / 3-way-merge conflicted memories
 npm run mcp                                          # start the stdio MCP server
 node --experimental-strip-types scripts\smoke-pure.ts   # runs pure-logic checks (no sqlite)

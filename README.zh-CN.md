@@ -274,10 +274,8 @@ open-memex forget <id>
 open-memex propose <id> --to project [--local-approve]
 # 把一条 personal 记忆复制到 project scope 进入评审（复制而非移动，
 # personal 原件保留）。只打印 git/gh 命令，不会自动开 PR。
-open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
-# 晋升一步：proposed → approved → published（或用 --reject 驳回并附注原因）。
-# 驳回不删文件，由你决定：接受（关 PR 删分支）、改完 --resubmit 再审、
-# 或留着当 [rejected] 记录。
+open-memex promote <id> [--reject] [--note "..."] [--by NAME]
+# 晋升一步：proposed → approved → published（或用 --reject 驳回并附注原因）
 open-memex resolve [id-or-path]
 # 列出冲突中的记忆文件，或对其中一个做字段级 3-way 合并。
 # 语义冲突只报告、不自动解决。

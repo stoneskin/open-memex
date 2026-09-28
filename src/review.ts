@@ -121,16 +121,11 @@ const NEXT_STATE: Partial<Record<ReviewState, ReviewState>> = {
 
 /**
  * Advance a project memory one step up the review ladder
- * (proposed → approved → published), reject it with --reject, or send a
- * rejected memory back for another round with --resubmit.
- *
- * A rejection never deletes anything: the file stays on the author's branch.
- * What happens next is the human's call — accept it (close the PR, delete the
- * branch), revise + --resubmit, or keep the rejected file as a record.
+ * (proposed → approved → published), or reject it with --reject.
  */
 export function promoteMemory(
   id: string,
-  opts: { reject?: boolean; resubmit?: boolean; note?: string; by?: string } = {},
+  opts: { reject?: boolean; note?: string; by?: string } = {},
 ): PromoteResult {
   const mf = findMemoryFile(id);
   if (!mf) fail(`no memory found with id "${id}".`);
@@ -140,14 +135,9 @@ export function promoteMemory(
   const from = mf.fm.review_state ?? "draft";
   const by = opts.by?.trim() || currentAuthor();
   let to: ReviewState;
-  if (opts.resubmit) {
-    if (opts.reject) fail("choose one: --resubmit or --reject, not both.");
-    if (from !== "rejected")
-      fail(`only a "rejected" memory can be resubmitted (memory "${id}" is "${from}").`);
-    to = "proposed";
-  } else if (opts.reject) {
-    if (from !== "proposed" && from !== "approved")
-      fail(`cannot reject from "${from}" — only "proposed" or "approved" can be rejected.`);
+  if (opts.reject) {
+    if (from !== "proposed")
+      fail(`cannot reject from "${from}" — only a "proposed" memory can be rejected.`);
     to = "rejected";
   } else {
     const next = NEXT_STATE[from];
@@ -164,9 +154,7 @@ export function promoteMemory(
     ...mf.fm,
     review_state: to,
     updated_at: new Date().toISOString(),
-    // A rejection withdraws any earlier approval; a resubmission clears it too
-    // (the memory must earn approval again).
-    approved_by: to === "approved" ? by : to === "rejected" || to === "proposed" ? null : mf.fm.approved_by,
+    approved_by: to === "approved" ? by : mf.fm.approved_by,
     review_note: opts.note?.trim() ? opts.note.trim() : mf.fm.review_note,
   };
   fs.writeFileSync(mf.filePath, serialize(fm, mf.body), "utf8");

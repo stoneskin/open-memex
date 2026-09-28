@@ -619,17 +619,12 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   D1). (2) `propose` **copies** personal → project (new id, never moves — the
   personal original stays private); `--local-approve` skips the PR for solo
   devs. (3) `promote` advances exactly one step up the ladder
-  (`proposed → approved → published`), `--reject`s with a note (also from
-  `approved`, withdrawing approval before merge), or `--resubmit`s a rejected
-  memory back to `proposed` for another round; `draft` and terminal states
-  refuse. (4) `resolve` lists conflicted memory files, or
+  (`proposed → approved → published`) or `--reject`s with a note; `draft` and
+  terminal states refuse. (4) `resolve` lists conflicted memory files, or
   attempts a field-level 3-way merge from git stages 1/2/3 (`tags` union,
   `updated_at` takes latest, body merged only when one side changed); semantic
   conflicts (same field / body changed differently on both sides) are reported
-  and the file is left untouched — **never auto-resolved**. (5) A rejection
-  never deletes anything: the file stays on the author's branch; the human
-  accepts (close PR, delete branch), revises + `--resubmit`s, or keeps it as
-  a `[rejected]` record. (6) No git
+  and the file is left untouched — **never auto-resolved**. (5) No git
   automation anywhere in the workflow: no branch creation, no commits, no PRs —
   the commands print the exact next steps for the human. Org-level promotion is
   Phase 4. *Rationale: the review ladder must be explicit and auditable; the

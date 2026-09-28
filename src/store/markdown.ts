@@ -59,6 +59,27 @@ export interface Frontmatter {
   updated_at: string; // RFC 3339
   supersedes: string | null; // on the NEW memory → points BACK (§3.3)
   superseded_by: string | null; // on the OLD memory → points FORWARD
+  /** 2B/D25: where this memory sits in the propose → promote workflow. */
+  review_state: ReviewState;
+  /** Who proposed / approved it (git user.name, fallback OS user). */
+  proposed_by: string | null;
+  approved_by: string | null;
+  /** For propose-copies: the personal memory this was derived from. */
+  derived_from: string | null;
+  /** Curator note on the latest review transition (e.g. rejection reason). */
+  review_note: string | null;
+}
+
+/** Review lifecycle for shared memories (2B/D25): draft → proposed →
+ *  approved/rejected → published. Personal memories stay `draft`. */
+export type ReviewState = "draft" | "proposed" | "approved" | "rejected" | "published";
+
+const REVIEW_STATES: ReviewState[] = ["draft", "proposed", "approved", "rejected", "published"];
+
+export function asReviewState(v: unknown): ReviewState {
+  return typeof v === "string" && (REVIEW_STATES as string[]).includes(v)
+    ? (v as ReviewState)
+    : "draft";
 }
 
 export interface MemoryFile {
@@ -186,6 +207,15 @@ export function normalizeFrontmatter(
       typeof raw.superseded_by === "string" && raw.superseded_by
         ? raw.superseded_by
         : null,
+    review_state: asReviewState(raw.review_state),
+    proposed_by:
+      typeof raw.proposed_by === "string" && raw.proposed_by ? raw.proposed_by : null,
+    approved_by:
+      typeof raw.approved_by === "string" && raw.approved_by ? raw.approved_by : null,
+    derived_from:
+      typeof raw.derived_from === "string" && raw.derived_from ? raw.derived_from : null,
+    review_note:
+      typeof raw.review_note === "string" && raw.review_note ? raw.review_note : null,
   };
 }
 

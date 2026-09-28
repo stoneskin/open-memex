@@ -238,6 +238,11 @@ export function supersede(
     updated_at: now,
     supersedes: oldId,
     superseded_by: null,
+    review_state: "draft",
+    proposed_by: null,
+    approved_by: null,
+    derived_from: null,
+    review_note: null,
   };
   const dir = path.dirname(oldMf.filePath);
   const newPath = path.join(dir, `${newFm.id}.md`);

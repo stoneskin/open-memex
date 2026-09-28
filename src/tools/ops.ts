@@ -132,6 +132,11 @@ function buildFrontmatter(
     updated_at: rfc,
     supersedes: null,
     superseded_by: null,
+    review_state: "draft",
+    proposed_by: null,
+    approved_by: null,
+    derived_from: null,
+    review_note: null,
   };
 }
 

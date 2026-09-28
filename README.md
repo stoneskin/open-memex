@@ -283,6 +283,11 @@ Project drafts live in the **appdata outbox** (git-invisible, branch-independent
 only user-approved drafts move into `<repo>/.ai/open-memex/`, where they follow
 branches and PRs. Nothing moves without you naming it.
 
+In an AI chat with the MCP server connected, just say **"sync memory"**
+(or "同步记忆") — the agent runs the status check, summarizes the outbox drafts,
+and asks which ones to sync. The agent also proposes this on its own at session
+start and at work checkpoints.
+
 ```sh
 open-memex sync-status
 # show when the index was last synced (and what triggered it), the outbox
@@ -353,8 +358,11 @@ server with cwd set to your project root (`init` handles this for you).
 
 > **Note:** MCP is request/response — it gives the agent tools, not the opencode
 > plugin's automatic keyword capture or first-turn context injection. Proactive
-> memory use depends on the agent's instructions (the Copilot instructions
-> that `init` writes).
+> memory use depends on the agent's instructions: the server sends session-start
+> guidance (call `memory_status` at session start and at checkpoints) in the MCP
+> handshake `instructions`, and `init` writes the fuller version into the
+> editor's instruction files. Both are advisory — no MCP consumer offers a hard
+> session-start hook.
 
 ## Roadmap
 

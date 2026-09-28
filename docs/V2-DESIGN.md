@@ -699,6 +699,21 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   is never overridden by a PR signal. *Rationale: the PR is where the team
   actually reviews — the mapping closes the loop without inventing new
   review UI. Approved 2026-09-28.*
+- **D34** — The MCP server sends session-start guidance in the handshake
+  `instructions`: call `memory_status` at session start (and at work
+  checkpoints); if the outbox has drafts, summarize and ask the user which to
+  sync; proactive `memory_add`; `memory_search` before asking about the past;
+  personal never leaves the machine. *Rationale: the init-written instruction
+  files only exist if the user ran `init --client` — the handshake reaches
+  every MCP client at connect time. Still advisory: no MCP consumer offers a
+  hard session-start hook, and we do not claim otherwise. Approved 2026-09-28.*
+- **D35** — "sync memory" (or "同步记忆") is a natural-language trigger for the
+  sync flow: the agent calls `memory_status`, summarizes the outbox drafts, and
+  asks the user which ones to sync — same flow as the session-start proposal,
+  but user-initiated. Taught in the MCP handshake instructions, the
+  init-written instruction files, and the `memory_status` tool description.
+  *Rationale: the user should not have to remember command names to sync;
+  saying it in words must work. Approved 2026-09-28.*
 - **D33** — Every CLI command answers `open-memex <command> --help` (and `-h`)
   with its own usage, flags, and examples; checked before config/DB load so
   help works even in a broken environment. Unknown commands with `--help`

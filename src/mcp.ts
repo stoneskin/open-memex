@@ -53,6 +53,33 @@ import {
 
 const SERVER_VERSION = "0.2.0-alpha";
 
+/**
+ * D26: session-start guidance delivered through the MCP handshake itself.
+ * The init-written instruction files only exist if the user ran
+ * `open-memex init --client`; the initialize `instructions` reach every MCP
+ * client at connect time. Still advisory — no MCP consumer offers a hard
+ * session-start hook — but it is the strongest signal available.
+ */
+const SERVER_INSTRUCTIONS = `You are connected to an open-memex local memory MCP server
+(eleven memory_* tools: add, search, list, supersede, forget, status, submit,
+propose, promote, resolve, pr_status).
+
+- At the START of this session, call memory_status. If the project outbox has
+  drafts waiting for review, summarize them (one line each) and ask the user
+  which ones to sync into the repo. Sync NOTHING the user did not name.
+- When the user says "sync memory" (or "同步记忆"), treat it as a request to run
+  the sync flow: call memory_status, summarize the outbox drafts, and ask which
+  ones to sync.
+- When you finish a meaningful chunk of work, call memory_status again as a checkpoint.
+- BE PROACTIVE: when the user shares something worth remembering across sessions
+  (a decision, a preference, a project convention, a fix and its cause), call
+  memory_add without being asked. Keep each memory to one self-contained statement.
+- Before asking the user about past decisions, conventions, or preferences they
+  may have told you before, call memory_search first.
+- Memories default to this project's scope; use the personal scope for facts
+  about the user that hold across all projects.
+- personal scope memories NEVER leave this machine.`;
+
 /** Adapt a framework-agnostic op result to an MCP tool response. */
 function toMcp(p: Promise<ToolResult>) {
   return p.then(
@@ -91,7 +118,10 @@ export async function runMcpServer() {
     };
   };
 
-  const server = new McpServer({ name: "open-memex", version: SERVER_VERSION });
+  const server = new McpServer(
+    { name: "open-memex", version: SERVER_VERSION },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   server.registerTool(
     "memory_add",

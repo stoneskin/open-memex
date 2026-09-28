@@ -73,6 +73,9 @@ Syncing them into the repo for review is an explicit, user-approved step:
 - At session start, and when you finish a meaningful chunk of work, call
   \`memory_status\`. If the outbox has drafts, summarize them (one line each) and ask
   the user which ones to sync. Sync NOTHING the user did not name.
+- When the user says "sync memory" (or "同步记忆"), treat it as a request to run
+  the sync flow above: call \`memory_status\`, summarize the outbox drafts, and ask
+  which ones to sync.
 - When the user approves, ask ONE follow-up: a separate memory-only branch/PR
   (recommended), or fold the memories into the current branch alongside code?
   A "yes, you do it" answer covers the whole chain — branch, local commit,

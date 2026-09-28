@@ -51,7 +51,7 @@ export const TOOL_DESCRIPTIONS = {
     "Replace an existing memory with a newer version. The old memory is kept as history (status: superseded) and retrieval returns the new one. Use when a saved fact becomes outdated and should be replaced rather than duplicated.",
   memory_forget: "Delete a memory by id. Use when the user asks to forget something.",
   memory_status:
-    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start and at task checkpoints, then ask the user which drafts to sync.",
+    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start and at task checkpoints, then ask the user which drafts to sync. The user may also trigger this flow by saying 'sync memory' (or '同步记忆').",
   memory_submit:
     "Move outbox drafts into a git branch for review: creates a branch (default mem/sync-*), copies the drafts into the repo memory dir as proposed, commits locally, and moves the outbox originals out. Prints the push and PR commands — those need the user's explicit approval and are never run automatically.",
   memory_propose:

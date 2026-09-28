@@ -281,6 +281,10 @@ project 草稿先住在 **appdata outbox**（git 看不见、跟分支无关）�
 点名批准的草稿，才会被移入 `<repo>/.ai/open-memex/`，之后随分支和 PR 走。
 没经过你点名，什么都不会动。
 
+在接了 MCP 服务器的 AI 对话里，直接说 **"同步记忆"**（或 "sync memory"）——
+agent 会查状态、把 outbox 草稿逐条摘要、问你同步哪几条。agent 也会在新对话
+开始和任务检查点主动提这件事。
+
 ```sh
 open-memex sync-status
 # 看索引上次同步的时间和触发方、outbox（待同步）、repo 里的评审状态
@@ -345,7 +349,10 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 
 > **注意：** MCP 是请求/响应式的——它给 agent 提供 tools，但没有 opencode
 > 插件的关键词自动捕获和首轮上下文注入。想让 agent 主动用记忆，
-> 靠的是 agent 的 instructions（`init` 写的 Copilot instructions）。
+> 靠的是 agent 的 instructions：服务器在 MCP 握手的 `instructions` 里自带
+> session-start 指引（开场调 `memory_status`、检查点再调），`init` 则把更完整
+> 的版本写进编辑器的 instruction 文件。两者都是建议性的——MCP 客户端没有
+> 强制的 session-start hook。
 
 ## 路线图（Roadmap）
 

@@ -1,17 +1,20 @@
 /**
- * 2B/D25: propose → promote → resolve workflow.
+ * 2B/D26: propose → submit → promote → resolve workflow.
  *
  * - `propose <id> --to project`: copy a personal memory into the project
- *   scope as a review candidate (review_state: proposed, or approved with
- *   --local-approve). Never moves — the personal original stays put.
+ *   outbox (appdata) as a draft. Never moves — the personal original stays
+ *   put. Outbox drafts are git-invisible until submitted.
+ * - `submit <ids>`: move outbox drafts into a git branch (new `mem/sync-*`
+ *   by default), as `proposed`, commit locally, print push + PR commands.
+ *   Push/PR need the user's explicit approval — the tool never pushes.
  * - `promote <id>`: advance a project memory one step up the review ladder
  *   (proposed → approved → published), or --reject it with a note.
  * - `resolve [id]`: assist with git merge conflicts inside the in-repo
  *   memory dir. Frontmatter gets a field-level 3-way merge; semantic
  *   conflicts are reported, never auto-resolved.
  *
- * No git automation: propose/promote never create branches, commits, or
- * PRs. They print the exact next commands for the human to run.
+ * Git automation line (D25 as revised by D26): local git only (submit's
+ * branch + commit). Nothing leaves the machine without approval.
  */
 
 import { execFileSync } from "node:child_process";
@@ -65,8 +68,10 @@ export interface ProposeResult {
 }
 
 /**
- * Copy a personal memory into the project scope as a review candidate.
+ * Copy one personal memory into the project scope as a review candidate.
  * The source memory is untouched (copy, not move — D25).
+ * Batch-friendly: validates nothing, copies one — use proposeMemories()
+ * for the all-or-nothing multi-id path.
  */
 export function proposeMemory(
   sourceId: string,
@@ -74,18 +79,27 @@ export function proposeMemory(
 ): ProposeResult {
   const src = findMemoryFile(sourceId);
   if (!src) fail(`no memory found with id "${sourceId}".`);
-  if (src.fm.scope === "project")
+  return copyPersonalToProject(sourceId, src.fm, src.body, opts);
+}
+
+function copyPersonalToProject(
+  sourceId: string,
+  srcFm: Frontmatter,
+  srcBody: string,
+  opts: { localApprove?: boolean } = {},
+): ProposeResult {
+  if (srcFm.scope === "project")
     fail(`memory "${sourceId}" is already in project scope — nothing to propose.`);
-  if (src.fm.scope === "org")
+  if (srcFm.scope === "org")
     fail(`memory "${sourceId}" is already shared at org scope.`);
-  if (src.fm.status === "retracted" || src.fm.status === "archived")
-    fail(`memory "${sourceId}" is ${src.fm.status} — cannot propose it.`);
+  if (srcFm.status === "retracted" || srcFm.status === "archived")
+    fail(`memory "${sourceId}" is ${srcFm.status} — cannot propose it.`);
 
   const project = resolveProjectScope(projectRoot());
   const author = currentAuthor();
   const now = new Date().toISOString();
   const fm: Frontmatter = {
-    ...src.fm,
+    ...srcFm,
     id: ulid(),
     scope: "project",
     scope_key: project.key,
@@ -97,11 +111,39 @@ export function proposeMemory(
     review_state: opts.localApprove ? "approved" : "proposed",
     proposed_by: author,
     approved_by: opts.localApprove ? author : null,
-    derived_from: src.fm.id,
+    derived_from: srcFm.id,
   };
-  const { filePath } = writeMemoryFile(fm, src.body);
-  upsertFromFile({ fm, body: src.body, filePath, mtimeMs: Date.now() });
+  const { filePath } = writeMemoryFile(fm, srcBody);
+  upsertFromFile({ fm, body: srcBody, filePath, mtimeMs: Date.now() });
   return { id: fm.id, filePath, reviewState: fm.review_state };
+}
+
+/**
+ * Propose several personal memories at once — one branch, one PR.
+ * All-or-nothing: every id is validated before anything is copied, so a bad
+ * id never leaves a half-proposed batch behind.
+ */
+export function proposeMemories(
+  sourceIds: string[],
+  opts: { localApprove?: boolean } = {},
+): { sourceId: string; result: ProposeResult }[] {
+  if (sourceIds.length === 0) fail("propose needs at least one memory id.");
+  const seen = new Set<string>();
+  const sources = sourceIds.map((sourceId) => {
+    if (seen.has(sourceId)) fail(`duplicate id "${sourceId}" — list each memory once.`);
+    seen.add(sourceId);
+    const src = findMemoryFile(sourceId);
+    if (!src) fail(`no memory found with id "${sourceId}".`);
+    if (src.fm.scope !== "personal")
+      fail(`only personal memories can be proposed (memory "${sourceId}" is ${src.fm.scope}).`);
+    if (src.fm.status === "retracted" || src.fm.status === "archived")
+      fail(`memory "${sourceId}" is ${src.fm.status} — cannot propose it.`);
+    return { sourceId, fm: src.fm, body: src.body };
+  });
+  return sources.map(({ sourceId, fm, body }) => ({
+    sourceId,
+    result: copyPersonalToProject(sourceId, fm, body, opts),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -121,11 +163,16 @@ const NEXT_STATE: Partial<Record<ReviewState, ReviewState>> = {
 
 /**
  * Advance a project memory one step up the review ladder
- * (proposed → approved → published), or reject it with --reject.
+ * (proposed → approved → published), reject it with --reject, or send a
+ * rejected memory back for another round with --resubmit.
+ *
+ * A rejection never deletes anything: the file stays on the author's branch.
+ * What happens next is the human's call — accept it (close the PR, delete the
+ * branch), revise + --resubmit, or keep the rejected file as a record.
  */
 export function promoteMemory(
   id: string,
-  opts: { reject?: boolean; note?: string; by?: string } = {},
+  opts: { reject?: boolean; resubmit?: boolean; note?: string; by?: string } = {},
 ): PromoteResult {
   const mf = findMemoryFile(id);
   if (!mf) fail(`no memory found with id "${id}".`);
@@ -135,9 +182,14 @@ export function promoteMemory(
   const from = mf.fm.review_state ?? "draft";
   const by = opts.by?.trim() || currentAuthor();
   let to: ReviewState;
-  if (opts.reject) {
-    if (from !== "proposed")
-      fail(`cannot reject from "${from}" — only a "proposed" memory can be rejected.`);
+  if (opts.resubmit) {
+    if (opts.reject) fail("choose one: --resubmit or --reject, not both.");
+    if (from !== "rejected")
+      fail(`only a "rejected" memory can be resubmitted (memory "${id}" is "${from}").`);
+    to = "proposed";
+  } else if (opts.reject) {
+    if (from !== "proposed" && from !== "approved")
+      fail(`cannot reject from "${from}" — only "proposed" or "approved" can be rejected.`);
     to = "rejected";
   } else {
     const next = NEXT_STATE[from];
@@ -154,7 +206,9 @@ export function promoteMemory(
     ...mf.fm,
     review_state: to,
     updated_at: new Date().toISOString(),
-    approved_by: to === "approved" ? by : mf.fm.approved_by,
+    // A rejection withdraws any earlier approval; a resubmission clears it too
+    // (the memory must earn approval again).
+    approved_by: to === "approved" ? by : to === "rejected" || to === "proposed" ? null : mf.fm.approved_by,
     review_note: opts.note?.trim() ? opts.note.trim() : mf.fm.review_note,
   };
   fs.writeFileSync(mf.filePath, serialize(fm, mf.body), "utf8");

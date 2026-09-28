@@ -153,7 +153,7 @@ open-memex doctor
 
 Checks: Node version, config source, scope resolution for the current directory,
 storage writability, then boots a real MCP server and runs `initialize` +
-`tools/list` against it — all five tools must show up.
+`tools/list` against it — all ten tools must show up.
 
 ## Tools the agent gets
 
@@ -164,6 +164,11 @@ storage writability, then boots a real MCP server and runs `initialize` +
 | `memory_list`      | List memories in a scope, newest first |
 | `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
 | `memory_forget`    | Delete a memory by id |
+| `memory_status`    | Show the sync queue: outbox drafts, repo review states, uncommitted files |
+| `memory_submit`    | Move named drafts into the repo memory dir (local branch + commit) |
+| `memory_propose`   | Copy personal memories into the project scope as review candidates |
+| `memory_promote`   | Advance `proposed → approved → published` (or reject / resubmit) |
+| `memory_resolve`   | List conflicted memory files / 3-way-merge one of them |
 
 ## Capture
 
@@ -270,15 +275,39 @@ open-memex status <id> deprecated
 open-memex forget <id>
 ```
 
-Team review workflow (Phase 2B — memories live in `<repo>/.ai/open-memex/`):
+Team review workflow (Phase 2B — two homes, one per stage):
+
+Project drafts live in the **appdata outbox** (git-invisible, branch-independent);
+only user-approved drafts move into `<repo>/.ai/open-memex/`, where they follow
+branches and PRs. Nothing moves without you naming it.
 
 ```sh
-open-memex propose <id> --to project [--local-approve]
+open-memex sync-status
+# show the outbox (pending sync), the repo review states
+# (draft / proposed / approved / published / rejected),
+# and any uncommitted repo memory files.
+
+open-memex submit <id...> [--onto <branch>] [--base <branch>]
+# move your named drafts into .ai/open-memex/ as "proposed":
+# creates mem/sync-<timestamp> (or stays on --onto for a code+memory PR),
+# copies, flips review_state, local git commit. All-or-nothing; conflicts
+# (same id, different content) abort cleanly. Prints the push + gh pr
+# commands; an agent holding your Yes carries through push/PR itself.
+# Default PR base is the current branch; --base redirects to main or your
+# integration branch.
+
+open-memex propose <id...> --to project [--local-approve]
+# propose one or several personal memories at once (one branch, one PR);
+# each is copied with its own new id. All-or-nothing: a bad id aborts the
+# whole batch, never a half-proposed one.
 # copy a personal memory into the project scope as a review candidate
-# (never moves — the personal original stays). Prints the git/gh commands
-# for you to run; open-memex never opens a PR itself.
-open-memex promote <id> [--reject] [--note "..."] [--by NAME]
-# advance one step: proposed → approved → published (or reject with a note)
+# (never moves — the personal original stays). Result lands in the outbox;
+# run sync-status / submit when you're ready to put it in the repo.
+open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
+# advance one step: proposed → approved → published (or reject with a note).
+# A rejection never deletes the file — your call: accept it (close the PR,
+# delete the branch), revise + --resubmit for another round, or keep it as
+# a [rejected] record.
 open-memex resolve [id-or-path]
 # list conflicted memory files, or field-level 3-way merge one of them.
 # Semantic conflicts are reported, never auto-resolved.
@@ -301,7 +330,7 @@ simple cases — npm swallows unknown `--flag` args, so prefer direct `node`).
 
 ## MCP server
 
-The same five memory tools over the Model Context Protocol via a stdio server —
+The same ten memory tools over the Model Context Protocol via a stdio server —
 no host-specific plugin needed. Any MCP client can use open-memex.
 
 ```sh
@@ -323,8 +352,10 @@ server with cwd set to your project root (`init` handles this for you).
 `init` setup, Chinese keyword capture with personal/project routing, `config` /
 `capture --dry-run` / `doctor` helpers, Visual Studio support.
 
-**Coming — `0.4.0`:** team sync — shared memory via git (`propose` / `promote` /
-`resolve` workflow, in-repo memory dir), 1–2 colleague pilot.
+**In progress — `0.4.0`:** team sync — shared memory via git: appdata draft
+outbox → `sync-status` → `submit` (local branch+commit, push/PR on your Yes)
+→ `promote` / `resolve` review workflow, in-repo `.ai/open-memex/` dir, 1–2
+colleague pilot.
 
 **Coming — `0.3.0` (stable):** org layer — org memory repo, curator convention,
 distill-to-AGENTS.md assist.

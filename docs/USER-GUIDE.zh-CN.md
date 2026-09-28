@@ -28,14 +28,16 @@ Markdown 丢了才是真的丢了。
 | | appdata（书桌） | repo `.ai/open-memex/`（书架） |
 |---|---|---|
 | 位置 | Windows `%APPDATA%/open-memex`，Linux `~/.local/share/open-memex` | 项目根目录下，默认 `.ai/open-memex/`（D23，可配置 `memoryDir`） |
-| 放什么 | `memories/personal/` 个人记忆；`index.db` 本地索引 | project scope 的 Markdown，一个记忆一个文件 |
+| 放什么 | `memories/personal/` 个人记忆；project scope **草稿箱（outbox）**；`index.db` 本地索引 | 已提交的 project 记忆（`proposed` 及以上） |
 | 进 git 吗 | 不进 | 进，git 就是它的搬运工 |
 | 索引呢 | `index.db` 可重建，**永远不入库** | 不存索引，用时从 Markdown 重建 |
 
 个人笔记本（personal）永远不上书架。这是铁律，不是配置项。
 
-仓库目录按需创建：第一次写入 project 记忆时自动建目录；0.3.0 时代留在
-appdata 的旧项目文件会在首次写入/同步时自动搬进来（只搬当前项目的，不碰别人的）。
+project 记忆先以**草稿**身份住在 appdata outbox——git 看不见、跟分支无关。
+只有你亲手点名的草稿，才会被 `open-memex submit` 移上书架（§5）。
+一个阶段只住一个地方：submit 成功后 outbox 原件消失；submit 之前，
+repo 里什么都不知道。
 
 ## 3. 首轮注入：8 条和 5 条是怎么选出来的
 
@@ -69,25 +71,52 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
 个人观察变成团队知识只有一条路——**显式晋升，绝不自动同步**：
 
 ```
-个人想法 ──propose──▶ proposed ──promote──▶ approved ──promote──▶ 已发布/共享
-                          │                                              │
-                        驳回                                  （PR 评审就是评审机制）
-                          │
-                          ▼
-                 curator 再往 org 级提升（Phase 4）
+个人想法 ──propose──▶ 草稿箱 ──submit──▶ proposed ──┬──promote──▶ approved ──promote──▶ 已发布/共享
+                                                    │                         │
+                                                 --reject                  --reject
+                                                    │                         │  （合并前可撤回批准）
+                                                    ▼                         ▼
+                                                 rejected ──resubmit──▶ proposed
 ```
 
-- `open-memex propose <id> --to project`：把一条 personal 记忆**复制**到
-  `.ai/open-memex/` 进入评审（`review_state: proposed`，新 id，
+- `open-memex propose <id...> --to project`：把一条或多条 personal 记忆**复制**到
+  **appdata 草稿箱**进入评审（`review_state: draft`，每条独立新 id，
   `derived_from` 指回 personal 原件）。**复制而非移动——personal 原件保留。**
-  它不会自动建分支——只打印 `git checkout -b` / `git add` / `gh pr create`
-  命令让你手动跑，不搞惊喜分支。单人开发可用 `--local-approve` 自批，跳过 PR。
-- 晋升 PR **只含记忆文件，不含代码**，跟代码 PR 分开评审、分开审计。
+  全有或全无：id 有错整批回滚。这一步还不碰 repo——草稿箱 git 看不见、跟分支无关。
+  单人开发可用 `--local-approve` 自批。
+- `open-memex sync-status`：看草稿箱（待同步）、repo 里的评审状态
+  （`draft / proposed / approved / published / rejected`），以及 repo 里还没
+  commit 的记忆文件。你的 agent 会在会话开始和关键节点跑这个，然后问你
+  哪些草稿（如果有）要同步。
+- `open-memex submit <id...>`：把**你点名的草稿**移入 `<repo>/.ai/open-memex/`，
+  状态变为 `proposed`。它会建 `mem/sync-<timestamp>` 分支（或用 `--onto`
+  留在当前分支，跟代码走同一个 PR），复制文件、改 `review_state`、做一次
+  **本地** git commit——全有或全无、幂等、crash-safe。它打印 `git push` +
+  `gh pr create` 命令；如果你的 agent 已经拿到你这次的 Yes，它会自己走完
+  push 和 PR。PR 默认 base 是当前分支；`--base` 可改到 `main` 或集成支。
+  分支上同 id 但内容不同——**直接中止**，等人裁决，绝不覆盖。
+  - 四个动作分工要分清：**propose 是跨界**（personal → project 草稿箱，
+    唯一跨越"私有/共享"边界的动作）；**submit 把草稿搬进 repo**
+    （outbox → `.ai/open-memex/`，`draft → proposed`）；**promote 只改状态标签**
+    （文件一直在 `.ai/open-memex/` 里没动过，只是 `review_state`
+    从 proposed → approved → published）——它不在目录之间搬文件；
+    **git 负责运输**（push、PR、合并）。
+- 独立的记忆 PR **只含记忆文件，不含代码**，跟代码 PR 分开评审、分开审计。
   审的是"这条是真的吗？能给全团队看吗？有没有 secret？"——代码 PR 的 CI 不会查这些。
+  也可以搭代码 PR 的车（`submit --onto <branch>`）。
+- "要求修改"不需要命令：PR 开着的时候，作者直接改同一个文件（自己改，
+  或在 chat 里让 agent 改），commit、push。状态一直是 `proposed`，
+  PR 本身就是评审机制。
 - `open-memex promote <id>`：把记忆往阶梯上推一步
-  （`proposed → approved → published`）。`--reject --note "..."` 驳回并附注原因。
-  PR 合并后，再跑一次 `promote <id>` 标记为 `published`。（project 记忆提升到
-  org 级是 Phase 4 的事。）
+  （`proposed → approved → published`）。`--reject --note "..."` 驳回并附注原因
+  （合并前也可从 `approved` 驳回，即撤回批准）。PR 合并后，再跑一次
+  `promote <id>` 标记为 `published`。（project 记忆提升到 org 级是 Phase 4 的事。）
+- **驳回不删任何东西。**文件留在你的分支上，之后怎么处理由人决定：
+  1. **接受**：关 PR、删分支——文件跟着走（本地索引下次 sync 自己清掉）；
+  2. **改完重提**：改文件，跑 `open-memex promote <id> --resubmit`，
+     commit、push——同一个 PR 里继续评审；
+  3. **留作记录**：不动它；它带着 `[rejected]` 标签和你的注记一直可见，
+     团队以后能看到"这个考虑过，为啥没要"。
 - `open-memex resolve [id]`：不带参数列出冲突中的记忆文件；带 id 则尝试
   **字段级 3-way 合并** YAML frontmatter（`tags` 取并集、`updated_at` 取最新、
   只有一边改了 body 才合）。语义冲突——两边改了同一字段或 body 各改各的——
@@ -97,8 +126,10 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
 
 ## 6. 同步：git 是搬运工，不是大脑
 
-- **写**：`memory_add`（project scope）→ 写 repo 工作区的 `.ai/open-memex/<id>.md`，
-  同时更新本地索引。**不自动 commit、不自动 push**。
+- **写**：`memory_add`（project scope）→ 写 **appdata 草稿箱**，同时更新本地索引。
+  **不碰 repo、不自动 commit、不自动 push**。
+- **交**（显式，你说了算）：`open-memex submit <id...>` → 本地分支 + 本地 commit
+  进 `.ai/open-memex/`；push/PR 命令打印给你（或你的 agent 拿着你的 Yes 自己做）。
 - **拉** **2B**：`open-memex pull`（必须显式，没有自动）→ git fetch + fast-forward →
   扫描 `.ai/open-memex/*.md` → 按文件 mtime 合进本地 `index.db`。检索永远走 SQLite，不 walk git。
 - **personal scope**：永远不同步（§1 铁律）。

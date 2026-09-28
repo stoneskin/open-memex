@@ -6,7 +6,6 @@ import { contentHash, repairChain } from "./lifecycle.ts";
 import {
   iterMemoryFiles,
   iterInRepoMemoryFiles,
-  migrateScopeToRepo,
   readMemoryFile,
   timeToMs,
   type MemoryFile,
@@ -108,14 +107,15 @@ export function syncScope(scopeKey: string): SyncStats {
   const existingById = new Map(existing.map((r) => [r.id, r]));
   const seen = new Set<string>();
 
-  // 2B/D24: project scopes live in the repo dir. Drain any legacy appdata
-  // files first, then scan both locations (appdata first so the in-repo copy
-  // wins on the near-impossible id collision).
+  // 2B/D26: project scopes have two homes — the appdata outbox (drafts,
+  // branch-independent) and the in-repo dir (submitted memories, following
+  // the current branch). No migration: appdata files stay put until an
+  // explicit `submit` moves them. On the near-impossible id collision the
+  // in-repo (submitted) copy wins, so scan appdata first.
   const filePaths: string[] = [];
   if (scopeKey.startsWith("project__")) {
     const root = projectRoot();
     const memoryDir = loadConfig().memoryDir;
-    migrateScopeToRepo(scopeKey, root, memoryDir);
     for (const fp of iterMemoryFiles(scopeKey)) filePaths.push(fp);
     for (const fp of iterInRepoMemoryFiles(root, memoryDir)) filePaths.push(fp);
   } else {

@@ -149,7 +149,7 @@ open-memex doctor
 
 检查：Node 版本、配置来源、当前目录的 scope 解析、存储可写性，
 然后启动一个真实的 MCP server 做 `initialize` + `tools/list`——
-五个 tools 都必须出现。
+十个 tools 都必须出现。
 
 ## Agent 可用的 tools
 
@@ -160,6 +160,11 @@ open-memex doctor
 | `memory_list`      | 按 scope 列出记忆，最新的在前 |
 | `memory_supersede` | 用新版本替换一条记忆（保留替换链） |
 | `memory_forget`    | 按 id 删除一条记忆 |
+| `memory_status`    | 显示同步队列：outbox 草稿、repo 评审状态、未提交文件 |
+| `memory_submit`    | 把点名的草稿移入 repo memory 目录（建本地分支 + commit） |
+| `memory_propose`   | 把 personal 记忆复制到 project scope 作为评审候选 |
+| `memory_promote`   | 推进 `proposed → approved → published`（或 reject / resubmit） |
+| `memory_resolve`   | 列出冲突的记忆文件 / 对单个做三路合并 |
 
 ## 捕获（Capture）
 
@@ -268,14 +273,34 @@ open-memex status <id> deprecated
 open-memex forget <id>
 ```
 
-团队评审工作流（Phase 2B —— 记忆文件存放在 `<repo>/.ai/open-memex/`）：
+团队评审工作流（Phase 2B —— 两个家，各管一段）：
+
+project 草稿先住在 **appdata outbox**（git 看不见、跟分支无关）；只有你
+点名批准的草稿，才会被移入 `<repo>/.ai/open-memex/`，之后随分支和 PR 走。
+没经过你点名，什么都不会动。
 
 ```sh
-open-memex propose <id> --to project [--local-approve]
+open-memex sync-status
+# 看 outbox（待同步）、repo 里的评审状态
+# （draft / proposed / approved / published / rejected），
+# 以及 repo 里还没 commit 的记忆文件。
+
+open-memex submit <id...> [--onto <branch>] [--base <branch>]
+# 把你点名的草稿移入 .ai/open-memex/，状态变为 proposed：
+# 建 mem/sync-<timestamp> 分支（或 --onto 当前分支，跟代码走同一个 PR），
+# 复制、改 review_state、本地 git commit。全有或全无；冲突（同 id 不同内容）
+# 干净回滚。打印 push + gh pr 命令；Agent 拿到你的 Yes 后会自己走完 push/PR。
+# PR 默认 base 是当前分支；--base 可改到 main 或集成支。
+
+open-memex propose <id...> --to project [--local-approve]
+# 一次 propose 一条或多条（一个分支、一个 PR），每条独立新 id。
+# 全有或全无：id 有错整批回滚，不会留半截。
 # 把一条 personal 记忆复制到 project scope 进入评审（复制而非移动，
-# personal 原件保留）。只打印 git/gh 命令，不会自动开 PR。
-open-memex promote <id> [--reject] [--note "..."] [--by NAME]
-# 晋升一步：proposed → approved → published（或用 --reject 驳回并附注原因）
+# personal 原件保留）。结果落在 outbox；准备好进 repo 时再 sync-status / submit。
+open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
+# 晋升一步：proposed → approved → published（或用 --reject 驳回并附注原因）。
+# 驳回不删文件，由你决定：接受（关 PR 删分支）、改完 --resubmit 再审、
+# 或留着当 [rejected] 记录。
 open-memex resolve [id-or-path]
 # 列出冲突中的记忆文件，或对其中一个做字段级 3-way 合并。
 # 语义冲突只报告、不自动解决。
@@ -299,7 +324,7 @@ CLI 跑在 Node 22 下。从源码 checkout 使用时走内置的实验性 TypeS
 
 ## MCP server
 
-同一个五个 memory tools，走 Model Context Protocol 的 stdio server——
+同一个十个 memory tools，走 Model Context Protocol 的 stdio server——
 不需要宿主专属插件，任何 MCP 客户端都能用 open-memex。
 
 ```sh
@@ -320,8 +345,9 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 一键 `init` 配置、中文关键词捕获（含 personal/project 路由）、
 `config` / `capture --dry-run` / `doctor` 助手命令、Visual Studio 支持。
 
-**Coming —— `0.4.0`：** 团队同步——用 git 做共享记忆
-（`propose` / `promote` / `resolve` 工作流、仓库内记忆目录），
+**进行中 —— `0.4.0`：** 团队同步——用 git 做共享记忆：appdata 草稿箱 →
+`sync-status` → `submit`（本地分支+commit，push/PR 拿你的 Yes 才做）
+→ `promote` / `resolve` 评审工作流、仓库内 `.ai/open-memex/` 目录，
 找 1–2 个同事做 pilot。
 
 **Coming —— `0.3.0`（稳定版）：** 组织层——组织记忆仓库、

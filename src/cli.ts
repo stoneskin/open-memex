@@ -6,7 +6,8 @@ import { syncScope, upsertFromFile, deleteFromIndex } from "./store/sync.ts";
 import { migrateScope, scopeHasFiles, type ConflictStrategy } from "./store/migrate.ts";
 import { migrateV2 } from "./store/v2migrate.ts";
 import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
-import { proposeMemory, promoteMemory, listConflicts, resolveConflict } from "./review.ts";
+import { proposeMemories, promoteMemory, listConflicts, resolveConflict } from "./review.ts";
+import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
 import { search, list } from "./retrieve/search.ts";
 import {
   writeMemoryFile,
@@ -34,9 +35,11 @@ Usage:
   open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
   open-memex status <id> active|deprecated|retracted|archived
   open-memex forget <id>
-  open-memex propose <id> --to project [--local-approve]
-  open-memex promote <id> [--reject] [--note "..."] [--by NAME]
+  open-memex propose <id...> --to project [--local-approve]
+  open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
   open-memex resolve [id-or-path]
+  open-memex sync-status
+  open-memex submit <id...> [--onto <branch>] [--base <branch>]
   open-memex reindex
   open-memex scopes
   open-memex migrate [--from <key>] [--to <key>]
@@ -534,24 +537,38 @@ async function main() {
     return;
   }
 
+/** Positional args with flags (and their values) skipped. */
+function positionalArgs(argv: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a.startsWith("--")) {
+      const val = argv[i + 1];
+      if (val !== undefined && !val.startsWith("--")) i++; // skip the flag's value
+    } else {
+      out.push(a);
+    }
+  }
+  return out;
+}
+
   if (cmd === "propose") {
     const flags = parseFlags(rest);
-    const id = rest.find((a) => !a.startsWith("--"));
-    if (!id) usage();
+    const ids = positionalArgs(rest);
+    if (ids.length === 0) usage();
     const to = flags.to ?? "project";
     if (to !== "project") {
       console.error(`propose --to "${to}" is not supported yet (org sharing is Phase 4).`);
       process.exit(2);
     }
     try {
-      const r = proposeMemory(id, { localApprove: flags["local-approve"] === "true" });
-      console.log(`proposed ${id} → ${r.id}  [${r.reviewState}]`);
-      console.log(`  file: ${r.filePath}`);
-      console.log(`Next (review happens in a PR — open-memex never opens one for you):`);
-      console.log(`  git checkout -b mem/propose-${r.id.slice(0, 8)}`);
-      console.log(`  git add ${path.relative(process.cwd(), r.filePath)}`);
-      console.log(`  git commit -m "mem: propose ${r.id.slice(0, 8)}" && git push -u origin HEAD`);
-      console.log(`  gh pr create --title "mem: propose …" --body "Proposed from personal memory ${id}."`);
+      const batch = proposeMemories(ids, { localApprove: flags["local-approve"] === "true" });
+      for (const { sourceId, result: r } of batch) {
+        console.log(`proposed ${sourceId} → ${r.id}  [${r.reviewState}]`);
+      }
+      console.log(`Next: these are drafts in the outbox (appdata) — nothing is in git yet.`);
+      console.log(`  open-memex sync-status`);
+      console.log(`  open-memex submit ${batch.map(({ result: r }) => r.id).join(" ")}   # new branch, local commit; prints push + PR commands`);
     } catch (e) {
       console.error(`propose failed: ${(e as Error).message}`);
       process.exit(2);
@@ -566,12 +583,19 @@ async function main() {
     try {
       const r = promoteMemory(id, {
         reject: flags.reject === "true",
+        resubmit: flags.resubmit === "true",
         note: flags.note,
         by: flags.by,
       });
       console.log(`promote ${r.id}: ${r.from} → ${r.to}`);
       if (r.to === "published") {
         console.log(`  merged to the shared branch? Teammates pick it up with an explicit pull.`);
+      }
+      if (r.to === "rejected") {
+        console.log(`  not deleted — the file stays on your branch. Your call:`);
+        console.log(`  accept: close the PR and delete the branch;`);
+        console.log(`  revise: edit the file, then \`open-memex promote ${r.id} --resubmit\`;`);
+        console.log(`  keep: leave it as a [rejected] record.`);
       }
     } catch (e) {
       console.error(`promote failed: ${(e as Error).message}`);
@@ -611,6 +635,46 @@ async function main() {
       console.log(`  next: git add ${path.relative(process.cwd(), outcome.filePath)}`);
     } catch (e) {
       console.error(`resolve failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "sync-status") {
+    syncScope(project.key);
+    syncScope(PERSONAL_SCOPE.key);
+    try {
+      console.log(formatSyncStatus(getSyncStatus()));
+    } catch (e) {
+      console.error(`sync-status failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "submit") {
+    const flags = parseFlags(rest);
+    const ids = positionalArgs(rest);
+    if (ids.length === 0) usage();
+    syncScope(project.key);
+    try {
+      const r = submitMemories(ids, { onto: flags.onto, base: flags.base });
+      for (const s of r.submitted) {
+        console.log(`submitted ${s.id} → ${path.relative(process.cwd(), s.filePath)}  [proposed]`);
+      }
+      for (const id of r.skippedIdentical) {
+        console.log(`already on branch: ${id} (identical content — outbox copy removed)`);
+      }
+      if (!r.committed) {
+        console.log(`nothing new to commit — branch ${r.branch} already holds these memories.`);
+      } else {
+        console.log(`committed on ${r.branch}.`);
+      }
+      console.log(`Next (needs your approval — open-memex never pushes for you):`);
+      console.log(`  ${r.pushCommand}`);
+      console.log(`  ${r.prCommand}`);
+    } catch (e) {
+      console.error(`submit failed: ${(e as Error).message}`);
       process.exit(2);
     }
     return;

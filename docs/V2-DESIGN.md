@@ -617,18 +617,60 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   `proposed_by` / `approved_by` / `derived_from` / `review_note` provenance;
   the SQLite index carries `review_state` (schema v6, rebuilt from markdown —
   D1). (2) `propose` **copies** personal → project (new id, never moves — the
-  personal original stays private); `--local-approve` skips the PR for solo
+  personal original stays private); one call takes several ids (one branch,
+  one PR; all-or-nothing — a bad id aborts the whole batch);
+  `--local-approve` skips the PR for solo
   devs. (3) `promote` advances exactly one step up the ladder
-  (`proposed → approved → published`) or `--reject`s with a note; `draft` and
-  terminal states refuse. (4) `resolve` lists conflicted memory files, or
+  (`proposed → approved → published`), `--reject`s with a note (also from
+  `approved`, withdrawing approval before merge), or `--resubmit`s a rejected
+  memory back to `proposed` for another round; `draft` and terminal states
+  refuse. (4) `resolve` lists conflicted memory files, or
   attempts a field-level 3-way merge from git stages 1/2/3 (`tags` union,
   `updated_at` takes latest, body merged only when one side changed); semantic
   conflicts (same field / body changed differently on both sides) are reported
-  and the file is left untouched — **never auto-resolved**. (5) No git
+  and the file is left untouched — **never auto-resolved**. (5) A rejection
+  never deletes anything: the file stays on the author's branch; the human
+  accepts (close PR, delete branch), revises + `--resubmit`s, or keeps it as
+  a `[rejected]` record. (6) No git
   automation anywhere in the workflow: no branch creation, no commits, no PRs —
   the commands print the exact next steps for the human. Org-level promotion is
   Phase 4. *Rationale: the review ladder must be explicit and auditable; the
   tool assists merging but a human always decides meaning.* 2026-09-27.*
+- **D26** — **Supersedes D24.** Project-scope markdown has two homes, one per
+  lifecycle stage — never silently moved between them. (1) `memory_add` /
+  `memory_propose` with `scope: project` write to the **appdata outbox**
+  (`memories/<project_key>/<id>.md`, `review_state: draft`); the outbox is
+  git-invisible and branch-independent. The D24 lazy migration is deleted —
+  appdata project files are legitimate drafts, not legacy. (2) `open-memex
+  submit <id...>` / `memory_submit` moves user-named drafts into the repo's
+  `<memoryDir>/` (D23), flipping `review_state` to `proposed`: the file now
+  follows branches and PRs. `sync-status` / `memory_status` shows both sides
+  (outbox drafts, repo review states, uncommitted repo files). (3) The move is
+  one-stage-one-place: copy → verify hash → local commit → verify → delete
+  outbox original; re-running is idempotent (identical content skips, different
+  content aborts). `search` prefers the repo copy when both exist; conflicts
+  (same id, different content; push rejected) stop and ask the human — never
+  overwrite. *Rationale: an AI agent drafts constantly; the repo should only
+  ever see what the human explicitly approved for review. The outbox is the
+  agent's desk, the repo dir is the shared table. Approved 2026-09-28.*
+- **D27** — **Revises D25 §6 (no git automation).** `submit` automates the
+  *local* half of the git workflow: create `mem/sync-<timestamp>` (or
+  `--onto` the current branch for code+memory PRs), copy, `git add` only the
+  memory files, local commit, verify. It prints the push + `gh pr create`
+  commands for the human — but an agent that already holds the user's Yes for
+  this sync carries through push and PR creation without re-asking (each step
+  is not a separate approval). Batch submit is all-or-nothing; an empty-branch
+  abort rolls the branch back. *Rationale: the old "no git automation" rule
+  assumed a human at the keyboard; the agent-driven flow needs local mechanics
+  automated while push/PR stay under the user's explicit per-sync Yes/No.
+  Approved 2026-09-28.*
+- **D28** — Memory PR base defaults to the **current branch**; the user may
+  redirect to `main` or the project's integration branch (`--base`). A
+  standalone memory PR and a code+memory PR are both supported — the agent asks
+  which one each time; on "with code" it uses `--onto` and never commits
+  unrelated staged changes. *Rationale: memory usually reviews against the work
+  it describes (current branch); the integration branch is the exception, not
+  the default. Approved 2026-09-28.*
 
 ## Open Questions
 

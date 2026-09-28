@@ -12,7 +12,7 @@ via `prepublishOnly` — Node refuses `--experimental-strip-types` for files und
 
 - **opencode host** loads `src/index.ts` under embedded **Bun**. SQLite here is `bun:sqlite` (built-in).
 - **CLI** (`src/cli.ts`) and smoke tests run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
-- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same five memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
+- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same ten memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
 
 `src/store/db.ts` picks the backend at runtime by sniffing `globalThis.Bun`. Both backends share the same surface (`new Database(path)`, `.exec`, `.prepare().run/all/get`, `.close`). Any DB code you write must stay on that common subset — do not import `better-sqlite3` or `bun:sqlite` directly outside `db.ts`.
 
@@ -29,8 +29,10 @@ Consequences:
 npm install                                          # once
 npm run typecheck                                    # tsc --noEmit — the only lint/type gate
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
-npm run cli -- propose <id> --to project [--local-approve]   # copy personal → project review
-npm run cli -- promote <id> [--reject] [--note "..."]        # proposed → approved → published
+npm run cli -- sync-status                                  # outbox drafts + repo review states + uncommitted files
+npm run cli -- submit <id...> [--onto <branch>] [--base <branch>]  # drafts → .ai/open-memex/ (local branch+commit)
+npm run cli -- propose <id...> --to project [--local-approve]  # copy personal → project outbox (batch OK)
+npm run cli -- promote <id> [--reject] [--resubmit] [--note "..."]        # proposed → approved → published
 npm run cli -- resolve [id-or-path]                          # list / 3-way-merge conflicted memories
 npm run mcp                                          # start the stdio MCP server
 node --experimental-strip-types scripts\smoke-pure.ts   # runs pure-logic checks (no sqlite)

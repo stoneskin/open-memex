@@ -50,8 +50,9 @@ const INSTRUCTIONS = `${MARKER}
 > Applies only when the \`open-memex\` MCP server is available in this session
 > (the \`memory_*\` tools exist). Otherwise ignore this section.
 
-You have a local memory MCP server (\`open-memex\`) with five tools:
-\`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`, \`memory_forget\`.
+You have a local memory MCP server (\`open-memex\`) with ten tools:
+\`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`, \`memory_forget\`,
+\`memory_status\`, \`memory_submit\`, \`memory_propose\`, \`memory_promote\`, \`memory_resolve\`.
 
 - BE PROACTIVE. When the user shares something worth remembering across sessions
   (a decision, a preference, a project convention, a fix and its cause), call
@@ -62,6 +63,29 @@ You have a local memory MCP server (\`open-memex\`) with five tools:
 - Memories default to this project's scope; use the \`personal\` scope for facts about
   the user that hold across all projects. When a saved fact becomes outdated, call
   \`memory_supersede\` instead of adding a duplicate.
+
+## Syncing project memories for review (D26)
+
+Project memories you save land in a local outbox first — they are NOT in git yet.
+Syncing them into the repo for review is an explicit, user-approved step:
+
+- At session start, and when you finish a meaningful chunk of work, call
+  \`memory_status\`. If the outbox has drafts, summarize them (one line each) and ask
+  the user which ones to sync. Sync NOTHING the user did not name.
+- When the user approves, ask ONE follow-up: a separate memory-only branch/PR
+  (recommended), or fold the memories into the current branch alongside code?
+  A "yes, you do it" answer covers the whole chain — branch, local commit,
+  push, PR creation — do NOT re-ask at each step. If the user says they will
+  do it themselves, hand them the printed push/PR commands and do nothing.
+  Then call \`memory_submit\` with the approved ids (\`onto\` = current branch name
+  only for the fold-into-code path). It creates the branch, copies the drafts in
+  as \`proposed\`, commits locally, and prints the push + PR commands.
+- Base branch for the memory PR defaults to the branch you are on; the user may
+  redirect it to the integration branch (main) for branch-independent knowledge.
+- If anything conflicts (same id with different content, push rejected), STOP and
+  let the user judge — never overwrite.
+- After the PR merges, call \`memory_promote\` to mark the memories \`published\`.
+- \`personal\` scope memories NEVER leave the machine.
 `;
 
 function writeMcpJson(root: string, client: string, force: boolean): string | null {

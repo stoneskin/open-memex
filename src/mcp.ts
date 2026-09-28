@@ -30,11 +30,21 @@ import {
   listMemories,
   supersedeMemory,
   forgetMemory,
+  statusMemories,
+  submitMemoriesOp,
+  proposeMemoriesOp,
+  promoteMemoryOp,
+  resolveMemoryOp,
   memoryAddArgs,
   memorySearchArgs,
   memoryListArgs,
   memorySupersedeArgs,
   memoryForgetArgs,
+  memoryStatusArgs,
+  memorySubmitArgs,
+  memoryProposeArgs,
+  memoryPromoteArgs,
+  memoryResolveArgs,
   TOOL_DESCRIPTIONS,
   type ToolResult,
 } from "./tools/ops.ts";
@@ -68,6 +78,17 @@ export async function runMcpServer() {
   syncScope(PERSONAL_SCOPE.key);
   console.error(`[open-memex] MCP server up. scope=${scope.key}`);
 
+  // D26: re-sync on every request, not just at startup. The in-repo dir
+  // follows the current git branch, so a branch switch mid-session would
+  // otherwise leave the index pointing at files that no longer exist.
+  const withSync = <A extends object, R>(fn: (args: A) => R) => {
+    return (args: A): R => {
+      syncScope(scope.key);
+      syncScope(PERSONAL_SCOPE.key);
+      return fn(args);
+    };
+  };
+
   const server = new McpServer({ name: "open-memex", version: SERVER_VERSION });
 
   server.registerTool(
@@ -76,7 +97,7 @@ export async function runMcpServer() {
       description: TOOL_DESCRIPTIONS.memory_add,
       inputSchema: z.object(memoryAddArgs),
     },
-    (args) => toMcp(addMemory(getScope, cfg, args)),
+    withSync((args) => toMcp(addMemory(getScope, cfg, args))),
   );
 
   server.registerTool(
@@ -86,7 +107,7 @@ export async function runMcpServer() {
       inputSchema: z.object(memorySearchArgs),
       annotations: { readOnlyHint: true },
     },
-    (args) => toMcp(searchMemories(getScope, args)),
+    withSync((args) => toMcp(searchMemories(getScope, args))),
   );
 
   server.registerTool(
@@ -96,7 +117,7 @@ export async function runMcpServer() {
       inputSchema: z.object(memoryListArgs),
       annotations: { readOnlyHint: true },
     },
-    (args) => toMcp(listMemories(getScope, args)),
+    withSync((args) => toMcp(listMemories(getScope, args))),
   );
 
   server.registerTool(
@@ -105,7 +126,7 @@ export async function runMcpServer() {
       description: TOOL_DESCRIPTIONS.memory_supersede,
       inputSchema: z.object(memorySupersedeArgs),
     },
-    (args) => toMcp(supersedeMemory(cfg, args)),
+    withSync((args) => toMcp(supersedeMemory(cfg, args))),
   );
 
   server.registerTool(
@@ -115,7 +136,53 @@ export async function runMcpServer() {
       inputSchema: z.object(memoryForgetArgs),
       annotations: { destructiveHint: true },
     },
-    (args) => toMcp(forgetMemory(args)),
+    withSync((args) => toMcp(forgetMemory(args))),
+  );
+
+  server.registerTool(
+    "memory_status",
+    {
+      description: TOOL_DESCRIPTIONS.memory_status,
+      inputSchema: z.object(memoryStatusArgs),
+      annotations: { readOnlyHint: true },
+    },
+    withSync((_args) => toMcp(statusMemories())),
+  );
+
+  server.registerTool(
+    "memory_submit",
+    {
+      description: TOOL_DESCRIPTIONS.memory_submit,
+      inputSchema: z.object(memorySubmitArgs),
+    },
+    withSync((args) => toMcp(submitMemoriesOp(args))),
+  );
+
+  server.registerTool(
+    "memory_propose",
+    {
+      description: TOOL_DESCRIPTIONS.memory_propose,
+      inputSchema: z.object(memoryProposeArgs),
+    },
+    withSync((args) => toMcp(proposeMemoriesOp(args))),
+  );
+
+  server.registerTool(
+    "memory_promote",
+    {
+      description: TOOL_DESCRIPTIONS.memory_promote,
+      inputSchema: z.object(memoryPromoteArgs),
+    },
+    withSync((args) => toMcp(promoteMemoryOp(args))),
+  );
+
+  server.registerTool(
+    "memory_resolve",
+    {
+      description: TOOL_DESCRIPTIONS.memory_resolve,
+      inputSchema: z.object(memoryResolveArgs),
+    },
+    withSync((args) => toMcp(resolveMemoryOp(args))),
   );
 
   const transport = new StdioServerTransport();

@@ -24,6 +24,13 @@ import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
 import { findDuplicates, supersede } from "../store/lifecycle.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
+import { getSyncStatus, formatSyncStatus, submitMemories } from "../submit.ts";
+import {
+  proposeMemories,
+  promoteMemory,
+  listConflicts,
+  resolveConflict,
+} from "../review.ts";
 
 export interface ToolResult {
   title: string;
@@ -41,6 +48,16 @@ export const TOOL_DESCRIPTIONS = {
   memory_supersede:
     "Replace an existing memory with a newer version. The old memory is kept as history (status: superseded) and retrieval returns the new one. Use when a saved fact becomes outdated and should be replaced rather than duplicated.",
   memory_forget: "Delete a memory by id. Use when the user asks to forget something.",
+  memory_status:
+    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start and at task checkpoints, then ask the user which drafts to sync.",
+  memory_submit:
+    "Move outbox drafts into a git branch for review: creates a branch (default mem/sync-*), copies the drafts into the repo memory dir as proposed, commits locally, and moves the outbox originals out. Prints the push and PR commands — those need the user's explicit approval and are never run automatically.",
+  memory_propose:
+    "Copy personal memories into the project outbox as review drafts. The personal originals stay put.",
+  memory_promote:
+    "Advance a project memory one step up the review ladder (proposed → approved → published), or reject it with a note. Rejected memories are never deleted — they can be revised and resubmitted.",
+  memory_resolve:
+    "List git-conflicted memory files, or attempt a field-level 3-way merge of one. Semantic conflicts are reported, never auto-resolved.",
 } as const;
 
 /** Shared zod input shapes (raw shape, not z.object — hosts wrap as needed). */
@@ -98,6 +115,48 @@ export const memoryForgetArgs = {
   id: z.string().min(1),
 };
 export type MemoryForgetArgs = z.infer<z.ZodObject<typeof memoryForgetArgs>>;
+
+export const memoryStatusArgs = {};
+export type MemoryStatusArgs = z.infer<z.ZodObject<typeof memoryStatusArgs>>;
+
+export const memorySubmitArgs = {
+  ids: z.array(z.string().min(1)).min(1).describe("Outbox draft ids to submit."),
+  onto: z
+    .string()
+    .optional()
+    .describe("Submit onto this branch instead of creating mem/sync-*. Must be the current branch (for folding memories into a code PR)."),
+  base: z
+    .string()
+    .optional()
+    .describe("PR base branch override. Default: the branch the submit branched from."),
+};
+export type MemorySubmitArgs = z.infer<z.ZodObject<typeof memorySubmitArgs>>;
+
+export const memoryProposeArgs = {
+  ids: z.array(z.string().min(1)).min(1).describe("Personal memory ids to copy into the project outbox."),
+  localApprove: z
+    .boolean()
+    .optional()
+    .describe("Single-developer shortcut: mark the copies approved immediately."),
+};
+export type MemoryProposeArgs = z.infer<z.ZodObject<typeof memoryProposeArgs>>;
+
+export const memoryPromoteArgs = {
+  id: z.string().min(1).describe("Project memory id."),
+  reject: z.boolean().optional().describe("Reject instead of advancing."),
+  resubmit: z.boolean().optional().describe("Move rejected back to proposed for another round."),
+  note: z.string().optional().describe("Review note recorded on reject."),
+  by: z.string().optional().describe("Reviewer name override."),
+};
+export type MemoryPromoteArgs = z.infer<z.ZodObject<typeof memoryPromoteArgs>>;
+
+export const memoryResolveArgs = {
+  target: z
+    .string()
+    .optional()
+    .describe("Memory id or file path to resolve. Omit to list conflicts."),
+};
+export type MemoryResolveArgs = z.infer<z.ZodObject<typeof memoryResolveArgs>>;
 
 function resolveScope(
   getScope: () => Scope,
@@ -268,4 +327,85 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
   }
   deleteFromIndex(args.id);
   return { title: "memory: forgotten", output: `Deleted ${args.id}.` };
+}
+
+// ---------------------------------------------------------------------------
+// 2B/D26: review workflow ops (also exposed over MCP so agents can drive the
+// sync loop: status → ask user → submit → push/PR on approval).
+// ---------------------------------------------------------------------------
+
+export async function statusMemories(): Promise<ToolResult> {
+  const st = getSyncStatus();
+  const n =
+    st.outbox.length +
+    st.inRepo.filter((e) => e.reviewState === "proposed" || e.reviewState === "approved").length;
+  return {
+    title: `memory: sync status (${n} pending)`,
+    output: formatSyncStatus(st),
+  };
+}
+
+export async function submitMemoriesOp(args: MemorySubmitArgs): Promise<ToolResult> {
+  const r = submitMemories(args.ids, { onto: args.onto, base: args.base });
+  const lines: string[] = [];
+  for (const s of r.submitted) lines.push(`submitted ${s.id} [proposed]`);
+  for (const id of r.skippedIdentical) lines.push(`already on branch: ${id} (outbox copy removed)`);
+  lines.push(r.committed ? `committed on ${r.branch}.` : `nothing new to commit on ${r.branch}.`);
+  lines.push(`Next (needs the user's explicit approval — never run automatically):`);
+  lines.push(`  ${r.pushCommand}`);
+  lines.push(`  ${r.prCommand}`);
+  return { title: `memory: submitted ${r.submitted.length}`, output: lines.join("\n") };
+}
+
+export async function proposeMemoriesOp(args: MemoryProposeArgs): Promise<ToolResult> {
+  const batch = proposeMemories(args.ids, { localApprove: args.localApprove });
+  const lines = batch.map(
+    ({ sourceId, result: r }) => `proposed ${sourceId} → ${r.id} [${r.reviewState}] (outbox draft)`,
+  );
+  lines.push(`Next: open-memex sync-status, then submit the new ids to move them into a branch.`);
+  return { title: `memory: proposed ${batch.length}`, output: lines.join("\n") };
+}
+
+export async function promoteMemoryOp(args: MemoryPromoteArgs): Promise<ToolResult> {
+  const r = promoteMemory(args.id, {
+    reject: args.reject,
+    resubmit: args.resubmit,
+    note: args.note,
+    by: args.by,
+  });
+  let output = `promote ${r.id}: ${r.from} → ${r.to}`;
+  if (r.to === "rejected") {
+    output += `\nnot deleted — the file stays on the branch. Accept (close the PR), revise + resubmit, or keep as a [rejected] record.`;
+  }
+  return { title: `memory: ${r.id} → ${r.to}`, output };
+}
+
+export async function resolveMemoryOp(args: MemoryResolveArgs): Promise<ToolResult> {
+  if (!args.target) {
+    const conflicts = listConflicts();
+    if (conflicts.length === 0) {
+      return { title: "memory: no conflicts", output: "(no conflicted memory files)" };
+    }
+    return {
+      title: `memory: ${conflicts.length} conflicted`,
+      output: conflicts.map((c) => `conflicted: ${c.id}  ${c.filePath}`).join("\n"),
+    };
+  }
+  const outcome = resolveConflict(args.target);
+  if (!outcome.ok) {
+    const lines = [
+      `cannot auto-resolve ${outcome.filePath} — semantic conflicts need a human:`,
+      ...outcome.conflicts.flatMap((c) => [
+        `  ${c.field}:`,
+        `    base:   ${c.base}`,
+        `    ours:   ${c.ours}`,
+        `    theirs: ${c.theirs}`,
+      ]),
+      `Edit the file manually, then \`git add\` it. Nothing was written.`,
+    ];
+    return { title: "memory: resolve blocked", output: lines.join("\n") };
+  }
+  const lines = [`resolved ${outcome.filePath}`];
+  if (outcome.autoMerged.length > 0) lines.push(`  auto-merged: ${outcome.autoMerged.join(", ")}`);
+  return { title: "memory: resolved", output: lines.join("\n") };
 }

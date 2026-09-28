@@ -30,15 +30,16 @@ Keywords route automatically (D18): "remember… / I think… / I like…" (I) �
 | | appdata (the desk) | repo `.ai/open-memex/` (the shelf) |
 |---|---|---|
 | Location | Windows `%APPDATA%/open-memex`, Linux `~/.local/share/open-memex` | Project root, default `.ai/open-memex/` (D23, configurable via `memoryDir`) |
-| Holds | `memories/personal/` personal memories; `index.db` local index | Project-scope Markdown, one memory per file |
+| Holds | `memories/personal/` personal memories; project-scope **draft outbox**; `index.db` local index | Submitted project memories (`proposed` and up) |
 | In git? | No | Yes — git is its courier |
 | The index? | `index.db` is rebuildable, **never committed** | No index stored; rebuilt from Markdown on demand |
 
 The private notebook (personal) never goes on the shelf. That's an iron rule, not a setting.
 
-The repo directory is created on demand: the first project-scope write creates it.
-Legacy project files left in appdata by 0.3.0 are moved in automatically on first
-write/sync (only the current project's — never another's).
+Project memories start life as **drafts in the appdata outbox** — git-invisible,
+branch-independent. Only drafts you explicitly name move to the shelf, via
+`open-memex submit` (§5). One stage, one home: after a successful submit the
+outbox original is gone; before it, the repo knows nothing.
 
 ## 3. First-turn injection: how the 8 and 5 are chosen
 
@@ -79,28 +80,63 @@ A personal observation becomes team knowledge by exactly one road —
 **explicit promotion, never automatic sync**:
 
 ```
-personal idea ──propose──▶ proposed ──promote──▶ approved ──promote──▶ published/shared
-                                │                                              │
-                             rejected                              (PR review is
-                                │                               the review mechanism)
-                                ▼
-                     curator promotes to org level later (Phase 4)
+personal idea ──propose──▶ outbox draft ──submit──▶ proposed ──┬──promote──▶ approved ──promote──▶ published/shared
+                                                              │                        │
+                                                           --reject                 --reject
+                                                              │                        │  (approval withdrawn
+                                                              ▼                        │   before merge)
+                                                           rejected ──resubmit──▶ proposed
 ```
 
-- `open-memex propose <id> --to project`: **copies** a personal memory into
-  `.ai/open-memex/` as a review candidate (`review_state: proposed`, new id,
-  `derived_from` pointing back at the personal original). **Copy, not move —
-  the personal original stays.** It never creates a branch on its own — it
-  prints the `git checkout -b` / `git add` / `gh pr create` commands for you
-  to run. No surprise branches. Solo devs can use `--local-approve` to
-  self-approve and skip the PR.
-- A promotion PR contains **only memory files, no code**, reviewed and audited
-  separately from code PRs. Reviewers check "is this true? is it safe to share?
-  any secrets?" — things a code PR's CI never checks.
+- `open-memex propose <id...> --to project`: **copies** one or more personal
+  memories into the **appdata outbox** as review candidates (`review_state:
+  draft`, each with its own new id, `derived_from` pointing back at the
+  personal original). **Copy, not move — the personal original stays.**
+  All-or-nothing: a bad id aborts the whole batch. Nothing touches the repo
+  yet — the outbox is git-invisible and branch-independent.
+  Solo devs can use `--local-approve` to self-approve.
+- `open-memex sync-status`: shows the outbox (pending sync), the repo review
+  states (`draft / proposed / approved / published / rejected`), and any
+  uncommitted repo memory files. Your agent calls this at session start and
+  at meaningful checkpoints, then asks which drafts (if any) you want synced.
+- `open-memex submit <id...>`: moves **your named drafts** into
+  `<repo>/.ai/open-memex/` as `proposed`. It creates `mem/sync-<timestamp>`
+  (or stays on the current branch with `--onto` for a code+memory PR), copies
+  the files, flips `review_state`, and makes a **local** git commit —
+  all-or-nothing, idempotent, crash-safe. It prints the `git push` +
+  `gh pr create` commands; if your agent already has your Yes for this sync,
+  it carries through push and PR itself. The PR base defaults to the current
+  branch; `--base` redirects to `main` or your integration branch.
+  Same id with different content on the branch **aborts** — a human decides,
+  never auto-overwrite.
+  - Keep the four jobs straight: **propose crosses the boundary**
+    (personal → project outbox, the only step that copies across);
+    **submit moves drafts into the repo** (outbox → `.ai/open-memex/`,
+    `draft → proposed`); **promote only flips the status label** on a file
+    already in `.ai/open-memex/` (`proposed → approved → published`) — it
+    never moves files between directories; **git does the transport**
+    (push, PR, merge).
+- A standalone memory PR contains **only memory files, no code**, reviewed and
+  audited separately from code PRs. Reviewers check "is this true? is it safe
+  to share? any secrets?" — things a code PR's CI never checks. You can also
+  ride along in a code PR (`submit --onto <branch>`).
+- "Request changes" needs no command: while the PR is open, the author edits
+  the same file (directly, or by asking their agent in chat), commits, and
+  pushes. The state stays `proposed`; the PR is the review mechanism.
 - `open-memex promote <id>`: advances the memory one step up the ladder
   (`proposed → approved → published`). `--reject --note "..."` rejects with a
-  reason. After the PR merges, run `promote <id>` once more to mark it
-  `published`. (Lifting project memories to org level is Phase 4.)
+  reason (also allowed from `approved`, before merge — withdrawing approval).
+  After the PR merges, run `promote <id>` once more to mark it `published`.
+  (Lifting project memories to org level is Phase 4.)
+- **A rejection never deletes anything.** The file stays on your branch; what
+  happens next is the human's call:
+  1. **Accept**: close the PR and delete the branch — the file goes with it
+     (the local index cleans itself up on the next sync);
+  2. **Revise and resubmit**: edit the file, run
+     `open-memex promote <id> --resubmit`, commit, push — review continues on
+     the same PR;
+  3. **Keep as a record**: leave it; it stays visible with a `[rejected]` tag
+     and your note, so the team can see what was considered and why not.
 - `open-memex resolve [id]`: with no argument, lists conflicted memory files;
   with an id, attempts a **field-level 3-way merge** of the YAML frontmatter
   (`tags` union, `updated_at` takes latest, body merged when only one side
@@ -112,9 +148,12 @@ personal idea ──propose──▶ proposed ──promote──▶ approved �
 
 ## 6. Sync: git is the courier, not the brain
 
-- **Write**: `memory_add` (project scope) → writes `.ai/open-memex/<id>.md` in the
-  repo working tree and updates the local index. **Never auto-commits, never
-  auto-pushes.**
+- **Write**: `memory_add` (project scope) → writes the **appdata outbox** and
+  updates the local index. **Never touches the repo, never auto-commits,
+  never auto-pushes.**
+- **Submit** (explicit, your call): `open-memex submit <id...>` → local branch
+  + local commit into `.ai/open-memex/`; push/PR are printed for you (or done
+  by your agent on your Yes).
 - **Pull** **2B**: `open-memex pull` (always explicit, never automatic) → git fetch +
   fast-forward → scans `.ai/open-memex/*.md` → merges into the local `index.db` by
   file mtime. Retrieval always goes through SQLite, never walks git.

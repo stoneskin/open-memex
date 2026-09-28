@@ -5,11 +5,8 @@ import yaml from "js-yaml";
 import {
   memoriesDirFor,
   memoriesDirPath,
-  projectRoot,
-  inRepoMemoriesDir,
   inRepoMemoriesDirPath,
 } from "../paths.ts";
-import { loadConfig } from "../config.ts";
 
 /** v2 content-kind taxonomy (V2-DESIGN §3.1). `type` = what the memory IS. */
 export const MEMORY_TYPE_TAXONOMY = [
@@ -253,57 +250,15 @@ export function parse(raw: string): { fm: Frontmatter; body: string } | null {
 export function writeMemoryFile(
   fm: Frontmatter,
   body: string,
-): { filePath: string; mtimeMs: number; migrated: number } {
-  // 2B/D24: project scopes live in the repo (<root>/<memoryDir>/); personal
-  // stays in appdata and never leaves the machine.
-  let dir: string;
-  let migrated = 0;
-  if (fm.scope === "project") {
-    const root = projectRoot();
-    const memoryDir = loadConfig().memoryDir;
-    migrated = migrateScopeToRepo(fm.scope_key, root, memoryDir);
-    if (migrated > 0) {
-      console.log(
-        `[open-memex] moved ${migrated} existing project ${migrated === 1 ? "memory" : "memories"} into ${path.join(root, memoryDir)}/`,
-      );
-    }
-    dir = inRepoMemoriesDir(root, memoryDir);
-  } else {
-    dir = memoriesDirFor(fm.scope_key);
-  }
+): { filePath: string; mtimeMs: number } {
+  // 2B/D26: project drafts live in appdata (the outbox) — the in-repo dir
+  // only ever holds submitted memories (proposed/approved/published).
+  // Personal stays in appdata and never leaves the machine.
+  const dir = memoriesDirFor(fm.scope_key);
   const filePath = path.join(dir, `${fm.id}.md`);
   fs.writeFileSync(filePath, serialize(fm, body), "utf8");
   const st = fs.statSync(filePath);
-  return { filePath, mtimeMs: st.mtimeMs, migrated };
-}
-
-/**
- * One-time move of legacy appdata project files into the in-repo dir (2B/D24).
- * Only ever touches `appdata/<scopeKey>/`, so it can only migrate the current
- * scope's files — never another project's. Returns the number of files moved.
- */
-export function migrateScopeToRepo(
-  scopeKey: string,
-  root: string,
-  memoryDir: string,
-): number {
-  const src = memoriesDirPath(scopeKey);
-  if (!fs.existsSync(src)) return 0;
-  const files = fs
-    .readdirSync(src, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".md"))
-    .map((e) => e.name);
-  if (files.length === 0) return 0;
-  const dst = inRepoMemoriesDir(root, memoryDir);
-  let moved = 0;
-  for (const name of files) {
-    const from = path.join(src, name);
-    const to = path.join(dst, name);
-    if (fs.existsSync(to)) continue; // in-repo copy wins; leave the stray
-    fs.renameSync(from, to);
-    moved++;
-  }
-  return moved;
+  return { filePath, mtimeMs: st.mtimeMs };
 }
 
 /** Yield `*.md` files in the in-repo dir (read path — never creates it). */

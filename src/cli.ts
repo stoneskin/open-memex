@@ -6,6 +6,7 @@ import { syncScope, upsertFromFile, deleteFromIndex } from "./store/sync.ts";
 import { migrateScope, scopeHasFiles, type ConflictStrategy } from "./store/migrate.ts";
 import { migrateV2 } from "./store/v2migrate.ts";
 import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
+import { proposeMemories, promoteMemory, listConflicts, resolveConflict } from "./review.ts";
 import { search, list } from "./retrieve/search.ts";
 import {
   writeMemoryFile,
@@ -33,6 +34,9 @@ Usage:
   open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
   open-memex status <id> active|deprecated|retracted|archived
   open-memex forget <id>
+  open-memex propose <id...> --to project [--local-approve]
+  open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
+  open-memex resolve [id-or-path]
   open-memex reindex
   open-memex scopes
   open-memex migrate [--from <key>] [--to <key>]
@@ -365,7 +369,8 @@ async function main() {
     }
     for (const h of hits) {
       const dep = h.status === "deprecated" ? " [deprecated]" : "";
-      console.log(`[${h.type}]${dep} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+      const rev = h.review_state && h.review_state !== "draft" ? ` [${h.review_state}]` : "";
+      console.log(`[${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
   }
@@ -394,7 +399,8 @@ async function main() {
     for (const h of hits) {
       const tag = h.scope_key === PERSONAL_SCOPE.key ? "personal" : "project";
       const dep = h.status === "deprecated" ? " [deprecated]" : "";
-      console.log(`[${tag}/${h.type}]${dep} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+      const rev = h.review_state && h.review_state !== "draft" ? ` [${h.review_state}]` : "";
+      console.log(`[${tag}/${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
   }
@@ -437,6 +443,11 @@ async function main() {
       updated_at: rfc,
       supersedes: null,
       superseded_by: null,
+      review_state: "draft",
+      proposed_by: null,
+      approved_by: null,
+      derived_from: null,
+    review_note: null,
     };
     const { filePath } = writeMemoryFile(fm, red);
     const mf = readMemoryFile(filePath);
@@ -520,6 +531,113 @@ async function main() {
     }
     deleteFromIndex(id);
     console.log(`deleted ${id}`);
+    return;
+  }
+
+/** Positional args with flags (and their values) skipped. */
+function positionalArgs(argv: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a.startsWith("--")) {
+      const val = argv[i + 1];
+      if (val !== undefined && !val.startsWith("--")) i++; // skip the flag's value
+    } else {
+      out.push(a);
+    }
+  }
+  return out;
+}
+
+  if (cmd === "propose") {
+    const flags = parseFlags(rest);
+    const ids = positionalArgs(rest);
+    if (ids.length === 0) usage();
+    const to = flags.to ?? "project";
+    if (to !== "project") {
+      console.error(`propose --to "${to}" is not supported yet (org sharing is Phase 4).`);
+      process.exit(2);
+    }
+    try {
+      const batch = proposeMemories(ids, { localApprove: flags["local-approve"] === "true" });
+      const files = batch.map(({ result: r }) => path.relative(process.cwd(), r.filePath));
+      for (const { sourceId, result: r } of batch) {
+        console.log(`proposed ${sourceId} → ${r.id}  [${r.reviewState}]`);
+      }
+      const short = batch.map(({ result: r }) => r.id.slice(0, 8)).join(" ");
+      console.log(`Next (one branch, one PR — open-memex never opens one for you):`);
+      console.log(`  git checkout -b mem/propose-${batch[0].result.id.slice(0, 8)}`);
+      console.log(`  git add ${files.join(" ")}`);
+      console.log(`  git commit -m "mem: propose ${batch.length} memories (${short})" && git push -u origin HEAD`);
+      console.log(`  gh pr create --title "mem: propose ${batch.length} memories" --body "Proposed from personal: ${ids.join(", ")}."`);
+    } catch (e) {
+      console.error(`propose failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "promote") {
+    const flags = parseFlags(rest);
+    const id = rest.find((a) => !a.startsWith("--"));
+    if (!id) usage();
+    try {
+      const r = promoteMemory(id, {
+        reject: flags.reject === "true",
+        resubmit: flags.resubmit === "true",
+        note: flags.note,
+        by: flags.by,
+      });
+      console.log(`promote ${r.id}: ${r.from} → ${r.to}`);
+      if (r.to === "published") {
+        console.log(`  merged to the shared branch? Teammates pick it up with an explicit pull.`);
+      }
+      if (r.to === "rejected") {
+        console.log(`  not deleted — the file stays on your branch. Your call:`);
+        console.log(`  accept: close the PR and delete the branch;`);
+        console.log(`  revise: edit the file, then \`open-memex promote ${r.id} --resubmit\`;`);
+        console.log(`  keep: leave it as a [rejected] record.`);
+      }
+    } catch (e) {
+      console.error(`promote failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "resolve") {
+    const target = rest.find((a) => !a.startsWith("--"));
+    try {
+      if (!target) {
+        const conflicts = listConflicts();
+        if (conflicts.length === 0) {
+          console.log("(no conflicted memory files)");
+        } else {
+          for (const c of conflicts) console.log(`conflicted: ${c.id}  ${c.filePath}`);
+          console.log(`\nRun \`open-memex resolve <id>\` to attempt a field-level 3-way merge.`);
+        }
+        return;
+      }
+      const outcome = resolveConflict(target);
+      if (!outcome.ok) {
+        console.error(`cannot auto-resolve ${path.basename(outcome.filePath)} — semantic conflicts need a human:`);
+        for (const c of outcome.conflicts) {
+          console.error(`  ${c.field}:`);
+          console.error(`    base:   ${c.base}`);
+          console.error(`    ours:   ${c.ours}`);
+          console.error(`    theirs: ${c.theirs}`);
+        }
+        console.error(`Edit the file manually, then \`git add\` it. Nothing was written.`);
+        process.exit(3);
+      }
+      console.log(`resolved ${path.basename(outcome.filePath)}`);
+      if (outcome.autoMerged.length > 0)
+        console.log(`  auto-merged: ${outcome.autoMerged.join(", ")}`);
+      console.log(`  next: git add ${path.relative(process.cwd(), outcome.filePath)}`);
+    } catch (e) {
+      console.error(`resolve failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
     return;
   }
 

@@ -597,6 +597,11 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   keeps the old repo-level behavior for teams where everyone uses open-memex.
   The instructions carry a guard clause ("ignore this section when the
   `open-memex` MCP server is not available") as cheap insurance. 2026-09-27.*
+- **D23** — Default in-repo memory dir is `.ai/open-memex/` (configurable via
+  `memoryDir`; rejects absolute paths and `..`). *Rationale: `.ai/` is the
+  emerging convention for AI-local project state; the `open-memex/` leaf keeps
+  brand clarity and avoids collisions with other tools' `.ai/` content.
+  2026-09-27.*
 - **D24** — Project-scope markdown lives in the repo: writes with
   `scope: project` go to `<projectRoot>/<memoryDir>/` (D23 default
   `.ai/open-memex/`); `personal` never leaves appdata. Legacy appdata project
@@ -606,6 +611,31 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   reads/deletes (`findMemoryFile`, `forget`); on the near-impossible id
   collision between locations, the in-repo copy wins. *Rationale: one home per
   scope, no silent data loss, no repo pollution before first use.* 2026-09-27.*
+- **D25** — Review workflow semantics (`propose` / `promote` / `resolve`,
+  `src/review.ts`): (1) `review_state` frontmatter field
+  (`draft → proposed → approved/rejected → published`, default `draft`) plus
+  `proposed_by` / `approved_by` / `derived_from` / `review_note` provenance;
+  the SQLite index carries `review_state` (schema v6, rebuilt from markdown —
+  D1). (2) `propose` **copies** personal → project (new id, never moves — the
+  personal original stays private); one call takes several ids (one branch,
+  one PR; all-or-nothing — a bad id aborts the whole batch);
+  `--local-approve` skips the PR for solo
+  devs. (3) `promote` advances exactly one step up the ladder
+  (`proposed → approved → published`), `--reject`s with a note (also from
+  `approved`, withdrawing approval before merge), or `--resubmit`s a rejected
+  memory back to `proposed` for another round; `draft` and terminal states
+  refuse. (4) `resolve` lists conflicted memory files, or
+  attempts a field-level 3-way merge from git stages 1/2/3 (`tags` union,
+  `updated_at` takes latest, body merged only when one side changed); semantic
+  conflicts (same field / body changed differently on both sides) are reported
+  and the file is left untouched — **never auto-resolved**. (5) A rejection
+  never deletes anything: the file stays on the author's branch; the human
+  accepts (close PR, delete branch), revises + `--resubmit`s, or keeps it as
+  a `[rejected]` record. (6) No git
+  automation anywhere in the workflow: no branch creation, no commits, no PRs —
+  the commands print the exact next steps for the human. Org-level promotion is
+  Phase 4. *Rationale: the review ladder must be explicit and auditable; the
+  tool assists merging but a human always decides meaning.* 2026-09-27.*
 
 ## Open Questions
 

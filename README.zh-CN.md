@@ -268,6 +268,23 @@ open-memex status <id> deprecated
 open-memex forget <id>
 ```
 
+团队评审工作流（Phase 2B —— 记忆文件存放在 `<repo>/.ai/open-memex/`）：
+
+```sh
+open-memex propose <id...> --to project [--local-approve]
+# 一次 propose 一条或多条（一个分支、一个 PR），每条独立新 id。
+# 全有或全无：id 有错整批回滚，不会留半截。
+# 把一条 personal 记忆复制到 project scope 进入评审（复制而非移动，
+# personal 原件保留）。只打印 git/gh 命令，不会自动开 PR。
+open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
+# 晋升一步：proposed → approved → published（或用 --reject 驳回并附注原因）。
+# 驳回不删文件，由你决定：接受（关 PR 删分支）、改完 --resubmit 再审、
+# 或留着当 [rejected] 记录。
+open-memex resolve [id-or-path]
+# 列出冲突中的记忆文件，或对其中一个做字段级 3-way 合并。
+# 语义冲突只报告、不自动解决。
+```
+
 维护：
 
 ```sh

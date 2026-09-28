@@ -671,6 +671,34 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   unrelated staged changes. *Rationale: memory usually reviews against the work
   it describes (current branch); the integration branch is the exception, not
   the default. Approved 2026-09-28.*
+- **D29** — Every review transition is written to a per-memory audit trail
+  (`review_history`: at/by/from/to/note) — reject / resubmit / approve /
+  publish all append, never overwrite; `propose` and `submit` seed it; merge
+  conflict resolution unions both sides' histories. *Rationale: review is a
+  decision log, not a flag — "who rejected this and why" must be answerable
+  months later. Approved 2026-09-28.*
+- **D30** — Retrieval ranks by review state: approved/published project
+  memories outrank unreviewed content; project drafts/rejected sink to the
+  bottom and are visibly tagged `[draft]` in search/list/inject output, while
+  personal memories (always draft by design) are never demoted or tagged.
+  Explicit search still finds drafts — they are deprioritized, not hidden.
+  *Rationale: reviewed knowledge should win the context window; drafts stay
+  discoverable but never masquerade as vetted. Approved 2026-09-28.*
+- **D31** — Every index sync records when it ran, what triggered it
+  (`session` / `request` / `cli` / `submit`) and its stats, in
+  `<appdata>/sync-state.json`; `sync-status` shows the last sync first.
+  *Rationale: "is my index fresh?" must be answerable without guessing —
+  especially across branch switches where the in-repo dir changes underneath.
+  Approved 2026-09-28.*
+- **D32** — The branch PR's GitHub state maps back onto each in-repo
+  memory's review_state via `pr-status` / `memory_pr_status`: merged PR →
+  published, PR approval → approved with `approved_by` = reviewer login,
+  changes-requested → suggestion only (never auto-rejects). Report by
+  default; `--apply` performs the mapped transitions locally (no push —
+  inside the D27 line). Each memory keeps its own state: a human `rejected`
+  is never overridden by a PR signal. *Rationale: the PR is where the team
+  actually reviews — the mapping closes the loop without inventing new
+  review UI. Approved 2026-09-28.*
 
 ## Open Questions
 

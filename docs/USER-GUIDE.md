@@ -95,10 +95,12 @@ personal idea ──propose──▶ outbox draft ──submit──▶ proposed
   All-or-nothing: a bad id aborts the whole batch. Nothing touches the repo
   yet — the outbox is git-invisible and branch-independent.
   Solo devs can use `--local-approve` to self-approve.
-- `open-memex sync-status`: shows the outbox (pending sync), the repo review
-  states (`draft / proposed / approved / published / rejected`), and any
-  uncommitted repo memory files. Your agent calls this at session start and
-  at meaningful checkpoints, then asks which drafts (if any) you want synced.
+- `open-memex sync-status`: shows **when the index was last synced** (and
+  what triggered it — session start, a request, a CLI run, a submit), the
+  outbox (pending sync), the repo review states
+  (`draft / proposed / approved / published / rejected`), and any uncommitted
+  repo memory files. Your agent calls this at session start and at meaningful
+  checkpoints, then asks which drafts (if any) you want synced.
 - `open-memex submit <id...>`: moves **your named drafts** into
   `<repo>/.ai/open-memex/` as `proposed`. It creates `mem/sync-<timestamp>`
   (or stays on the current branch with `--onto` for a code+memory PR), copies
@@ -126,7 +128,11 @@ personal idea ──propose──▶ outbox draft ──submit──▶ proposed
 - `open-memex promote <id>`: advances the memory one step up the ladder
   (`proposed → approved → published`). `--reject --note "..."` rejects with a
   reason (also allowed from `approved`, before merge — withdrawing approval).
-  After the PR merges, run `promote <id>` once more to mark it `published`.
+  Every transition is appended to the memory's `review_history` — who moved it,
+  when, from what to what, and why — so the review trail survives long after
+  the PR is closed.
+  After the PR merges, run `promote <id>` once more to mark it `published`
+  — or let `pr-status --apply` do it for you (below).
   (Lifting project memories to org level is Phase 4.)
 - **A rejection never deletes anything.** The file stays on your branch; what
   happens next is the human's call:
@@ -137,14 +143,24 @@ personal idea ──propose──▶ outbox draft ──submit──▶ proposed
      the same PR;
   3. **Keep as a record**: leave it; it stays visible with a `[rejected]` tag
      and your note, so the team can see what was considered and why not.
+- `open-memex pr-status [--apply]`: reads the current branch's GitHub PR
+  and maps its state onto each in-repo memory's review state — merged PR →
+  `published`, PR approval → `approved` (`approved_by` = the reviewer), review
+  "request changes" → a suggestion for you to act on (never auto-rejects).
+  Each memory keeps its own state: a human `rejected` is never overridden by
+  a PR signal. Report by default; `--apply` performs the mapped transitions
+  locally (no push). This is how a team review on GitHub closes the loop back
+  into the memory index without new review UI.
 - `open-memex resolve [id]`: with no argument, lists conflicted memory files;
   with an id, attempts a **field-level 3-way merge** of the YAML frontmatter
   (`tags` union, `updated_at` takes latest, body merged when only one side
   changed). Semantic conflicts — both sides changed the same field or the
   body differently — are **reported, never auto-resolved**: the file is left
   untouched for a human to decide.
-- `list` / `search` show a `[proposed]` / `[approved]` / `[published]` /
-  `[rejected]` tag next to memories in review.
+- `list` / `search` show a `[draft]` / `[proposed]` / `[approved]` /
+  `[published]` / `[rejected]` tag next to project memories in review, and
+  retrieval ranks reviewed knowledge (`approved` / `published`) above
+  unreviewed outbox drafts — drafts stay findable but never pose as vetted.
 
 ## 6. Sync: git is the courier, not the brain
 

@@ -31,6 +31,7 @@ import {
   writeMemoryFile,
   type Frontmatter,
   type ReviewState,
+  type ReviewTransition,
 } from "./store/markdown.ts";
 import { findMemoryFile } from "./store/lifecycle.ts";
 import { upsertFromFile } from "./store/sync.ts";
@@ -98,6 +99,9 @@ function copyPersonalToProject(
   const project = resolveProjectScope(projectRoot());
   const author = currentAuthor();
   const now = new Date().toISOString();
+  // propose lands in the outbox as a draft (submit moves it to proposed);
+  // --local-approve is the solo-dev shortcut straight to approved.
+  const targetState: ReviewState = opts.localApprove ? "approved" : "draft";
   const fm: Frontmatter = {
     ...srcFm,
     id: ulid(),
@@ -108,10 +112,21 @@ function copyPersonalToProject(
     updated_at: now,
     supersedes: null,
     superseded_by: null,
-    review_state: opts.localApprove ? "approved" : "proposed",
+    review_state: targetState,
     proposed_by: author,
     approved_by: opts.localApprove ? author : null,
     derived_from: srcFm.id,
+    review_history: [
+      {
+        at: now,
+        by: author,
+        from: "draft",
+        to: targetState,
+        note: opts.localApprove
+          ? `proposed from personal memory ${srcFm.id} (local-approved)`
+          : `proposed from personal memory ${srcFm.id}`,
+      },
+    ],
   };
   const { filePath } = writeMemoryFile(fm, srcBody);
   upsertFromFile({ fm, body: srcBody, filePath, mtimeMs: Date.now() });
@@ -154,6 +169,8 @@ export interface PromoteResult {
   id: string;
   from: ReviewState;
   to: ReviewState;
+  /** Full audit trail after this transition (D29). */
+  history: ReviewTransition[];
 }
 
 const NEXT_STATE: Partial<Record<ReviewState, ReviewState>> = {
@@ -210,10 +227,31 @@ export function promoteMemory(
     // (the memory must earn approval again).
     approved_by: to === "approved" ? by : to === "rejected" || to === "proposed" ? null : mf.fm.approved_by,
     review_note: opts.note?.trim() ? opts.note.trim() : mf.fm.review_note,
+    // D29: every transition is appended to the audit trail — the note is
+    // preserved here even when review_note later gets overwritten.
+    review_history: [
+      ...(mf.fm.review_history ?? []),
+      {
+        at: new Date().toISOString(),
+        by,
+        from,
+        to,
+        note: opts.note?.trim() ? opts.note.trim() : null,
+      },
+    ],
   };
   fs.writeFileSync(mf.filePath, serialize(fm, mf.body), "utf8");
   upsertFromFile({ fm, body: mf.body, filePath: mf.filePath, mtimeMs: Date.now() });
-  return { id, from, to };
+  return { id, from, to, history: fm.review_history };
+}
+
+/** Render a memory's audit trail as compact human-readable lines (D29). */
+export function formatReviewHistory(history: ReviewTransition[]): string[] {
+  return history.map(
+    (t) =>
+      `  ${t.at.slice(0, 10)} ${t.by}: ${t.from} → ${t.to}` +
+      (t.note ? ` — ${t.note}` : ""),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +447,24 @@ export function resolveConflict(target: string): ResolveOutcome {
       merged.tags = union;
       if (!eq([...bs].sort(), union)) autoMerged.push("tags");
     }
+  }
+
+  // review_history (D29 audit trail): union by identity — a transition that
+  // happened on either side is kept; identical entries collapse.
+  {
+    const key = (e: ReviewTransition) => `${e.at}|${e.by}|${e.from}|${e.to}`;
+    const seen = new Set<string>();
+    const union: ReviewTransition[] = [];
+    const all = [...(b.review_history ?? []), ...(o.review_history ?? []), ...(t.review_history ?? [])];
+    for (const e of all) {
+      const k = key(e);
+      if (!seen.has(k)) {
+        seen.add(k);
+        union.push(e);
+      }
+    }
+    merged.review_history = union;
+    if (union.length !== (b.review_history ?? []).length) autoMerged.push("review_history");
   }
 
   // updated_at: always moves forward — take the latest.

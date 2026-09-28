@@ -44,9 +44,31 @@ function toHit(r: RawRow): SearchHit {
 }
 
 /**
+ * D30: review-state ranking tiers for shared (project) memories.
+ * Reviewed knowledge (approved/published) outranks unreviewed outbox drafts;
+ * personal memories are always `draft` by design and are NOT demoted.
+ * Stable: order within a tier keeps the incoming score/recency order.
+ */
+function reviewTier(r: RawRow): number {
+  if (r.scope_key === "personal") return 1;
+  if (r.review_state === "approved" || r.review_state === "published") return 0;
+  if (r.review_state === "draft" || r.review_state === "rejected") return 2;
+  return 1; // proposed and anything unexpected
+}
+
+/** D30: `[draft]` / `[proposed]` / … marker for project memories.
+ *  Personal memories stay unmarked (always draft — the marker would be noise). */
+export function hitStateLabel(h: Pick<SearchHit, "scope_key" | "review_state">): string {
+  if (h.scope_key === "personal") return "";
+  return ` [${h.review_state || "draft"}]`;
+}
+
+/**
  * Lifecycle-aware post-processing (§3.3):
  * - retracted / archived are excluded from retrieval (kept for audit);
  * - a superseded memory resolves to the newest of its chain (cycle-safe);
+ * - D30: approved/published project memories rank first, project
+ *   drafts/rejected rank after unreviewed content;
  * - deprecated stays visible as a warning but ranks after active.
  */
 function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
@@ -70,7 +92,7 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
   };
 
   const seen = new Set<string>();
-  const active: SearchHit[] = [];
+  const tiers: SearchHit[][] = [[], [], [], []];
   const deprecated: SearchHit[] = [];
 
   for (const r of rows) {
@@ -93,9 +115,9 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
     seen.add(target.id);
     const hit = toHit(target);
     if (target.status === "deprecated") deprecated.push(hit);
-    else active.push(hit);
+    else tiers[reviewTier(target)].push(hit);
   }
-  return [...active, ...deprecated].slice(0, limit);
+  return [...tiers[0], ...tiers[1], ...tiers[2], ...deprecated].slice(0, limit);
 }
 
 /**

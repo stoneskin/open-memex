@@ -11,7 +11,7 @@ import { z } from "zod";
 import type { Scope } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
 import { PERSONAL_SCOPE } from "../scope.ts";
-import { search, list } from "../retrieve/search.ts";
+import { search, list, hitStateLabel } from "../retrieve/search.ts";
 import {
   writeMemoryFile,
   readMemoryFile,
@@ -25,11 +25,13 @@ import { findDuplicates, supersede } from "../store/lifecycle.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories } from "../submit.ts";
+import { getPrStatus, formatPrStatus, applyPrStatus } from "../github.ts";
 import {
   proposeMemories,
   promoteMemory,
   listConflicts,
   resolveConflict,
+  formatReviewHistory,
 } from "../review.ts";
 
 export interface ToolResult {
@@ -58,6 +60,8 @@ export const TOOL_DESCRIPTIONS = {
     "Advance a project memory one step up the review ladder (proposed → approved → published), or reject it with a note. Rejected memories are never deleted — they can be revised and resubmitted.",
   memory_resolve:
     "List git-conflicted memory files, or attempt a field-level 3-way merge of one. Semantic conflicts are reported, never auto-resolved.",
+  memory_pr_status:
+    "Read the current branch's GitHub PR and map its review state onto each in-repo memory: merged PR → published, PR approval → approved (approved_by = reviewer), changes-requested → suggestion only. Report by default; apply=true performs the mapped transitions locally (no push).",
 } as const;
 
 /** Shared zod input shapes (raw shape, not z.object — hosts wrap as needed). */
@@ -158,6 +162,14 @@ export const memoryResolveArgs = {
 };
 export type MemoryResolveArgs = z.infer<z.ZodObject<typeof memoryResolveArgs>>;
 
+export const memoryPrStatusArgs = {
+  apply: z
+    .boolean()
+    .optional()
+    .describe("Perform the mapped review transitions locally (no push). Default: report only."),
+};
+export type MemoryPrStatusArgs = z.infer<z.ZodObject<typeof memoryPrStatusArgs>>;
+
 function resolveScope(
   getScope: () => Scope,
   kind?: "project" | "personal" | "user",
@@ -196,6 +208,7 @@ function buildFrontmatter(
     approved_by: null,
     derived_from: null,
     review_note: null,
+    review_history: [],
   };
 }
 
@@ -260,7 +273,7 @@ export async function searchMemories(
   }
   const lines = hits.map(
     (h) =>
-      `- [${h.scope_key === PERSONAL_SCOPE.key ? "personal" : "project"}/${h.type}] id=${h.id}\n  ${h.snippet.replace(/\s+/g, " ").trim()}`,
+      `- [${h.scope_key === PERSONAL_SCOPE.key ? "personal" : "project"}/${h.type}]${hitStateLabel(h)} id=${h.id}\n  ${h.snippet.replace(/\s+/g, " ").trim()}`,
   );
   return { title: `memory: ${hits.length} result(s)`, output: lines.join("\n") };
 }
@@ -275,7 +288,7 @@ export async function listMemories(
     return { title: "memory: empty", output: `No memories in scope ${s.key}.` };
   }
   const lines = hits.map(
-    (h) => `- [${h.type}] id=${h.id} — ${h.snippet.replace(/\s+/g, " ").trim()}`,
+    (h) => `- [${h.type}]${hitStateLabel(h)} id=${h.id} — ${h.snippet.replace(/\s+/g, " ").trim()}`,
   );
   return { title: `memory: ${hits.length} in ${s.key}`, output: lines.join("\n") };
 }
@@ -348,7 +361,7 @@ export async function statusMemories(): Promise<ToolResult> {
 export async function submitMemoriesOp(args: MemorySubmitArgs): Promise<ToolResult> {
   const r = submitMemories(args.ids, { onto: args.onto, base: args.base });
   const lines: string[] = [];
-  for (const s of r.submitted) lines.push(`submitted ${s.id} [proposed]`);
+  for (const s of r.submitted) lines.push(`submitted ${s.id} [${s.reviewState}]`);
   for (const id of r.skippedIdentical) lines.push(`already on branch: ${id} (outbox copy removed)`);
   lines.push(r.committed ? `committed on ${r.branch}.` : `nothing new to commit on ${r.branch}.`);
   lines.push(`Next (needs the user's explicit approval — never run automatically):`);
@@ -373,11 +386,15 @@ export async function promoteMemoryOp(args: MemoryPromoteArgs): Promise<ToolResu
     note: args.note,
     by: args.by,
   });
-  let output = `promote ${r.id}: ${r.from} → ${r.to}`;
+  const lines = [`promote ${r.id}: ${r.from} → ${r.to}`];
   if (r.to === "rejected") {
-    output += `\nnot deleted — the file stays on the branch. Accept (close the PR), revise + resubmit, or keep as a [rejected] record.`;
+    lines.push(`not deleted — the file stays on the branch. Accept (close the PR), revise + resubmit, or keep as a [rejected] record.`);
   }
-  return { title: `memory: ${r.id} → ${r.to}`, output };
+  if (r.history.length > 0) {
+    lines.push(`history (${r.history.length}):`);
+    lines.push(...formatReviewHistory(r.history));
+  }
+  return { title: `memory: ${r.id} → ${r.to}`, output: lines.join("\n") };
 }
 
 export async function resolveMemoryOp(args: MemoryResolveArgs): Promise<ToolResult> {
@@ -408,4 +425,20 @@ export async function resolveMemoryOp(args: MemoryResolveArgs): Promise<ToolResu
   const lines = [`resolved ${outcome.filePath}`];
   if (outcome.autoMerged.length > 0) lines.push(`  auto-merged: ${outcome.autoMerged.join(", ")}`);
   return { title: "memory: resolved", output: lines.join("\n") };
+}
+
+export async function prStatusOp(args: MemoryPrStatusArgs): Promise<ToolResult> {
+  const st = getPrStatus();
+  const lines = [formatPrStatus(st)];
+  if (args.apply) {
+    const applied = applyPrStatus(st);
+    if (applied.length === 0) {
+      lines.push(`nothing to apply.`);
+    } else {
+      for (const a of applied) {
+        lines.push(`applied ${a.memoryId.slice(0, 8)}: ${a.from} → ${a.to} (by ${a.by})`);
+      }
+    }
+  }
+  return { title: "memory: pr-status", output: lines.join("\n") };
 }

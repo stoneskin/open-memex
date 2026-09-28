@@ -65,6 +65,41 @@ export interface Frontmatter {
   derived_from: string | null;
   /** Curator note on the latest review transition (e.g. rejection reason). */
   review_note: string | null;
+  /** 2B/D29: append-only audit trail of review transitions. Lives in the
+   *  file (source of truth), so it travels through branches and PRs. */
+  review_history: ReviewTransition[];
+}
+
+/** One step in a memory's review lifecycle — who moved it, when, why. */
+export interface ReviewTransition {
+  at: string; // RFC 3339
+  by: string; // author identity (git user.name, fallback OS user)
+  from: ReviewState;
+  to: ReviewState;
+  note: string | null;
+}
+
+/** Defensive parse: malformed entries are dropped, never fatal. */
+export function asReviewHistory(v: unknown): ReviewTransition[] {
+  if (!Array.isArray(v)) return [];
+  const out: ReviewTransition[] = [];
+  for (const e of v) {
+    if (!e || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    const from = asReviewState(r.from);
+    const to = asReviewState(r.to);
+    const at = typeof r.at === "string" && r.at ? r.at : null;
+    const by = typeof r.by === "string" && r.by ? r.by : null;
+    if (!at || !by) continue;
+    out.push({
+      at,
+      by,
+      from,
+      to,
+      note: typeof r.note === "string" && r.note ? r.note : null,
+    });
+  }
+  return out;
 }
 
 /** Review lifecycle for shared memories (2B/D25): draft → proposed →
@@ -213,6 +248,7 @@ export function normalizeFrontmatter(
       typeof raw.derived_from === "string" && raw.derived_from ? raw.derived_from : null,
     review_note:
       typeof raw.review_note === "string" && raw.review_note ? raw.review_note : null,
+    review_history: asReviewHistory(raw.review_history),
   };
 }
 

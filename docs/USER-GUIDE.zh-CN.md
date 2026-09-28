@@ -84,7 +84,8 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
   `derived_from` 指回 personal 原件）。**复制而非移动——personal 原件保留。**
   全有或全无：id 有错整批回滚。这一步还不碰 repo——草稿箱 git 看不见、跟分支无关。
   单人开发可用 `--local-approve` 自批。
-- `open-memex sync-status`：看草稿箱（待同步）、repo 里的评审状态
+- `open-memex sync-status`：看索引**上次同步的时间和触发方**（会话开始、
+  请求、CLI、submit）、草稿箱（待同步）、repo 里的评审状态
   （`draft / proposed / approved / published / rejected`），以及 repo 里还没
   commit 的记忆文件。你的 agent 会在会话开始和关键节点跑这个，然后问你
   哪些草稿（如果有）要同步。
@@ -109,20 +110,31 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
   PR 本身就是评审机制。
 - `open-memex promote <id>`：把记忆往阶梯上推一步
   （`proposed → approved → published`）。`--reject --note "..."` 驳回并附注原因
-  （合并前也可从 `approved` 驳回，即撤回批准）。PR 合并后，再跑一次
-  `promote <id>` 标记为 `published`。（project 记忆提升到 org 级是 Phase 4 的事。）
+  （合并前也可从 `approved` 驳回，即撤回批准）。每次流转都追加到记忆的
+  `review_history`——谁动的、何时、从什么到什么、为什么——PR 关了很久以后
+  还能查到这条评审链。
+  PR 合并后，再跑一次 `promote <id>` 标记为 `published`——或者让下面的
+  `pr-status --apply` 代劳。（project 记忆提升到 org 级是 Phase 4 的事。）
 - **驳回不删任何东西。**文件留在你的分支上，之后怎么处理由人决定：
   1. **接受**：关 PR、删分支——文件跟着走（本地索引下次 sync 自己清掉）；
   2. **改完重提**：改文件，跑 `open-memex promote <id> --resubmit`，
      commit、push——同一个 PR 里继续评审；
   3. **留作记录**：不动它；它带着 `[rejected]` 标签和你的注记一直可见，
      团队以后能看到"这个考虑过，为啥没要"。
+- `open-memex pr-status [--apply]`：读当前分支的 GitHub PR，把它的状态映射
+  到每条 in-repo 记忆的评审状态——PR merged → `published`，PR approved →
+  `approved`（`approved_by` = reviewer），"request changes" 只给建议、从不自动
+  驳回。每条记忆保持自己的独立状态：人做出的 `rejected` 不会被 PR 信号覆盖。
+  默认只报告；`--apply` 在本地执行映射的流转（不 push）。团队在 GitHub 上做完
+  评审，这个命令把结论闭环回记忆索引，不用另造评审 UI。
 - `open-memex resolve [id]`：不带参数列出冲突中的记忆文件；带 id 则尝试
   **字段级 3-way 合并** YAML frontmatter（`tags` 取并集、`updated_at` 取最新、
   只有一边改了 body 才合）。语义冲突——两边改了同一字段或 body 各改各的——
   **只报告、不自动解决**：文件原样不动，等人来裁决。
-- `list` / `search` 会在评审中的记忆旁显示 `[proposed]` / `[approved]` /
-  `[published]` / `[rejected]` 标签。
+- `list` / `search` 会在 project 记忆旁显示 `[draft]` / `[proposed]` /
+  `[approved]` / `[published]` / `[rejected]` 标签；检索会把已评审的知识
+  （`approved` / `published`）排在未评审的 outbox 草稿前面——草稿照样能搜到，
+  但不会冒充已审核的结论。
 
 ## 6. 同步：git 是搬运工，不是大脑
 

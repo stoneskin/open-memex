@@ -153,7 +153,7 @@ open-memex doctor
 
 Checks: Node version, config source, scope resolution for the current directory,
 storage writability, then boots a real MCP server and runs `initialize` +
-`tools/list` against it — all ten tools must show up.
+`tools/list` against it — all eleven tools must show up.
 
 ## Tools the agent gets
 
@@ -169,6 +169,7 @@ storage writability, then boots a real MCP server and runs `initialize` +
 | `memory_propose`   | Copy personal memories into the project scope as review candidates |
 | `memory_promote`   | Advance `proposed → approved → published` (or reject / resubmit) |
 | `memory_resolve`   | List conflicted memory files / 3-way-merge one of them |
+| `memory_pr_status` | Map the branch PR's GitHub state onto each memory's review state |
 
 ## Capture
 
@@ -283,7 +284,8 @@ branches and PRs. Nothing moves without you naming it.
 
 ```sh
 open-memex sync-status
-# show the outbox (pending sync), the repo review states
+# show when the index was last synced (and what triggered it), the outbox
+# (pending sync), the repo review states
 # (draft / proposed / approved / published / rejected),
 # and any uncommitted repo memory files.
 
@@ -296,6 +298,12 @@ open-memex submit <id...> [--onto <branch>] [--base <branch>]
 # Default PR base is the current branch; --base redirects to main or your
 # integration branch.
 
+open-memex pr-status [--apply]
+# read the branch's GitHub PR and map its state onto each in-repo memory:
+# merged PR → published, PR approval → approved (approved_by = reviewer),
+# changes-requested → suggestion only. Report by default; --apply performs
+# the mapped transitions locally (no push).
+
 open-memex propose <id...> --to project [--local-approve]
 # propose one or several personal memories at once (one branch, one PR);
 # each is copied with its own new id. All-or-nothing: a bad id aborts the
@@ -305,6 +313,7 @@ open-memex propose <id...> --to project [--local-approve]
 # run sync-status / submit when you're ready to put it in the repo.
 open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
 # advance one step: proposed → approved → published (or reject with a note).
+# Every transition is appended to the memory's review_history (who/when/why).
 # A rejection never deletes the file — your call: accept it (close the PR,
 # delete the branch), revise + --resubmit for another round, or keep it as
 # a [rejected] record.
@@ -330,7 +339,7 @@ simple cases — npm swallows unknown `--flag` args, so prefer direct `node`).
 
 ## MCP server
 
-The same ten memory tools over the Model Context Protocol via a stdio server —
+The same eleven memory tools over the Model Context Protocol via a stdio server —
 no host-specific plugin needed. Any MCP client can use open-memex.
 
 ```sh

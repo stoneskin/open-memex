@@ -1,4 +1,4 @@
-import { list } from "./search.ts";
+import { list, hitStateLabel } from "./search.ts";
 import type { Scope } from "../scope.ts";
 import { PERSONAL_SCOPE } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
@@ -23,7 +23,7 @@ export function buildContextBlock(scope: Scope, cfg: MyOMemoryConfig): string | 
 
   if (project.length > 0) {
     lines.push("", `Project knowledge (${scope.projectName}):`);
-    for (const m of project) lines.push(`- [${m.type}] ${oneLine(m.snippet)}`);
+    for (const m of project) lines.push(`- [${m.type}]${hitStateLabel(m)} ${oneLine(m.snippet)}`);
   }
 
   lines.push(

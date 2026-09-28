@@ -149,7 +149,7 @@ open-memex doctor
 
 检查：Node 版本、配置来源、当前目录的 scope 解析、存储可写性，
 然后启动一个真实的 MCP server 做 `initialize` + `tools/list`——
-十个 tools 都必须出现。
+十一个 tools 都必须出现。
 
 ## Agent 可用的 tools
 
@@ -165,6 +165,7 @@ open-memex doctor
 | `memory_propose`   | 把 personal 记忆复制到 project scope 作为评审候选 |
 | `memory_promote`   | 推进 `proposed → approved → published`（或 reject / resubmit） |
 | `memory_resolve`   | 列出冲突的记忆文件 / 对单个做三路合并 |
+| `memory_pr_status` | 把分支 PR 的 GitHub 状态映射到每条记忆的评审状态 |
 
 ## 捕获（Capture）
 
@@ -281,7 +282,7 @@ project 草稿先住在 **appdata outbox**（git 看不见、跟分支无关）�
 
 ```sh
 open-memex sync-status
-# 看 outbox（待同步）、repo 里的评审状态
+# 看索引上次同步的时间和触发方、outbox（待同步）、repo 里的评审状态
 # （draft / proposed / approved / published / rejected），
 # 以及 repo 里还没 commit 的记忆文件。
 
@@ -292,6 +293,11 @@ open-memex submit <id...> [--onto <branch>] [--base <branch>]
 # 干净回滚。打印 push + gh pr 命令；Agent 拿到你的 Yes 后会自己走完 push/PR。
 # PR 默认 base 是当前分支；--base 可改到 main 或集成支。
 
+open-memex pr-status [--apply]
+# 读分支的 GitHub PR，把它的状态映射到每条 in-repo 记忆：
+# PR merged → published，PR approved → approved（approved_by = reviewer），
+# changes requested 只给建议。默认只报告；--apply 在本地执行映射的流转（不 push）。
+
 open-memex propose <id...> --to project [--local-approve]
 # 一次 propose 一条或多条（一个分支、一个 PR），每条独立新 id。
 # 全有或全无：id 有错整批回滚，不会留半截。
@@ -299,6 +305,7 @@ open-memex propose <id...> --to project [--local-approve]
 # personal 原件保留）。结果落在 outbox；准备好进 repo 时再 sync-status / submit。
 open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
 # 晋升一步：proposed → approved → published（或用 --reject 驳回并附注原因）。
+# 每次流转都追加到记忆的 review_history（谁、何时、为什么）。
 # 驳回不删文件，由你决定：接受（关 PR 删分支）、改完 --resubmit 再审、
 # 或留着当 [rejected] 记录。
 open-memex resolve [id-or-path]
@@ -324,7 +331,7 @@ CLI 跑在 Node 22 下。从源码 checkout 使用时走内置的实验性 TypeS
 
 ## MCP server
 
-同一个十个 memory tools，走 Model Context Protocol 的 stdio server——
+同一个十一个 memory tools，走 Model Context Protocol 的 stdio server——
 不需要宿主专属插件，任何 MCP 客户端都能用 open-memex。
 
 ```sh

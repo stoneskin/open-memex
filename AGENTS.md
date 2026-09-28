@@ -29,10 +29,11 @@ Consequences:
 npm install                                          # once
 npm run typecheck                                    # tsc --noEmit — the only lint/type gate
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
-npm run cli -- sync-status                                  # outbox drafts + repo review states + uncommitted files
+npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
 npm run cli -- submit <id...> [--onto <branch>] [--base <branch>]  # drafts → .ai/open-memex/ (local branch+commit)
 npm run cli -- propose <id...> --to project [--local-approve]  # copy personal → project outbox (batch OK)
-npm run cli -- promote <id> [--reject] [--resubmit] [--note "..."]        # proposed → approved → published
+npm run cli -- promote <id> [--reject] [--resubmit] [--note "..."]        # proposed → approved → published (audit trail appended)
+npm run cli -- pr-status [--apply]                          # map branch PR's GitHub state onto review_state (report; apply = local only)
 npm run cli -- resolve [id-or-path]                          # list / 3-way-merge conflicted memories
 npm run mcp                                          # start the stdio MCP server
 node --experimental-strip-types scripts\smoke-pure.ts   # runs pure-logic checks (no sqlite)

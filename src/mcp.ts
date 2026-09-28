@@ -35,6 +35,7 @@ import {
   proposeMemoriesOp,
   promoteMemoryOp,
   resolveMemoryOp,
+  prStatusOp,
   memoryAddArgs,
   memorySearchArgs,
   memoryListArgs,
@@ -45,6 +46,7 @@ import {
   memoryProposeArgs,
   memoryPromoteArgs,
   memoryResolveArgs,
+  memoryPrStatusArgs,
   TOOL_DESCRIPTIONS,
   type ToolResult,
 } from "./tools/ops.ts";
@@ -74,8 +76,8 @@ export async function runMcpServer() {
 
   // Init DB and one-shot sync of markdown -> index, mirroring the plugin.
   db();
-  syncScope(scope.key);
-  syncScope(PERSONAL_SCOPE.key);
+  syncScope(scope.key, "session");
+  syncScope(PERSONAL_SCOPE.key, "session");
   console.error(`[open-memex] MCP server up. scope=${scope.key}`);
 
   // D26: re-sync on every request, not just at startup. The in-repo dir
@@ -83,8 +85,8 @@ export async function runMcpServer() {
   // otherwise leave the index pointing at files that no longer exist.
   const withSync = <A extends object, R>(fn: (args: A) => R) => {
     return (args: A): R => {
-      syncScope(scope.key);
-      syncScope(PERSONAL_SCOPE.key);
+      syncScope(scope.key, "request");
+      syncScope(PERSONAL_SCOPE.key, "request");
       return fn(args);
     };
   };
@@ -183,6 +185,16 @@ export async function runMcpServer() {
       inputSchema: z.object(memoryResolveArgs),
     },
     withSync((args) => toMcp(resolveMemoryOp(args))),
+  );
+
+  server.registerTool(
+    "memory_pr_status",
+    {
+      description: TOOL_DESCRIPTIONS.memory_pr_status,
+      inputSchema: z.object(memoryPrStatusArgs),
+      annotations: { readOnlyHint: true },
+    },
+    withSync((args) => toMcp(prStatusOp(args))),
   );
 
   const transport = new StdioServerTransport();

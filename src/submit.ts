@@ -33,7 +33,7 @@ import {
   serialize,
   type ReviewState,
 } from "./store/markdown.ts";
-import { upsertFromFile } from "./store/sync.ts";
+import { upsertFromFile, recordSync, readSyncState } from "./store/sync.ts";
 import { db } from "./store/db.ts";
 import { currentAuthor } from "./review.ts";
 
@@ -156,6 +156,15 @@ export function getSyncStatus(): SyncStatus {
 export function formatSyncStatus(st: SyncStatus): string {
   const lines: string[] = [];
   lines.push(`project: ${st.projectName} (${st.scopeKey})`);
+  // D31: when the index was last synced and what triggered it.
+  const last = readSyncState(st.scopeKey);
+  if (last) {
+    lines.push(
+      `last sync: ${last.lastSyncAt} (${last.lastSyncKind}) — +${last.added} ~${last.updated} -${last.removed} (scanned ${last.scanned})`,
+    );
+  } else {
+    lines.push(`last sync: never`);
+  }
   lines.push(`outbox (appdata, pending sync): ${st.outbox.length}`);
   for (const e of st.outbox) {
     lines.push(`  ${e.id}  [${e.reviewState}] ${e.title}`);
@@ -191,7 +200,7 @@ export interface SubmitOptions {
 export interface SubmitResult {
   branch: string;
   base: string;
-  submitted: Array<{ id: string; filePath: string }>;
+  submitted: Array<{ id: string; filePath: string; reviewState: ReviewState }>;
   /** already on the branch with identical content — outbox move completed */
   skippedIdentical: string[];
   /** false when everything was already on the branch (nothing new to commit) */
@@ -248,8 +257,9 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
       continue;
     }
     const rs = (mf.fm.review_state ?? "draft") as ReviewState;
-    if (rs !== "draft" && rs !== "rejected") {
-      problems.push(`${id}: review_state is ${rs}, only draft/rejected can be submitted`);
+    // draft/rejected move to proposed; a local-approved copy keeps its approval.
+    if (rs !== "draft" && rs !== "rejected" && rs !== "approved") {
+      problems.push(`${id}: review_state is ${rs}, only draft/rejected/approved can be submitted`);
       continue;
     }
     validated.push({ id, srcPath, body: mf.body, reviewState: rs });
@@ -283,7 +293,7 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
 
   // 3. Copy drafts into the repo dir as proposed (same id — one memory, one id).
   //    Same id + different content on the branch = conflict → abort, human judges.
-  const submitted: Array<{ id: string; filePath: string }> = [];
+  const submitted: Array<{ id: string; filePath: string; reviewState: ReviewState }> = [];
   const skippedIdentical: string[] = [];
   const now = msToRfc3339(Date.now());
   const written: Array<{ id: string; srcPath: string; destPath: string; hash: string }> = [];
@@ -304,16 +314,30 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     }
     const parsed = parseMemory(fs.readFileSync(v.srcPath, "utf8"));
     if (!parsed) fail(`${v.id}: unreadable source file`);
+    // draft/rejected → proposed; a local-approved copy arrives already
+    // approved and keeps its approval (and its approved_by).
+    const destState: ReviewState = v.reviewState === "approved" ? "approved" : "proposed";
     const fm = {
       ...parsed.fm,
-      review_state: "proposed" as ReviewState,
+      review_state: destState,
       updated_at: now,
       proposed_by: parsed.fm.proposed_by ?? author,
+      // D29: the outbox → repo move is part of the audit trail.
+      review_history: [
+        ...(parsed.fm.review_history ?? []),
+        {
+          at: now,
+          by: author,
+          from: parsed.fm.review_state ?? "draft",
+          to: destState,
+          note: `submitted to branch ${branch}`,
+        },
+      ],
     };
     const text = serialize(fm, parsed.body);
     fs.writeFileSync(destPath, text, "utf8");
     written.push({ id: v.id, srcPath: v.srcPath, destPath, hash: contentHash(parsed.body) });
-    submitted.push({ id: v.id, filePath: destPath });
+    submitted.push({ id: v.id, filePath: destPath, reviewState: destState });
   }
   if (conflicts.length > 0) {
     // Roll back the copies we just made — nothing half-submitted.
@@ -368,6 +392,13 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
   }
 
   const ids8 = validated.map((v) => v.id.slice(0, 8)).join(" ");
+  // D31: the submit itself is a sync event — visible in sync-status.
+  recordSync(scope.key, "submit", {
+    added: submitted.length,
+    updated: skippedIdentical.length,
+    removed: 0,
+    scanned: validated.length,
+  });
   return {
     branch,
     base,

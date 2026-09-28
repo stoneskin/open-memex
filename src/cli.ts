@@ -6,9 +6,10 @@ import { syncScope, upsertFromFile, deleteFromIndex } from "./store/sync.ts";
 import { migrateScope, scopeHasFiles, type ConflictStrategy } from "./store/migrate.ts";
 import { migrateV2 } from "./store/v2migrate.ts";
 import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
-import { proposeMemories, promoteMemory, listConflicts, resolveConflict } from "./review.ts";
+import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatReviewHistory } from "./review.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
-import { search, list } from "./retrieve/search.ts";
+import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
+import { search, list, hitStateLabel } from "./retrieve/search.ts";
 import {
   writeMemoryFile,
   readMemoryFile,
@@ -40,6 +41,7 @@ Usage:
   open-memex resolve [id-or-path]
   open-memex sync-status
   open-memex submit <id...> [--onto <branch>] [--base <branch>]
+  open-memex pr-status [--apply]
   open-memex reindex
   open-memex scopes
   open-memex migrate [--from <key>] [--to <key>]
@@ -350,8 +352,8 @@ async function main() {
   }
 
   if (cmd === "reindex") {
-    const a = syncScope(project.key);
-    const b = syncScope(PERSONAL_SCOPE.key);
+    const a = syncScope(project.key, "cli");
+    const b = syncScope(PERSONAL_SCOPE.key, "cli");
     console.log(
       `reindexed. project: +${a.added} ~${a.updated} -${a.removed} (scanned ${a.scanned}), personal: +${b.added} ~${b.updated} -${b.removed} (scanned ${b.scanned})`,
     );
@@ -361,7 +363,7 @@ async function main() {
   if (cmd === "list") {
     const flags = parseFlags(rest);
     const s = resolveCliScope(flags, project);
-    syncScope(s.key);
+    syncScope(s.key, "cli");
     const hits = list(s.key, {
       type: flags.type,
       limit: flags.limit ? Number(flags.limit) : undefined,
@@ -372,7 +374,7 @@ async function main() {
     }
     for (const h of hits) {
       const dep = h.status === "deprecated" ? " [deprecated]" : "";
-      const rev = h.review_state && h.review_state !== "draft" ? ` [${h.review_state}]` : "";
+      const rev = hitStateLabel(h);
       console.log(`[${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
@@ -382,8 +384,8 @@ async function main() {
     const query = rest[0];
     if (!query || query.startsWith("--")) usage();
     const flags = parseFlags(rest.slice(1));
-    syncScope(project.key);
-    syncScope(PERSONAL_SCOPE.key);
+    syncScope(project.key, "cli");
+    syncScope(PERSONAL_SCOPE.key, "cli");
     const keys =
       flags.scope === "personal" || flags.scope === "user"
         ? [PERSONAL_SCOPE.key]
@@ -402,7 +404,7 @@ async function main() {
     for (const h of hits) {
       const tag = h.scope_key === PERSONAL_SCOPE.key ? "personal" : "project";
       const dep = h.status === "deprecated" ? " [deprecated]" : "";
-      const rev = h.review_state && h.review_state !== "draft" ? ` [${h.review_state}]` : "";
+      const rev = hitStateLabel(h);
       console.log(`[${tag}/${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
@@ -451,6 +453,7 @@ async function main() {
       approved_by: null,
       derived_from: null,
     review_note: null,
+    review_history: [],
     };
     const { filePath } = writeMemoryFile(fm, red);
     const mf = readMemoryFile(filePath);
@@ -597,6 +600,10 @@ function positionalArgs(argv: string[]): string[] {
         console.log(`  revise: edit the file, then \`open-memex promote ${r.id} --resubmit\`;`);
         console.log(`  keep: leave it as a [rejected] record.`);
       }
+      if (r.history.length > 0) {
+        console.log(`  history (${r.history.length}):`);
+        for (const h of formatReviewHistory(r.history)) console.log(h);
+      }
     } catch (e) {
       console.error(`promote failed: ${(e as Error).message}`);
       process.exit(2);
@@ -641,8 +648,8 @@ function positionalArgs(argv: string[]): string[] {
   }
 
   if (cmd === "sync-status") {
-    syncScope(project.key);
-    syncScope(PERSONAL_SCOPE.key);
+    syncScope(project.key, "cli");
+    syncScope(PERSONAL_SCOPE.key, "cli");
     try {
       console.log(formatSyncStatus(getSyncStatus()));
     } catch (e) {
@@ -652,15 +659,37 @@ function positionalArgs(argv: string[]): string[] {
     return;
   }
 
+  if (cmd === "pr-status") {
+    const flags = parseFlags(rest);
+    try {
+      const st = getPrStatus();
+      console.log(formatPrStatus(st));
+      if (flags.apply === "true") {
+        const applied = applyPrStatus(st);
+        if (applied.length === 0) {
+          console.log(`nothing to apply.`);
+        } else {
+          for (const a of applied) {
+            console.log(`applied ${a.memoryId.slice(0, 8)}: ${a.from} → ${a.to} (by ${a.by})`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`pr-status failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
   if (cmd === "submit") {
     const flags = parseFlags(rest);
     const ids = positionalArgs(rest);
     if (ids.length === 0) usage();
-    syncScope(project.key);
+    syncScope(project.key, "submit");
     try {
       const r = submitMemories(ids, { onto: flags.onto, base: flags.base });
       for (const s of r.submitted) {
-        console.log(`submitted ${s.id} → ${path.relative(process.cwd(), s.filePath)}  [proposed]`);
+        console.log(`submitted ${s.id} → ${path.relative(process.cwd(), s.filePath)}  [${s.reviewState}]`);
       }
       for (const id of r.skippedIdentical) {
         console.log(`already on branch: ${id} (identical content — outbox copy removed)`);

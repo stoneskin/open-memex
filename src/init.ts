@@ -50,9 +50,10 @@ const INSTRUCTIONS = `${MARKER}
 > Applies only when the \`open-memex\` MCP server is available in this session
 > (the \`memory_*\` tools exist). Otherwise ignore this section.
 
-You have a local memory MCP server (\`open-memex\`) with ten tools:
+You have a local memory MCP server (\`open-memex\`) with eleven tools:
 \`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`, \`memory_forget\`,
-\`memory_status\`, \`memory_submit\`, \`memory_propose\`, \`memory_promote\`, \`memory_resolve\`.
+\`memory_status\`, \`memory_submit\`, \`memory_propose\`, \`memory_promote\`, \`memory_resolve\`,
+\`memory_pr_status\`.
 
 - BE PROACTIVE. When the user shares something worth remembering across sessions
   (a decision, a preference, a project convention, a fix and its cause), call
@@ -84,7 +85,9 @@ Syncing them into the repo for review is an explicit, user-approved step:
   redirect it to the integration branch (main) for branch-independent knowledge.
 - If anything conflicts (same id with different content, push rejected), STOP and
   let the user judge — never overwrite.
-- After the PR merges, call \`memory_promote\` to mark the memories \`published\`.
+- After the PR merges, call \`memory_pr_status\` (with \`apply\` when the user
+  approves) to map the PR's review state back onto each memory — merged means
+  \`published\`, an approval means \`approved\` (credited to the reviewer).
 - \`personal\` scope memories NEVER leave the machine.
 `;
 

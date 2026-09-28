@@ -98,6 +98,7 @@ const plugin: Plugin = async ({ worktree, directory }) => {
           approved_by: null,
           derived_from: null,
           review_note: null,
+          review_history: [],
         };
         try {
           const { filePath } = writeMemoryFile(fm, content);

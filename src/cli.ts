@@ -25,6 +25,189 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** Per-command help, printed by `open-memex <command> --help`.
+    AI assistants discover the CLI through --help, so every command needs one. */
+const COMMAND_HELP: Record<string, string> = {
+  where: `Show which project scope the current directory resolves to, and where its data lives.
+
+Usage: open-memex where`,
+
+  list: `List memories in a scope, newest first.
+
+Usage: open-memex list [--scope project|personal] [--type T] [--limit N]
+
+Flags:
+  --scope   project (default) or personal
+  --type    filter by memory type
+  --limit   max results
+
+Examples:
+  open-memex list
+  open-memex list --scope personal --limit 20`,
+
+  search: `Search memories by keyword (BM25 full-text), best matches first.
+
+Usage: open-memex search "query" [--scope project|personal|both] [--type T] [--limit N]
+
+Flags:
+  --scope   project (default), personal, or both
+  --type    filter by memory type
+  --limit   max results
+
+Example:
+  open-memex search "deploy checklist" --scope both`,
+
+  add: `Save a fact, preference, decision, or note to local memory.
+
+Usage: open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2]
+
+Flags:
+  --scope   project (default) or personal (personal never leaves this machine)
+  --type    memory type (default: fact)
+  --tag     comma-separated tags
+
+Example:
+  open-memex add "We deploy on Fridays" --scope project --tag process`,
+
+  supersede: `Replace a memory with a newer version. The old one is kept as history.
+
+Usage: open-memex supersede <id> "new content" [--type T] [--tag t1,t2]`,
+
+  status: `Change a memory's lifecycle status.
+
+Usage: open-memex status <id> active|deprecated|retracted|archived`,
+
+  forget: `Delete a memory by id.
+
+Usage: open-memex forget <id>`,
+
+  propose: `Copy personal memories into the project outbox as review drafts.
+The personal originals stay put. Nothing enters git at this step.
+
+Usage: open-memex propose <id...> --to project [--local-approve]
+
+Flags:
+  --to             project (required)
+  --local-approve  mark the copies approved right away (solo-dev shortcut)
+
+Example:
+  open-memex propose 01ABC 01DEF --to project`,
+
+  promote: `Advance a project memory one step up the review ladder
+(proposed → approved → published), or reject it with a note.
+Every transition is appended to the memory's review_history.
+Rejected memories are never deleted — they can be revised and resubmitted.
+
+Usage: open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
+
+Flags:
+  --reject    move back to rejected (requires --note)
+  --resubmit  move a rejected memory back to proposed
+  --note      reason for the transition (recorded in review_history)
+  --by        reviewer name (defaults to the git user)
+
+Examples:
+  open-memex promote 01ABC --note "verified against the runbook"
+  open-memex promote 01ABC --reject --note "outdated after the migration"`,
+
+  resolve: `List conflicted memories, or 3-way-merge one.
+
+Usage: open-memex resolve [id-or-path]
+
+With no argument, lists conflicts. With an id or file path, shows the
+3-way merge (base / outbox / repo) so you can resolve it by hand.
+Conflicts are never auto-resolved.`,
+
+  "sync-status": `Show the project memory sync pipeline: when the index last synced
+and what triggered it, drafts waiting in the outbox (appdata), memories in the
+repo awaiting review or published, and repo files not yet committed.
+
+Usage: open-memex sync-status`,
+
+  submit: `Move outbox drafts into a git branch for review: creates a branch
+(default mem/sync-*), copies the drafts into the repo memory dir as proposed
+(local-approved copies keep their approval), commits locally, and moves the
+outbox originals out. Prints the push and PR commands — those need your
+explicit approval and are never run automatically.
+
+Usage: open-memex submit <id...> [--onto <branch>] [--base <branch>]
+
+Flags:
+  --onto   submit onto the current branch instead of creating mem/sync-*
+  --base   base branch for the PR suggestion (default: the branch you're on)
+
+Example:
+  open-memex submit 01ABC 01DEF`,
+
+  "pr-status": `Map the current branch's GitHub PR state back onto review_state:
+merged → published, approval → approved (approved_by = the reviewer),
+changes-requested → suggestion only (never auto-rejects).
+Each memory in the PR is mapped independently; a human rejection is never
+overwritten. Report-only by default.
+
+Usage: open-memex pr-status [--apply]
+
+Flags:
+  --apply   write the transitions locally (still never pushes)`,
+
+  reindex: `Rebuild the SQLite index from the markdown files.
+
+Usage: open-memex reindex`,
+
+  scopes: `List the known scopes (personal + project).
+
+Usage: open-memex scopes`,
+
+  migrate: `Move memories between scopes, or convert a legacy my-o-memory data dir.
+
+Usage: open-memex migrate [--from <key>] [--to <key>] [--dry-run] [--on-conflict newer|overwrite|skip]
+       open-memex migrate --to-v2 [--dry-run]
+
+Flags:
+  --from / --to   scope keys (default: current project → personal)
+  --dry-run       preview without moving anything
+  --on-conflict   newer (default), overwrite, or skip
+  --to-v2         convert a legacy my-o-memory data dir to the v2 layout
+
+Always preview with --dry-run first; nothing moves without confirmation.`,
+
+  mcp: `Start the stdio MCP server (the same server editors connect to).
+
+Usage: open-memex mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
+
+Flags:
+  --print-config   print the MCP client config instead of starting the server`,
+
+  init: `One-command project setup: writes the MCP config for your editor and the
+agent memory instructions. Existing files are merged, never clobbered.
+
+Usage: open-memex init [--client vscode|cursor|opencode|visualstudio]
+              [--instructions personal|project] [--force] [--yes]
+
+Flags:
+  --client        editor to configure (default: auto-detect)
+  --instructions  personal (default, ~/.copilot/copilot-instructions.md) or project
+  --force         overwrite existing config
+  --yes           accept all defaults, never prompt`,
+
+  config: `Show config, or set a key.
+
+Usage: open-memex config [set <key> <value>]
+
+Example:
+  open-memex config set sync.autoPull false`,
+
+  capture: `Preview what the keyword-capture watcher would extract from text.
+
+Usage: open-memex capture --dry-run "text"`,
+
+  doctor: `Environment health check: Node version, config source, scope resolution,
+storage writability, then boots a real MCP server and runs initialize +
+tools/list against it — all eleven tools must show up.
+
+Usage: open-memex doctor`,
+};
+
 function usage(exitCode = 1): never {
   console.log(`open-memex CLI
 
@@ -79,7 +262,9 @@ the \`--from\` key when migrating.
 git remote after memories were already stored under the cwd-based key.
 \`migrate --to-v2\` converts v1 memory files to the v2 format (§19):
 user→personal scope rename, epoch→RFC 3339 times, priority→importance,
-type: instruction→role split. Always preview with --dry-run first.`);
+type: instruction→role split. Always preview with --dry-run first.
+
+Run \`open-memex <command> --help\` for details on a single command.`);
   process.exit(exitCode);
 }
 
@@ -202,6 +387,17 @@ async function main() {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
     console.log(`open-memex ${pkg.version}`);
     return;
+  }
+
+  // Per-command help: `open-memex <command> --help`. Checked before loadConfig()
+  // so it works even when the environment is broken.
+  if (rest.includes("--help") || rest.includes("-h")) {
+    const h = COMMAND_HELP[cmd];
+    if (h) {
+      console.log(`open-memex ${cmd}\n\n${h}`);
+      return;
+    }
+    usage(0);
   }
 
   const cfg = loadConfig();

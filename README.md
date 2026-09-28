@@ -262,6 +262,7 @@ open-memex doctor                                  # environment health check
 open-memex capture --dry-run "记住我喜欢简洁的回答"  # preview keyword capture
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio
 open-memex --help      # this reference
+open-memex <command> --help  # help for one command
 open-memex --version   # installed version
 ```
 

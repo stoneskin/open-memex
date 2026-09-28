@@ -29,6 +29,7 @@ Consequences:
 npm install                                          # once
 npm run typecheck                                    # tsc --noEmit — the only lint/type gate
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
+npm run cli -- <command> --help                          # per-command help (AI assistants discover flags this way)
 npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
 npm run cli -- submit <id...> [--onto <branch>] [--base <branch>]  # drafts → .ai/open-memex/ (local branch+commit)
 npm run cli -- propose <id...> --to project [--local-approve]  # copy personal → project outbox (batch OK)

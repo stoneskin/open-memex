@@ -699,6 +699,12 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   is never overridden by a PR signal. *Rationale: the PR is where the team
   actually reviews — the mapping closes the loop without inventing new
   review UI. Approved 2026-09-28.*
+- **D33** — Every CLI command answers `open-memex <command> --help` (and `-h`)
+  with its own usage, flags, and examples; checked before config/DB load so
+  help works even in a broken environment. Unknown commands with `--help`
+  fall back to the global usage. *Rationale: AI assistants discover the CLI
+  through --help first — a command that silently swallows --help as a flag
+  teaches the agent nothing. Approved 2026-09-28.*
 
 ## Open Questions
 

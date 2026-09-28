@@ -135,3 +135,7 @@ hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
   and the frozen `docs/V2-DESIGN.md` (append a `D<n>` decision entry, never rewrite history);
   new commands → README CLI sections + this file's Commands. A change without its docs
   is not done.
+- **Version bumps ship with features.** `package.json` + `package-lock.json` carry the
+  in-development version. New features on a dev branch bump the minor on the alpha
+  line (`0.3.0` → `0.4.0-alpha.1`); fixes bump the patch (`-alpha.1` → `-alpha.2`).
+  The bump goes in the same commit as the feature, never as an afterthought.

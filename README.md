@@ -295,14 +295,16 @@ open-memex sync-status
 # (draft / proposed / approved / published / rejected),
 # and any uncommitted repo memory files.
 
-open-memex submit <id...> [--onto <branch>] [--base <branch>]
+open-memex submit <id...> [--branch <name>] [--base <branch>]
 # move your named drafts into .ai/open-memex/ as "proposed":
-# creates mem/sync-<timestamp> (or stays on --onto for a code+memory PR),
-# copies, flips review_state, local git commit. All-or-nothing; conflicts
-# (same id, different content) abort cleanly. Prints the push + gh pr
-# commands; an agent holding your Yes carries through push/PR itself.
-# Default PR base is the current branch; --base redirects to main or your
-# integration branch.
+# copies, flips review_state, local git commit ON THE CURRENT BRANCH.
+# Never creates a branch on its own — branch creation is your call
+# (or the agent's, only with your explicit approval for the full chain).
+# All-or-nothing; conflicts (same id, different content) abort cleanly.
+# Prints the push + gh pr commands; an agent holding your Yes carries
+# through push/PR itself. --branch <name> creates the branch first
+# (agent full-chain path). Default PR base is the current branch; --base
+# redirects to main or your integration branch.
 
 open-memex pr-status [--apply]
 # read the branch's GitHub PR and map its state onto each in-repo memory:

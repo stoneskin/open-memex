@@ -291,11 +291,13 @@ open-memex sync-status
 # （draft / proposed / approved / published / rejected），
 # 以及 repo 里还没 commit 的记忆文件。
 
-open-memex submit <id...> [--onto <branch>] [--base <branch>]
+open-memex submit <id...> [--branch <name>] [--base <branch>]
 # 把你点名的草稿移入 .ai/open-memex/，状态变为 proposed：
-# 建 mem/sync-<timestamp> 分支（或 --onto 当前分支，跟代码走同一个 PR），
-# 复制、改 review_state、本地 git commit。全有或全无；冲突（同 id 不同内容）
-# 干净回滚。打印 push + gh pr 命令；Agent 拿到你的 Yes 后会自己走完 push/PR。
+# 复制、改 review_state、在当前分支本地 git commit。
+# 永不自动建分支——建分支是你说了算（或 Agent 拿到你明确批准走全链时）。
+# 全有或全无；冲突（同 id 不同内容）干净回滚。
+# 打印 push + gh pr 命令；Agent 拿到你的 Yes 后会自己走完 push/PR。
+# --branch <name> 先建分支再提交（Agent 全链路径）。
 # PR 默认 base 是当前分支；--base 可改到 main 或集成支。
 
 open-memex pr-status [--apply]

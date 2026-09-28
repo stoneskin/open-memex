@@ -714,6 +714,18 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   init-written instruction files, and the `memory_status` tool description.
   *Rationale: the user should not have to remember command names to sync;
   saying it in words must work. Approved 2026-09-28.*
+- **D36** — `submit` never creates a branch on its own (revises D26/D27): it
+  copies the named drafts into `.ai/open-memex/`, commits locally on the
+  CURRENT branch, and prints next-step commands. Branch creation is the human's
+  call — or the agent's, only with explicit approval for the full chain, via
+  `submit --branch <name>` / `memory_submit(branch=...)`. *Rationale: an
+  auto-created branch strands the user on it — they forget to switch back.
+  After a submit the agent asks ONE follow-up ("want me to create a branch +
+  push + open the PR, or will you handle it yourself?") instead of branching
+  silently. Checkpoints that trigger `memory_status`: session start, end of a
+  work chunk, after the user commits, and after any memory_* action.
+  The "sync memory" trigger ALWAYS goes through the `memory_status` tool —
+  never by browsing the appdata directory directly. Approved 2026-09-28.*
 - **D33** — Every CLI command answers `open-memex <command> --help` (and `-h`)
   with its own usage, flags, and examples; checked before config/DB load so
   help works even in a broken environment. Unknown commands with `--help`

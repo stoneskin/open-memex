@@ -124,17 +124,17 @@ repo awaiting review or published, and repo files not yet committed.
 
 Usage: open-memex sync-status`,
 
-  submit: `Move outbox drafts into a git branch for review: creates a branch
-(default mem/sync-*), copies the drafts into the repo memory dir as proposed
-(local-approved copies keep their approval), commits locally, and moves the
-outbox originals out. Prints the push and PR commands — those need your
-explicit approval and are never run automatically.
+  submit: `Move outbox drafts into the repo for review: copies the drafts into
+the repo memory dir as proposed (a local-approved copy keeps its approval),
+commits locally on the CURRENT branch, and moves the outbox originals out.
+Never creates a branch on its own — branch creation is your call.
 
-Usage: open-memex submit <id...> [--onto <branch>] [--base <branch>]
+Usage: open-memex submit <id...> [--branch <name>] [--base <branch>]
 
 Flags:
-  --onto   submit onto the current branch instead of creating mem/sync-*
-  --base   base branch for the PR suggestion (default: the branch you're on)
+  --branch  create this branch and submit onto it (only with your explicit
+            approval for the full chain); default: stay on current branch
+  --base    PR base override (default: the branch you're on)
 
 Example:
   open-memex submit 01ABC 01DEF`,
@@ -223,7 +223,7 @@ Usage:
   open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
   open-memex resolve [id-or-path]
   open-memex sync-status
-  open-memex submit <id...> [--onto <branch>] [--base <branch>]
+  open-memex submit <id...> [--branch <name>] [--base <branch>]
   open-memex pr-status [--apply]
   open-memex reindex
   open-memex scopes
@@ -883,7 +883,7 @@ function positionalArgs(argv: string[]): string[] {
     if (ids.length === 0) usage();
     syncScope(project.key, "submit");
     try {
-      const r = submitMemories(ids, { onto: flags.onto, base: flags.base });
+      const r = submitMemories(ids, { branch: flags.branch, base: flags.base });
       for (const s of r.submitted) {
         console.log(`submitted ${s.id} → ${path.relative(process.cwd(), s.filePath)}  [${s.reviewState}]`);
       }

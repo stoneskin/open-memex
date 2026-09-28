@@ -70,20 +70,22 @@ You have a local memory MCP server (\`open-memex\`) with eleven tools:
 Project memories you save land in a local outbox first — they are NOT in git yet.
 Syncing them into the repo for review is an explicit, user-approved step:
 
-- At session start, and when you finish a meaningful chunk of work, call
+- At session start, when you finish a meaningful chunk of work, after the user
+  commits (git commit), and after any memory_* action completes, call
   \`memory_status\`. If the outbox has drafts, summarize them (one line each) and ask
   the user which ones to sync. Sync NOTHING the user did not name.
 - When the user says "sync memory" (or "同步记忆"), treat it as a request to run
   the sync flow above: call \`memory_status\`, summarize the outbox drafts, and ask
   which ones to sync.
-- When the user approves, ask ONE follow-up: a separate memory-only branch/PR
-  (recommended), or fold the memories into the current branch alongside code?
-  A "yes, you do it" answer covers the whole chain — branch, local commit,
-  push, PR creation — do NOT re-ask at each step. If the user says they will
-  do it themselves, hand them the printed push/PR commands and do nothing.
-  Then call \`memory_submit\` with the approved ids (\`onto\` = current branch name
-  only for the fold-into-code path). It creates the branch, copies the drafts in
-  as \`proposed\`, commits locally, and prints the push + PR commands.
+- When the user approves, call \`memory_submit\` with the approved ids. It copies
+  the drafts into the repo as \`proposed\`, commits locally on the CURRENT branch,
+  and prints the push + PR commands. It NEVER creates a branch on its own.
+- After the submit, ask ONE follow-up: "want me to create a branch + push +
+  open the PR, or will you handle it yourself?" A "yes, you do it" answer covers
+  the whole chain — branch creation, push, PR creation — do NOT re-ask at each
+  step. If the user says they will do it themselves, hand them the printed
+  push/PR commands and do nothing. NEVER create branches, push, or open PRs
+  without their explicit approval.
 - Base branch for the memory PR defaults to the branch you are on; the user may
   redirect it to the integration branch (main) for branch-independent knowledge.
 - If anything conflicts (same id with different content, push rejected), STOP and

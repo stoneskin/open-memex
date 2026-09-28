@@ -53,7 +53,7 @@ export const TOOL_DESCRIPTIONS = {
   memory_status:
     "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start and at task checkpoints, then ask the user which drafts to sync. The user may also trigger this flow by saying 'sync memory' (or '同步记忆').",
   memory_submit:
-    "Move outbox drafts into a git branch for review: creates a branch (default mem/sync-*), copies the drafts into the repo memory dir as proposed, commits locally, and moves the outbox originals out. Prints the push and PR commands — those need the user's explicit approval and are never run automatically.",
+    "Move outbox drafts into the repo memory dir for review: copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically.",
   memory_propose:
     "Copy personal memories into the project outbox as review drafts. The personal originals stay put.",
   memory_promote:
@@ -125,14 +125,16 @@ export type MemoryStatusArgs = z.infer<z.ZodObject<typeof memoryStatusArgs>>;
 
 export const memorySubmitArgs = {
   ids: z.array(z.string().min(1)).min(1).describe("Outbox draft ids to submit."),
-  onto: z
+  branch: z
     .string()
     .optional()
-    .describe("Submit onto this branch instead of creating mem/sync-*. Must be the current branch (for folding memories into a code PR)."),
+    .describe(
+      "Create this branch and submit onto it. If omitted, submit stays on the current branch — branches are never auto-created. Only pass this when the user explicitly approved the full chain (branch + push + PR).",
+    ),
   base: z
     .string()
     .optional()
-    .describe("PR base branch override. Default: the branch the submit branched from."),
+    .describe("PR base branch override. Default: the branch the submit ran on."),
 };
 export type MemorySubmitArgs = z.infer<z.ZodObject<typeof memorySubmitArgs>>;
 
@@ -359,14 +361,15 @@ export async function statusMemories(): Promise<ToolResult> {
 }
 
 export async function submitMemoriesOp(args: MemorySubmitArgs): Promise<ToolResult> {
-  const r = submitMemories(args.ids, { onto: args.onto, base: args.base });
+  const r = submitMemories(args.ids, { branch: args.branch, base: args.base });
   const lines: string[] = [];
   for (const s of r.submitted) lines.push(`submitted ${s.id} [${s.reviewState}]`);
   for (const id of r.skippedIdentical) lines.push(`already on branch: ${id} (outbox copy removed)`);
-  lines.push(r.committed ? `committed on ${r.branch}.` : `nothing new to commit on ${r.branch}.`);
-  lines.push(`Next (needs the user's explicit approval — never run automatically):`);
+  lines.push(r.committed ? `committed on ${r.branch} (you are still on this branch).` : `nothing new to commit on ${r.branch}.`);
+  lines.push(`Next — ask the user: "want me to create a branch + push + open the PR, or will you handle it yourself?"`);
+  lines.push(`Never create branches, push, or open PRs without their explicit approval. If they handle it themselves, hand them these:`);
   lines.push(`  ${r.pushCommand}`);
-  lines.push(`  ${r.prCommand}`);
+  for (const l of r.prCommand.split("\n")) lines.push(`  ${l}`);
   return { title: `memory: submitted ${r.submitted.length}`, output: lines.join("\n") };
 }
 

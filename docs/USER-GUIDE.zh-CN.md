@@ -87,12 +87,13 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
 - `open-memex sync-status`：看索引**上次同步的时间和触发方**（会话开始、
   请求、CLI、submit）、草稿箱（待同步）、repo 里的评审状态
   （`draft / proposed / approved / published / rejected`），以及 repo 里还没
-  commit 的记忆文件。你的 agent 会在会话开始和关键节点跑这个，然后问你
-  哪些草稿（如果有）要同步。
+  commit 的记忆文件。你的 agent 会在会话开始、关键节点、你 commit 之后、
+  记忆动作之后跑这个，然后问你哪些草稿（如果有）要同步。你也可以直接说"同步记忆"。
 - `open-memex submit <id...>`：把**你点名的草稿**移入 `<repo>/.ai/open-memex/`，
-  状态变为 `proposed`。它会建 `mem/sync-<timestamp>` 分支（或用 `--onto`
-  留在当前分支，跟代码走同一个 PR），复制文件、改 `review_state`、做一次
-  **本地** git commit——全有或全无、幂等、crash-safe。它打印 `git push` +
+  状态变为 `proposed`。它复制文件、改 `review_state`、在**当前分支**做一次
+  **本地** git commit——永不自动建分支（建分支你说了算，或 agent 拿到你明确
+  批准走全链时用 `--branch <name>`）。
+  全有或全无、幂等、crash-safe。它打印 `git push` +
   `gh pr create` 命令；如果你的 agent 已经拿到你这次的 Yes，它会自己走完
   push 和 PR。PR 默认 base 是当前分支；`--base` 可改到 `main` 或集成支。
   分支上同 id 但内容不同——**直接中止**，等人裁决，绝不覆盖。
@@ -104,7 +105,7 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
     **git 负责运输**（push、PR、合并）。
 - 独立的记忆 PR **只含记忆文件，不含代码**，跟代码 PR 分开评审、分开审计。
   审的是"这条是真的吗？能给全团队看吗？有没有 secret？"——代码 PR 的 CI 不会查这些。
-  也可以搭代码 PR 的车（`submit --onto <branch>`）。
+  想开分支时你自己建（或 agent 拿到批准后建）。
 - "要求修改"不需要命令：PR 开着的时候，作者直接改同一个文件（自己改，
   或在 chat 里让 agent 改），commit、push。状态一直是 `proposed`，
   PR 本身就是评审机制。

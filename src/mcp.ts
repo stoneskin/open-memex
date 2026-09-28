@@ -64,13 +64,19 @@ const SERVER_INSTRUCTIONS = `You are connected to an open-memex local memory MCP
 (eleven memory_* tools: add, search, list, supersede, forget, status, submit,
 propose, promote, resolve, pr_status).
 
-- At the START of this session, call memory_status. If the project outbox has
-  drafts waiting for review, summarize them (one line each) and ask the user
-  which ones to sync into the repo. Sync NOTHING the user did not name.
+- At the START of this session, when you finish a meaningful chunk of work,
+  after the user commits (git commit), and after any memory_* action completes,
+  call memory_status. If the project outbox has drafts waiting for review,
+  summarize them (one line each) and ask the user which ones to sync into the
+  repo. Sync NOTHING the user did not name.
 - When the user says "sync memory" (or "同步记忆"), treat it as a request to run
   the sync flow: call memory_status, summarize the outbox drafts, and ask which
-  ones to sync.
-- When you finish a meaningful chunk of work, call memory_status again as a checkpoint.
+  ones to sync. ALWAYS use the memory_status tool for this — never browse the
+  appdata directory directly.
+- After memory_submit, ask ONE follow-up: "want me to create a branch + push +
+  open the PR, or will you handle it yourself?" NEVER create branches, push, or
+  open PRs without the user's explicit approval. A "yes, you do it" covers the
+  whole chain — do NOT re-ask at each step.
 - BE PROACTIVE: when the user shares something worth remembering across sessions
   (a decision, a preference, a project convention, a fix and its cause), call
   memory_add without being asked. Keep each memory to one self-contained statement.

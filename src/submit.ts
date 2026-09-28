@@ -191,15 +191,19 @@ export function formatSyncStatus(st: SyncStatus): string {
 // ---------------------------------------------------------------------------
 
 export interface SubmitOptions {
-  /** Submit onto this branch instead of creating mem/sync-*. Must be the current branch. */
-  onto?: string;
-  /** PR base override (default: the branch we branched from). */
+  /** Create this branch and submit onto it. If omitted, submit stays on the
+      current branch — D36: no auto-created branches; branch creation is the
+      human's call (or the agent's, only with explicit approval). */
+  branch?: string;
+  /** PR base override (default: the branch the submit ran on). */
   base?: string;
 }
 
 export interface SubmitResult {
   branch: string;
   base: string;
+  /** true when --branch created a new branch for this submit */
+  createdBranch: boolean;
   submitted: Array<{ id: string; filePath: string; reviewState: ReviewState }>;
   /** already on the branch with identical content — outbox move completed */
   skippedIdentical: string[];
@@ -219,7 +223,8 @@ interface Validated {
 export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitResult {
   if (ids.length === 0) fail("submit needs at least one memory id");
   const root = projectRoot();
-  // submit needs a git repo — the whole point is branch + commit.
+  // submit needs a git repo — the memories land in .ai/open-memex/ and are
+  // committed locally. Branch creation is never automatic (D36).
   git(root, ["rev-parse", "--git-dir"]);
 
   const scope = resolveProjectScope(root);
@@ -269,24 +274,25 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
   }
 
   // 2. Resolve the target branch.
+  //    D36: submit never creates a branch on its own — it works on the branch
+  //    you're already on. Pass --branch <name> (explicitly) only when the user
+  //    approved the full chain (branch + push + PR).
   const startBranch = git(root, ["branch", "--show-current"]) || git(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  let branch: string;
-  if (opts.onto) {
-    if (opts.onto !== startBranch) {
-      fail(`--onto ${opts.onto} is not the current branch (${startBranch || "(detached)"}). submit only targets the branch you're on.`);
-    }
-    branch = opts.onto;
-  } else {
-    const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
-    branch = `mem/sync-${stamp}`;
+  let branch: string = startBranch;
+  let createdBranch = false;
+  if (opts.branch) {
+    branch = opts.branch;
     let n = 0;
+    let candidate = branch;
     while (true) {
-      const exists = git(root, ["branch", "--list", branch]);
+      const exists = git(root, ["branch", "--list", candidate]);
       if (!exists) break;
       n++;
-      branch = `mem/sync-${stamp}-${n}`;
+      candidate = `${branch}-${n}`;
     }
+    branch = candidate;
     git(root, ["checkout", "-b", branch]);
+    createdBranch = true;
   }
   const base = opts.base ?? startBranch;
   const author = currentAuthor();
@@ -348,7 +354,7 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     }
     // If we created the branch and never committed, remove it too — an
     // aborted submit leaves no trace.
-    if (!opts.onto) {
+    if (createdBranch) {
       try {
         git(root, ["checkout", "--quiet", startBranch]);
         git(root, ["branch", "--quiet", "-D", branch]);
@@ -399,13 +405,20 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     removed: 0,
     scanned: validated.length,
   });
+  // D36: no auto-branch — the commit sits on the branch you were already on.
+  // Next steps are printed, not run. For a separate memory PR, create a branch
+  // first (the commit comes along), then push + open the PR.
+  const branchCmd = `git checkout -b mem/sync-YYYYMMDD`;
   return {
     branch,
     base,
     submitted,
     skippedIdentical,
     committed,
+    createdBranch,
     pushCommand: `git push -u origin ${branch}`,
-    prCommand: `gh pr create --base ${base} --title "mem: review ${validated.length} ${validated.length === 1 ? "memory" : "memories"}" --body "Submitted from the open-memex outbox: ${ids8}."`,
+    prCommand: createdBranch
+      ? `gh pr create --base ${base} --title "mem: review ${validated.length} ${validated.length === 1 ? "memory" : "memories"}" --body "Submitted from the open-memex outbox: ${ids8}."`
+      : `${branchCmd}  # if you want a separate memory PR (else push ${branch} directly)\n  git push -u origin <new-branch> && gh pr create --base ${base} --title "mem: review ${validated.length}" --body "Submitted from the open-memex outbox: ${ids8}."`,
   };
 }

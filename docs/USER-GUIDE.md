@@ -99,13 +99,15 @@ personal idea ──propose──▶ outbox draft ──submit──▶ proposed
   what triggered it — session start, a request, a CLI run, a submit), the
   outbox (pending sync), the repo review states
   (`draft / proposed / approved / published / rejected`), and any uncommitted
-  repo memory files. Your agent calls this at session start and at meaningful
-  checkpoints, then asks which drafts (if any) you want synced.
+  repo memory files. Your agent calls this at session start, at meaningful
+  checkpoints, after you commit, and after memory actions — then asks which
+  drafts (if any) you want synced. You can also just say "sync memory".
 - `open-memex submit <id...>`: moves **your named drafts** into
-  `<repo>/.ai/open-memex/` as `proposed`. It creates `mem/sync-<timestamp>`
-  (or stays on the current branch with `--onto` for a code+memory PR), copies
-  the files, flips `review_state`, and makes a **local** git commit —
-  all-or-nothing, idempotent, crash-safe. It prints the `git push` +
+  `<repo>/.ai/open-memex/` as `proposed`. It copies the files, flips
+  `review_state`, and makes a **local** git commit **on your current branch** —
+  it never creates a branch on its own (branch creation is your call, or your
+  agent's with your explicit approval via `--branch <name>`).
+  All-or-nothing, idempotent, crash-safe. It prints the `git push` +
   `gh pr create` commands; if your agent already has your Yes for this sync,
   it carries through push and PR itself. The PR base defaults to the current
   branch; `--base` redirects to `main` or your integration branch.
@@ -120,8 +122,8 @@ personal idea ──propose──▶ outbox draft ──submit──▶ proposed
     (push, PR, merge).
 - A standalone memory PR contains **only memory files, no code**, reviewed and
   audited separately from code PRs. Reviewers check "is this true? is it safe
-  to share? any secrets?" — things a code PR's CI never checks. You can also
-  ride along in a code PR (`submit --onto <branch>`).
+  to share? any secrets?" — things a code PR's CI never checks. You create the
+  branch yourself when you want one (or your agent does, with your approval).
 - "Request changes" needs no command: while the PR is open, the author edits
   the same file (directly, or by asking their agent in chat), commits, and
   pushes. The state stays `proposed`; the PR is the review mechanism.

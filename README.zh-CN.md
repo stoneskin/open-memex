@@ -37,6 +37,38 @@ plan 产出决策，verify 产出规则——open-memex 是让它们跨会话留
 - **零云端**、零账号、零第三方 API
 - 直接跑在 opencode 内嵌的 Bun 运行时里；CLI 和 MCP server 跑在 Node 下——开发时无需构建（发布的 npm 包带预编译好的 JS）、无需安装 Bun
 
+## 架构
+
+```text
+                        ┌──────────────────┐
+                        │     AI agent     │
+                        │ Copilot / Cursor │
+                        │ Claude / opencode│
+                        └────────┬─────────┘
+                                 │ MCP (stdio) — 11 tools
+                                 │ session-start injection
+                        ┌────────▼─────────┐
+                        │    open-memex    │
+                        │    MCP server    │
+                        └──┬────────────┬──┘
+                           │            │
+              ┌────────────▼───┐  ┌─────▼──────────┐
+              │ Markdown files │  │ SQLite FTS5    │
+              │ source of truth│  │ rebuildable    │
+              │ local-first    │  │ index (BM25)   │
+              └─────────────┬──┘  └────────────────┘
+                            │ submit (explicit,
+                            │  local commit)
+                    ┌───────▼────────┐
+                    │    Git repo    │
+                    │ .ai/open-memex/│
+                    │  PR-reviewed   │
+                    │  team memory   │
+                    └────────────────┘
+
+personal scope：只属于这台机器——永不同步，永远进不了仓库。
+```
+
 ## 安装
 
 ### 前置要求
@@ -45,7 +77,9 @@ plan 产出决策，verify 产出规则——open-memex 是让它们跨会话留
 
 ### 第一步——安装 CLI
 
-**npm（推荐）：**
+#### 稳定版 vs Alpha 版
+
+**稳定版**（推荐大多数用户）——`latest` 标签：
 
 ```sh
 npm install -g open-memex
@@ -53,10 +87,26 @@ npm install -g open-memex
 
 安装的是 `0.3.0` 正式版。
 
+**Alpha 版**（最新开发版，给测试者）——`alpha` 标签：
+
+```sh
+npm install -g open-memex@alpha
+```
+
+查看已发布版本：
+
+```sh
+npm view open-memex version         # 最新稳定版
+npm view open-memex@alpha version   # 最新 alpha 版
+```
+
+Alpha 版可能有毛边——欢迎报 bug。
+
 **免安装——用 npx 直接跑：**
 
 ```sh
-npx -y open-memex <命令>   # 例如 npx -y open-memex init --client vscode
+npx -y open-memex <命令>          # 例如 npx -y open-memex init --client vscode
+npx -y open-memex@alpha <命令>   # alpha 线，免安装
 ```
 
 **从源码安装**（最新开发版，`V2-dev-p2` 分支）：

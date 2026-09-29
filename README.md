@@ -40,6 +40,38 @@ of re-deriving them on every run.
 - **Zero cloud**, zero account, zero third-party API
 - Loads directly under opencode's embedded Bun runtime; CLI and MCP server run under Node — no build step in development (the published npm package ships pre-compiled JS), no Bun install
 
+## Architecture
+
+```text
+                        ┌──────────────────┐
+                        │     AI agent     │
+                        │ Copilot / Cursor │
+                        │ Claude / opencode│
+                        └────────┬─────────┘
+                                 │ MCP (stdio) — 11 tools
+                                 │ session-start injection
+                        ┌────────▼─────────┐
+                        │    open-memex    │
+                        │    MCP server    │
+                        └──┬────────────┬──┘
+                           │            │
+              ┌────────────▼───┐  ┌─────▼──────────┐
+              │ Markdown files │  │ SQLite FTS5    │
+              │ source of truth│  │ rebuildable    │
+              │ local-first    │  │ index (BM25)   │
+              └─────────────┬──┘  └────────────────┘
+                            │ submit (explicit,
+                            │  local commit)
+                    ┌───────▼────────┐
+                    │    Git repo    │
+                    │ .ai/open-memex/│
+                    │  PR-reviewed   │
+                    │  team memory   │
+                    └────────────────┘
+
+personal scope: this machine only — never synced, never enters a repo.
+```
+
 ## Installation
 
 ### Requirements
@@ -48,7 +80,9 @@ of re-deriving them on every run.
 
 ### Step 1 — Install the CLI
 
-**npm (recommended):**
+#### Stable vs alpha
+
+**Stable** (recommended for most users) — the `latest` tag:
 
 ```sh
 npm install -g open-memex
@@ -56,10 +90,26 @@ npm install -g open-memex
 
 This installs the `0.3.0` stable release.
 
+**Alpha** (bleeding edge, for testers) — the `alpha` tag:
+
+```sh
+npm install -g open-memex@alpha
+```
+
+See what's published:
+
+```sh
+npm view open-memex version         # latest stable
+npm view open-memex@alpha version   # latest alpha
+```
+
+Alpha builds may have rough edges — bug reports are welcome.
+
 **No install — run via npx:**
 
 ```sh
-npx -y open-memex <command>   # e.g. npx -y open-memex init --client vscode
+npx -y open-memex <command>         # e.g. npx -y open-memex init --client vscode
+npx -y open-memex@alpha <command>  # alpha line, no install
 ```
 
 **From source** (bleeding edge, `V2-dev-p2` branch):

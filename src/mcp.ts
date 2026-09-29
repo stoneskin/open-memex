@@ -1,9 +1,10 @@
 /**
  * open-memex generic MCP server (stdio transport).
  *
- * Exposes the same five memory tools as the opencode plugin
+ * Exposes the memory tools as the opencode plugin
  * (memory_add / memory_search / memory_list / memory_supersede /
- * memory_forget) over the Model Context Protocol, so any MCP client —
+ * memory_forget, plus memory_status / memory_submit / memory_propose /
+ * memory_promote / memory_resolve / memory_pr_status) over the Model Context Protocol, so any MCP client —
  * VS Code Copilot Chat, Cursor, Claude Code, etc. — can use open-memex
  * without a host-specific plugin.
  *
@@ -19,6 +20,9 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { loadConfig } from "./config.ts";
 import { resolveProjectScope, PERSONAL_SCOPE, type Scope } from "./scope.ts";
@@ -51,7 +55,18 @@ import {
   type ToolResult,
 } from "./tools/ops.ts";
 
-const SERVER_VERSION = "0.2.0-alpha";
+// Server version tracks package.json — never hardcode it here again.
+// package.json sits two levels above this file in both layouts
+// (src/mcp.ts and dist/mcp.js), same convention as cli.ts --version.
+const SERVER_VERSION: string = (() => {
+  try {
+    const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0-unknown";
+  } catch {
+    return "0.0.0-unknown";
+  }
+})();
 
 /**
  * D26: session-start guidance delivered through the MCP handshake itself.

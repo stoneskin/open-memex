@@ -140,3 +140,6 @@ hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
   in-development version. New features on a dev branch bump the minor on the alpha
   line (`0.3.0` → `0.4.0-alpha.1`); fixes bump the patch (`-alpha.1` → `-alpha.2`).
   The bump goes in the same commit as the feature, never as an afterthought.
+  The version number serves the publish: no publish, no mandatory bump. But once a
+  version has been pushed to the remote (shared), later changes must bump — two
+  different code states must never share one version number.

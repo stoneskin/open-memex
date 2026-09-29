@@ -1197,6 +1197,10 @@ function positionalArgs(argv: string[]): string[] {
       entries.push({ key: name, files, marker });
     }
     entries.sort((a, b) => b.files - a.files);
+    if (entries.length === 0) {
+      console.log("(no scopes with memories yet — add one with `open-memex add`)");
+      return;
+    }
     for (const e of entries) {
       console.log(`  ${e.files.toString().padStart(4)}  ${e.key}${e.marker}`);
     }

@@ -1,5 +1,7 @@
 # open-memex
 
+> A shared organizational memory layer that helps people and AI capture, retain, and reuse institutional knowledge.
+
 [![npm version](https://img.shields.io/npm/v/open-memex.svg)](https://www.npmjs.com/package/open-memex)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 

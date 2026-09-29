@@ -1,5 +1,7 @@
 # open-memex
 
+> 共享组织记忆层，帮助人与 AI 捕获、沉淀并复用组织知识。
+
 [![npm version](https://img.shields.io/npm/v/open-memex.svg)](https://www.npmjs.com/package/open-memex)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 

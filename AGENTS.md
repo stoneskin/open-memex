@@ -131,9 +131,10 @@ build roadmap; the design doc tracks the *why*.
 
 ## Branch workflow
 
-`main` (stable, mirrors npm) ← `V2` (v2 integration) ← `V2-dev-p<n>`
-(phase work; draft PRs into `V2`). Never create `V2/<anything>` — git can't
-hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
+`dev/<topic>` → PR → `main` (the v2 line; alpha versions published with
+`npm publish --tag alpha`, npm `latest` moves only on stable releases).
+The `V2` integration branch was retired 2026-09-29 — its job (isolating the
+breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.
 
 ## Style notes
 

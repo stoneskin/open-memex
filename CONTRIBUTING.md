@@ -2,17 +2,17 @@
 
 ## Branch workflow
 
-- `main` — stable. Mirrors the npm release line. Never commit directly;
-  only merge from `V2` when a milestone is tested and ready to release.
-- `V2` — integration branch for the v2 line. Phase work lands here via
-  pull request. Merges to `main` only after the milestone is dogfooded
-  (plugin tested in opencode, `migrate --to-v2 --dry-run` clean on real data).
-- `V2-dev-p<n>` — phase dev branches (e.g. `V2-dev-p1`). Open as **draft**
-  PRs against `V2`; mark ready and merge after local testing passes.
+- `main` — the v2 line. Never commit directly; land work via pull request
+  from a dev branch. Alpha versions (e.g. `0.5.0-alpha.x`) live on `main`;
+  publish them with `npm publish --tag alpha` so the npm `latest` tag only
+  moves on stable releases.
+- `dev/<topic>` — feature/fix branches (e.g. `dev/init-ux`). Open as **draft**
+  PRs against `main`; mark ready and merge after local testing passes.
 
-**Naming rule:** never create `V2/<anything>` — git cannot hold a branch
-named `V2` and a branch named `V2/…` at the same time (ref file vs.
-directory conflict). Use the flat `V2-dev-*` form instead.
+(The `V2` integration branch was retired 2026-09-29 — it existed only to
+isolate the breaking v1→v2 transition, which shipped with 0.3.0. If a future
+breaking change ever needs isolation, create an integration branch then;
+branches are cheap.)
 
 ## Before opening a PR
 

@@ -155,6 +155,13 @@ conflicting ids are reported, never overwritten.
 
 Usage: open-memex import <bundle.tar.gz> [--dry-run]`,
 
+  "distill-agents": `Propose an AGENTS.md snippet distilled from project
+memories (decisions, constraints, lessons, gotchas, howtos). Prints markdown
+to stdout, or writes it with -o. Review and merge by hand — open-memex never
+rewrites your AGENTS.md on its own.
+
+Usage: open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]`,
+
   submit: `Move outbox drafts into the repo for review: copies the drafts into
 the repo memory dir as proposed (a local-approved copy keeps its approval),
 commits locally on the CURRENT branch, and moves the outbox originals out.
@@ -258,6 +265,7 @@ Usage:
   open-memex push
   open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
   open-memex import <bundle.tar.gz> [--dry-run]
+  open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]
   open-memex submit <id...> [--branch <name>] [--base <branch>]
   open-memex pr-status [--apply]
   open-memex reindex
@@ -1015,6 +1023,38 @@ function positionalArgs(argv: string[]): string[] {
       }
     } catch (e) {
       console.error(`import failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  // Phase 3: distill project memories into a proposed AGENTS.md snippet.
+  if (cmd === "distill-agents") {
+    const { distillAgentsMarkdown } = await import("./distill-agents.ts");
+    const flags = parseFlags(rest);
+    const scopeFlag = flags["scope"] ?? "project";
+    const scopeKeys =
+      scopeFlag === "personal" ? [PERSONAL_SCOPE.key] : [project.key];
+    const types = flags["type"]
+      ? flags["type"].split(",").map((t) => t.trim()).filter(Boolean)
+      : undefined;
+    const limit = flags["limit"] ? parseInt(flags["limit"], 10) : undefined;
+    const oIdx = rest.findIndex((a) => a === "-o");
+    const outFile = oIdx >= 0 ? rest[oIdx + 1] : undefined;
+    try {
+      const md = distillAgentsMarkdown({ scopeKeys, types, limit });
+      if (!md) {
+        console.log("no distillable memories found (decisions, constraints, lessons, gotchas, howtos)");
+        return;
+      }
+      if (outFile) {
+        fs.writeFileSync(outFile, md, "utf8");
+        console.log(`wrote proposed AGENTS.md snippet → ${outFile} (review and merge by hand)`);
+      } else {
+        console.log(md);
+      }
+    } catch (e) {
+      console.error(`distill-agents failed: ${(e as Error).message}`);
       process.exit(2);
     }
     return;

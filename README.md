@@ -335,6 +335,12 @@ open-memex import <bundle.tar.gz> [--dry-run]
 # drafts. Identical ids are skipped; conflicting ids are reported,
 # never overwritten.
 
+open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]
+# propose an AGENTS.md snippet distilled from project memories
+# (decisions, constraints, lessons, gotchas, howtos). Prints markdown;
+# -o writes it to a file. You review and merge by hand — open-memex
+# never rewrites your AGENTS.md on its own.
+
 open-memex propose <id...> --to project [--local-approve]
 # propose one or several personal memories at once (one branch, one PR);
 # each is copied with its own new id. All-or-nothing: a bad id aborts the

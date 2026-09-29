@@ -35,6 +35,7 @@ npm run cli -- pull                                          # fetch + fast-forw
 npm run cli -- push                                          # push current branch to remote (explicit only; open-memex never auto-pushes)
 npm run cli -- export [--scope project|personal|both] [--all] [-o <file>]  # portable .tar.gz bundle (markdown + manifest); private excluded unless --all
 npm run cli -- import <bundle.tar.gz> [--dry-run]               # restore: personal → personal dir, project → outbox re-keyed; conflicts reported, never overwritten
+npm run cli -- distill-agents [--type t1,t2] [-o <file>]         # propose an AGENTS.md snippet from project memories (assist only; you merge by hand)
 npm run cli -- submit <id...> [--branch <name>] [--base <branch>]  # drafts → .ai/open-memex/ (current branch + local commit; never auto-branches)
 npm run cli -- propose <id...> --to project [--local-approve]  # copy personal → project outbox (batch OK)
 npm run cli -- promote <id> [--reject] [--resubmit] [--note "..."]        # proposed → approved → published (audit trail appended)

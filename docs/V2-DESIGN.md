@@ -882,6 +882,24 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   cannot confirm what the real run will do; and a destructive-path failure must
   speak in user terms. Shipped as 0.4.1 hotfix on the stable line. Approved
   2026-09-29.*
+- **D45** — `init --global` (0.5.0-alpha.1): one-time user-level MCP wiring for
+  VS Code / Cursor. Writes the open-memex server entry to the editor's
+  user-level `mcp.json` (`%APPDATA%\Code\User\mcp.json` on Windows,
+  `~/Library/Application Support/Code/User/mcp.json` on macOS,
+  `~/.config/Code/User/mcp.json` on Linux; `~/.cursor/mcp.json` for Cursor)
+  instead of the project's `.vscode/mcp.json` — init once, the server starts
+  in every project. The entry keeps `cwd: "${workspaceFolder}"` so VS Code
+  substitutes it per window and project-scope resolution keeps working;
+  a per-project config still wins when present. Merge semantics are shared
+  with project-level init (merge, never clobber; `--force` overwrites).
+  Interactive `init` now asks per-project vs user-level for vscode/cursor
+  (default: per-project, preserving old behavior); `--global` skips the
+  question. For opencode, `--global` is a no-op that prints the native-plugin
+  one-liner (already global, and strictly more capable than plain-MCP mode);
+  Visual Studio stays solution-level by design. *Rationale: per-project init
+  is a paper cut that compounds — the data layer already needs zero per-project
+  setup (scope is derived from cwd), so the editor wiring should be able to
+  match. Approved 2026-09-29.*
 - **D41** — The type taxonomy is reconciled to 11 types with one-line definitions
   (§3.1): `fact` `preference` `decision` `constraint` `todo` `knowledge` `howto`
   `gotcha` `lesson` `observation` `reference`. Merged away: `warning`→`gotcha`,

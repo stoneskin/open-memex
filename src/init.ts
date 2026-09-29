@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { DEFAULT_CONFIG, saveConfig } from "./config.ts";
 import { projectRoot } from "./paths.ts";
 
@@ -110,7 +111,89 @@ function writeMcpJson(root: string, client: string, force: boolean): string | nu
   const dir = client === "cursor" ? path.join(root, ".cursor") : path.join(root, ".vscode");
   const file = path.join(dir, "mcp.json");
   const sectionKey = client === "cursor" ? "mcpServers" : "servers";
+  const { entry, durable } = stdioServerEntry(client);
+  const written = writeServerEntryFile(file, sectionKey, entry, force, true);
+  if (written) warnNonDurable(durable);
+  return written;
+}
 
+/**
+ * D45: user-level MCP config path — `init --global` writes here so one init
+ * covers all projects. `platform` is a parameter (default: current) so tests
+ * can cover all OS layouts without mocking.
+ */
+export function userMcpConfigPath(
+  client: "vscode" | "cursor",
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const home = os.homedir();
+  if (client === "cursor") return path.join(home, ".cursor", "mcp.json");
+  if (platform === "win32") {
+    const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+    return path.join(appData, "Code", "User", "mcp.json");
+  }
+  if (platform === "darwin") {
+    return path.join(home, "Library", "Application Support", "Code", "User", "mcp.json");
+  }
+  const xdg = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+  return path.join(xdg, "Code", "User", "mcp.json");
+}
+
+/** The open-memex server entry, same shape init writes at project level. */
+function stdioServerEntry(client: string): { entry: Record<string, unknown>; durable: boolean } {
+  // D17: resolve the server command at init time — a one-shot npx leaves no bin behind.
+  const mc = resolveMcpCommand();
+  const entry: Record<string, unknown> =
+    client === "cursor"
+      ? { command: mc.command, args: mc.args }
+      : {
+          type: "stdio",
+          command: mc.command,
+          args: mc.args,
+          // VS Code substitutes ${workspaceFolder} per window, so the server
+          // starts with the open project as cwd and scope resolution just works.
+          cwd: "${workspaceFolder}",
+        };
+  return { entry, durable: mc.durable };
+}
+
+/** Warn when init had to fall back to an npx-based server command. */
+function warnNonDurable(durable: boolean): void {
+  if (durable) return;
+  console.log(`  ! no durable \`open-memex\` on PATH (one-shot npx?) — wrote an npx-based command.`);
+  console.log(`    For faster startup: \`npm i -g ${ALPHA_TAG}\`, then re-run \`open-memex init --force\`.`);
+}
+
+/**
+ * Pure merge of one server entry into a parsed config doc.
+ * Returns "added" when the entry was written, "kept" when an entry already
+ * existed and force was not set. Mutates `doc`.
+ */
+export function mergeServerEntry(
+  doc: Record<string, unknown>,
+  sectionKey: string,
+  entry: Record<string, unknown>,
+  force: boolean,
+): "added" | "kept" {
+  const section = ((doc[sectionKey] ??= {}) as Record<string, unknown>);
+  if (section["open-memex"] && !force) return "kept";
+  section["open-memex"] = entry;
+  return "added";
+}
+
+/**
+ * Read (or create) a JSON config file, merge the open-memex server entry, write
+ * it back. Existing files are merged, never clobbered; invalid JSON is left
+ * untouched. `mkdir` controls whether parent dirs are created (user-level
+ * configs) or expected to exist via the project root.
+ */
+function writeServerEntryFile(
+  file: string,
+  sectionKey: string,
+  entry: Record<string, unknown>,
+  force: boolean,
+  mkdir: boolean,
+): string | null {
   let doc: Record<string, unknown> = {};
   if (fs.existsSync(file)) {
     try {
@@ -120,32 +203,36 @@ function writeMcpJson(root: string, client: string, force: boolean): string | nu
       return null;
     }
   }
-
-  const section = ((doc[sectionKey] ??= {}) as Record<string, unknown>);
-  if (section["open-memex"] && !force) {
+  const merged = mergeServerEntry(doc, sectionKey, entry, force);
+  if (merged === "kept") {
     console.log(`  = ${file} already configures open-memex — left as is (use --force to overwrite)`);
     return file;
   }
-  // D17: resolve the server command at init time — a one-shot npx leaves no bin behind.
-  const mc = resolveMcpCommand();
-  section["open-memex"] =
-    client === "cursor"
-      ? { command: mc.command, args: mc.args }
-      : {
-          type: "stdio",
-          command: mc.command,
-          args: mc.args,
-          cwd: "${workspaceFolder}",
-        };
-
-  fs.mkdirSync(dir, { recursive: true });
+  if (mkdir) fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
   console.log(`  + ${file}`);
-  if (!mc.durable) {
-    console.log(`  ! no durable \`open-memex\` on PATH (one-shot npx?) — wrote an npx-based command.`);
-    console.log(`    For faster startup: \`npm i -g ${ALPHA_TAG}\`, then re-run \`open-memex init --force\`.`);
-  }
   return file;
+}
+
+/** D45: `init --global` — one-time user-level wiring for VS Code / Cursor. */
+function writeGlobalMcpJson(client: "vscode" | "cursor", force: boolean): string | null {
+  const file = userMcpConfigPath(client);
+  const sectionKey = client === "cursor" ? "mcpServers" : "servers";
+  const { entry, durable } = stdioServerEntry(client);
+  const written = writeServerEntryFile(file, sectionKey, entry, force, true);
+  if (written) {
+    warnNonDurable(durable);
+    console.log(`  i user-level config — the open-memex MCP server now starts in every project.`);
+    console.log(`    (a per-project .vscode/mcp.json still wins if a project defines its own)`);
+  }
+  return written;
+}
+
+/** Where this installed copy's opencode native plugin entry point lives. */
+function opencodePluginUrl(): string {
+  // init.ts sits in <pkg>/src — the plugin entry is <pkg>/src/index.ts.
+  const pkgRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  return pathToFileURL(path.join(pkgRoot, "src", "index.ts")).href;
 }
 
 /** opencode MCP config: project-level opencode.jsonc, `type: "local"` + command array (v1 format). */
@@ -316,11 +403,27 @@ async function promptInstructionsScope(): Promise<"personal" | "project"> {
   }
 }
 
+/** D45: ask whether the MCP server config should be project-level or user-level. */
+async function promptConfigLevel(): Promise<boolean> {
+  console.log("Where should the MCP server config live?");
+  console.log("  1) this project only — .vscode/mcp.json (or .cursor/mcp.json)");
+  console.log("  2) user-level — all projects, init once (VS Code / Cursor)");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const ans = (await rl.question("Choice [1]: ")).trim();
+    return ans === "2";
+  } finally {
+    rl.close();
+  }
+}
+
 export async function initProject(opts: {
   client?: string;
   force: boolean;
   yes: boolean;
   instructions?: string;
+  /** D45: write the MCP server entry to the editor's user-level config. */
+  global?: boolean;
 }): Promise<void> {
   const interactive = !opts.yes && !!process.stdin.isTTY && !!process.stdout.isTTY;
   let client = normalizeClient(opts.client ?? "");
@@ -330,6 +433,10 @@ export async function initProject(opts: {
   }
   if (!client && interactive) client = (await promptClient()) ?? "";
   if (!client && !interactive) client = "vscode"; // historical default for scripts / one-shot npx
+  let global = !!opts.global;
+  if (!global && interactive && (client === "vscode" || client === "cursor")) {
+    global = await promptConfigLevel();
+  }
   let scope: "personal" | "project" = "personal";
   if (opts.instructions) {
     if (opts.instructions !== "personal" && opts.instructions !== "project") {
@@ -366,7 +473,18 @@ export async function initProject(opts: {
   const root = projectRoot();
   console.log(`open-memex init — project root: ${root}`);
   if (client) {
-    writeMcpJson(root, client, opts.force);
+    if (global && (client === "vscode" || client === "cursor")) {
+      writeGlobalMcpJson(client, opts.force);
+    } else if (global && client === "opencode") {
+      // The native plugin is already global — plain-MCP mode stays per project.
+      console.log(`  - opencode: --global is a no-op for plain-MCP mode (config stays per project).`);
+      console.log(`    For a one-time global setup, use the native plugin instead:`);
+      console.log(`    add "plugin": ["${opencodePluginUrl()}"] to ~/.config/opencode/opencode.jsonc`);
+    } else if (global && client === "visualstudio") {
+      console.log(`  - visualstudio: --global not supported — VS uses solution-level .mcp.json by design.`);
+    } else {
+      writeMcpJson(root, client, opts.force);
+    }
     // copilot-instructions.md is VS Code/Cursor-shaped; opencode as a plain MCP
     // consumer already gets the guidance from the tool descriptions (D16).
     // D22: personal scope (default) writes to the Copilot user-level location

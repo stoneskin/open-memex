@@ -175,6 +175,20 @@ open-memex init --client cursor
 
 Writes `.cursor/mcp.json` and user-level Copilot instructions.
 
+**One-time setup for all projects (VS Code / Cursor):**
+
+```sh
+open-memex init --client vscode --global --yes
+```
+
+Writes the server entry to the editor's *user-level* MCP config
+(`%APPDATA%\Code\User\mcp.json` on Windows,
+`~/Library/Application Support/Code/User/mcp.json` on macOS,
+`~/.config/Code/User/mcp.json` on Linux; `~/.cursor/mcp.json` for Cursor)
+instead of the project — init once, the server starts in every project.
+A per-project `.vscode/mcp.json` still wins if a project defines its own.
+(On a TTY, `init` asks whether the config should be per-project or user-level.)
+
 **opencode** (as a plain MCP consumer):
 
 ```sh
@@ -210,6 +224,10 @@ above works too.
 
 `init` notes:
 
+- `--global` writes the MCP server entry to the editor's user-level config
+  (VS Code / Cursor) — one init for all projects. For opencode, `--global`
+  is a no-op for plain-MCP mode and points you at the native plugin instead
+  (already global); Visual Studio stays solution-level by design.
 - The Copilot memory instructions default to **user-level**
   (`~/.copilot/copilot-instructions.md`; `%USERPROFILE%\copilot-instructions.md`
   for Visual Studio) — they apply to all your projects and are never checked

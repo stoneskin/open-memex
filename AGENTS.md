@@ -49,10 +49,12 @@ node --experimental-strip-types scripts\smoke-mcp.ts    # MCP handshake + tool r
 After `npm i -g open-memex` (or `npm link` from source), the `open-memex` bin is on
 PATH: `open-memex mcp` starts the MCP server, `open-memex mcp --print-config <client>`
 prints a client config snippet (client: vscode|cursor|claude|opencode|visualstudio),
-`open-memex init [--client vscode|cursor|opencode|visualstudio] [--instructions personal|project] [--force] [--yes]`
+`open-memex init [--client vscode|cursor|opencode|visualstudio] [--instructions personal|project] [--global] [--force] [--yes]`
 one-command project setup (editor MCP config + Copilot memory instructions;
 instructions default to user-level ~/.copilot/copilot-instructions.md so the repo
-stays clean for teammates without open-memex — D22; resolves the server command
+stays clean for teammates without open-memex — D22; `--global` writes the MCP
+server entry to the editor's user-level config instead — init once, all projects
+(VS Code / Cursor; D45); resolves the server command
 at init time — npx fallback when no durable bin is on PATH, D17),
 `open-memex config` prints the effective config, `open-memex capture --dry-run "text"`
 previews keyword capture without writing, `open-memex doctor` runs health checks

@@ -8,6 +8,7 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
+import { userMcpConfigPath, mergeServerEntry } from "../src/init.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -375,6 +376,26 @@ const near = similarity(
 );
 ok(`similarity near-dup ${near.toFixed(2)} >= ${NEAR_DUP_THRESHOLD}`, near >= NEAR_DUP_THRESHOLD);
 ok("similarity empty → 0", similarity("", "anything") === 0);
+
+console.log("== init --global: userMcpConfigPath / mergeServerEntry ==");
+// D45: user-level MCP config locations, per platform (platform param is injectable).
+ok("vscode win32", userMcpConfigPath("vscode", "win32").endsWith(path.join("Code", "User", "mcp.json")));
+ok("vscode darwin", userMcpConfigPath("vscode", "darwin").includes(path.join("Library", "Application Support", "Code", "User", "mcp.json")));
+ok("vscode linux", userMcpConfigPath("vscode", "linux").endsWith(path.join(".config", "Code", "User", "mcp.json")));
+ok("cursor is ~/.cursor/mcp.json on every platform",
+  (["win32", "darwin", "linux"] as const).every((p) =>
+    userMcpConfigPath("cursor", p).endsWith(path.join(".cursor", "mcp.json"))));
+// mergeServerEntry: pure merge semantics.
+const doc1: Record<string, unknown> = {};
+ok("merge into empty doc adds", mergeServerEntry(doc1, "servers", { command: "x" }, false) === "added");
+ok("entry landed under section", (doc1["servers"] as Record<string, unknown>)["open-memex"] !== undefined);
+ok("existing entry kept without force", mergeServerEntry(doc1, "servers", { command: "y" }, false) === "kept");
+ok("kept entry untouched", ((doc1["servers"] as Record<string, unknown>)["open-memex"] as Record<string, unknown>)["command"] === "x");
+ok("force overwrites", mergeServerEntry(doc1, "servers", { command: "y" }, true) === "added");
+ok("forced entry applied", ((doc1["servers"] as Record<string, unknown>)["open-memex"] as Record<string, unknown>)["command"] === "y");
+const doc2: Record<string, unknown> = { servers: { other: { command: "z" } } };
+ok("merge preserves sibling entries", mergeServerEntry(doc2, "servers", { command: "x" }, false) === "added"
+  && (doc2["servers"] as Record<string, unknown>)["other"] !== undefined);
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

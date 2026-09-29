@@ -170,6 +170,20 @@ open-memex init --client cursor
 
 自动写 `.cursor/mcp.json` 和用户级 Copilot instructions。
 
+**一次配置、所有项目通用（VS Code / Cursor）：**
+
+```sh
+open-memex init --client vscode --global --yes
+```
+
+把 server 条目写到编辑器的*用户级* MCP 配置（Windows 下是
+`%APPDATA%\Code\User\mcp.json`，macOS 是
+`~/Library/Application Support/Code/User/mcp.json`，Linux 是
+`~/.config/Code/User/mcp.json`；Cursor 是 `~/.cursor/mcp.json`），
+而不是写到项目里——init 一次，每个项目打开自动启动 server。
+如果某个项目自己定义了 `.vscode/mcp.json`，项目级的优先。
+（终端交互模式下，`init` 会问你配到项目级还是用户级。）
+
 **opencode**（作为普通 MCP 客户端）：
 
 ```sh
@@ -215,6 +229,10 @@ Visual Studio 也会自动发现 `.vscode/mcp.json` 和 `.cursor/mcp.json`，
   （编辑器默认 VS Code）。
 - 已有配置文件会被**合并，不会被覆盖**——重复运行是安全的。
   `--force` 强制覆盖。
+- `--global` 把 MCP server 条目写到编辑器的用户级配置（VS Code / Cursor）——
+  一次配置，所有项目通用。opencode 的 `--global` 对纯 MCP 模式是 no-op，
+  会提示你改用原生插件（本来就是全局的）；Visual Studio 按设计保持
+  solution 级。
 - 如果 `PATH` 上没有可用的 `open-memex`（比如一次性 npx），`init` 会把
   `npx -y open-memex mcp` 写进配置，配置照样能用。
   以后 `npm i -g open-memex` + `open-memex init --force` 可切换到更快

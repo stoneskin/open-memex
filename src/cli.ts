@@ -279,16 +279,20 @@ Examples:
 agent memory instructions. Existing files are merged, never clobbered.
 
 Usage: open-memex init [--client vscode|cursor|opencode|visualstudio]
-              [--instructions personal|project] [--force] [--yes]
+              [--instructions personal|project] [--global] [--force] [--yes]
 
 Flags:
   --client        editor to configure (default: auto-detect)
   --instructions  personal (default, ~/.copilot/copilot-instructions.md) or project
+  --global        write the MCP server entry to the editor's user-level config
+                  (VS Code / Cursor) — init once, works in every project.
+                  For opencode, --global points you at the native plugin instead.
   --force         overwrite existing config
   --yes           accept all defaults, never prompt
 
 Examples:
   open-memex init
+  open-memex init --client vscode --global --yes
   open-memex init --client cursor --yes`,
 
   config: `Show config, or set a key.
@@ -604,6 +608,7 @@ async function main() {
       force: flags["force"] === "true",
       yes: flags["yes"] === "true",
       instructions: flags["instructions"],
+      global: flags["global"] === "true",
     });
     return;
   }

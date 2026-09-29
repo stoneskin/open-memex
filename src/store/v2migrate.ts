@@ -118,23 +118,48 @@ export interface MigrateV2Result {
 }
 
 /**
- * Merge a legacy `my-o-memory` data root into the current `open-memex` root.
- * The old dir is renamed to a dated backup — never deleted. Returns the
- * backup path, or null when no legacy dir exists.
+ * Locate a legacy `my-o-memory` data root next to the current root.
+ * Pure lookup — no disk writes.
  */
-function migrateLegacyDataRoot(dryRun: boolean): string | null {
+export function findLegacyDataRoot(): string | null {
   const { root } = paths();
   const legacy = path.join(path.dirname(root), "my-o-memory");
   if (!fs.existsSync(legacy) || !fs.statSync(legacy).isDirectory()) return null;
+  return legacy;
+}
 
+/** Dated backup path for a legacy data root. Pure — no disk writes. */
+export function legacyBackupPath(legacy: string): string {
   const stamp = new Date().toISOString().slice(0, 10);
-  const backup = `${legacy}.backup-${stamp}`;
-  if (!dryRun) {
-    const legacyMem = path.join(legacy, "memories");
-    if (fs.existsSync(legacyMem)) {
-      for (const entry of fs.readdirSync(legacyMem)) {
-        const src = path.join(legacyMem, entry);
-        const dst = path.join(root, "memories", entry);
+  return `${legacy}.backup-${stamp}`;
+}
+
+/**
+ * Merge a legacy `my-o-memory` data root into the current `open-memex` root.
+ * The old dir is renamed to a dated backup — never deleted.
+ * Failures throw an actionable Error (no raw syscall dump): on Windows the
+ * backup rename typically fails with EPERM when another program holds the
+ * folder open.
+ */
+function mergeLegacyDataRoot(legacy: string, backup: string): void {
+  const { memories } = paths();
+  const fail = (where: string, err: unknown): never => {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    throw new Error(
+      `could not ${where} (${legacy})` +
+        (code ? ` [${code}]` : "") +
+        `. Another program may be holding the folder open (e.g. a running MCP server, editor, or antivirus). ` +
+        `Your memories are safe — nothing was deleted. Close the program and re-run ` +
+        `\`open-memex migrate --to-v2\`, or rename the folder to ${backup} yourself and re-run.`,
+    );
+  };
+  const legacyMem = path.join(legacy, "memories");
+  if (fs.existsSync(legacyMem)) {
+    fs.mkdirSync(memories, { recursive: true });
+    for (const entry of fs.readdirSync(legacyMem)) {
+      const src = path.join(legacyMem, entry);
+      const dst = path.join(memories, entry);
+      try {
         if (!fs.existsSync(dst)) {
           fs.renameSync(src, dst);
         } else {
@@ -145,11 +170,50 @@ function migrateLegacyDataRoot(dryRun: boolean): string | null {
             if (!fs.existsSync(d)) fs.renameSync(s, d);
           }
         }
+      } catch (err) {
+        fail(`move memories from the legacy data dir`, err);
       }
     }
-    fs.renameSync(legacy, backup);
   }
-  return backup;
+  try {
+    fs.renameSync(legacy, backup);
+  } catch (err) {
+    fail(`back up the legacy data dir`, err);
+  }
+}
+
+/** Plan v1 → v2 conversion for every `.md` file under `dir`. Read-only. */
+function planDir(
+  dir: string,
+  memoriesRoot: string,
+  result: MigrateV2Result,
+): void {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const sub = path.join(dir, entry.name);
+    for (const name of fs.readdirSync(sub)) {
+      if (!name.endsWith(".md")) continue;
+      const filePath = path.join(sub, name);
+      result.scanned++;
+      const plan = planConversion(filePath, memoriesRoot);
+      if (!plan) {
+        result.skippedV2++;
+        continue;
+      }
+      result.converted++;
+      result.plans.push(plan);
+    }
+  }
+}
+
+/** Apply conversion plans to disk (real run only — never in dry-run). */
+function applyPlans(result: MigrateV2Result): void {
+  for (const plan of result.plans) {
+    fs.mkdirSync(path.dirname(plan.toPath), { recursive: true });
+    fs.writeFileSync(plan.toPath, serialize(plan.fm, plan.body), "utf8");
+    if (plan.toPath !== plan.fromPath) fs.unlinkSync(plan.fromPath);
+  }
 }
 
 export function migrateV2(opts: { dryRun: boolean }): MigrateV2Result {
@@ -162,29 +226,19 @@ export function migrateV2(opts: { dryRun: boolean }): MigrateV2Result {
     legacyBackup: null,
   };
 
-  result.legacyBackup = migrateLegacyDataRoot(opts.dryRun);
-
-  if (!fs.existsSync(memoriesRoot)) return result;
-  for (const entry of fs.readdirSync(memoriesRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const dir = path.join(memoriesRoot, entry.name);
-    for (const name of fs.readdirSync(dir)) {
-      if (!name.endsWith(".md")) continue;
-      const filePath = path.join(dir, name);
-      result.scanned++;
-      const plan = planConversion(filePath, memoriesRoot);
-      if (!plan) {
-        result.skippedV2++;
-        continue;
-      }
-      if (!opts.dryRun) {
-        fs.mkdirSync(path.dirname(plan.toPath), { recursive: true });
-        fs.writeFileSync(plan.toPath, serialize(plan.fm, plan.body), "utf8");
-        if (plan.toPath !== plan.fromPath) fs.unlinkSync(plan.fromPath);
-      }
-      result.converted++;
-      result.plans.push(plan);
+  const legacy = findLegacyDataRoot();
+  if (legacy) {
+    result.legacyBackup = legacyBackupPath(legacy);
+    if (opts.dryRun) {
+      // D44: dry-run previews the legacy files in place — nothing is moved,
+      // so the preview actually shows what would convert (issue #7).
+      planDir(path.join(legacy, "memories"), memoriesRoot, result);
+    } else {
+      mergeLegacyDataRoot(legacy, result.legacyBackup);
     }
   }
+
+  planDir(memoriesRoot, memoriesRoot, result);
+  if (!opts.dryRun) applyPlans(result);
   return result;
 }

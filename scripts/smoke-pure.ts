@@ -1,7 +1,7 @@
 // Quick smoke test — runs the pure-logic modules (no bun:sqlite dependency).
 // Usage:  node --experimental-strip-types scripts\smoke-pure.ts
 import { parse, serialize, ulid, normalizeFrontmatter, msToRfc3339, timeToMs, parseRawFrontmatter, type Frontmatter } from "../src/store/markdown.ts";
-import { planConversion, isV2File } from "../src/store/v2migrate.ts";
+import { planConversion, isV2File, migrateV2 } from "../src/store/v2migrate.ts";
 import { redact, findSecret } from "../src/redact.ts";
 import { detectKeywords } from "../src/capture/keywords.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
@@ -313,6 +313,54 @@ fs.writeFileSync(v1path, v2raw, "utf8");
 const plan2 = planConversion(v1path, memRoot);
 ok("v2 on disk → null plan", plan2 === null);
 fs.rmSync(tmpRoot, { recursive: true, force: true });
+
+console.log("== migrateV2 dry-run previews legacy files (issue #7) ==");
+// legacy dir sits next to the new root (sibling), as on a real v1 upgrade
+const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "v2hotfix-"));
+const newRoot = path.join(tmpHome, "open-memex");
+const legacyRoot = path.join(tmpHome, "my-o-memory");
+const legacyMem = path.join(legacyRoot, "memories", "user");
+fs.mkdirSync(legacyMem, { recursive: true });
+const v1legacy = `---\nid: 01HOTFIX1\nscope_key: user\nscope_kind: user\nproject_name: user\ntype: fact\npriority: 1\ncreated_at: 1758854400000\nupdated_at: 1758854400000\n---\n\nlegacy content\n`;
+fs.writeFileSync(path.join(legacyMem, "01HOTFIX1.md"), v1legacy, "utf8");
+process.env.MY_O_MEMORY_HOME = newRoot;
+
+const dry = migrateV2({ dryRun: true });
+ok("dry-run scans the legacy file", dry.scanned === 1 && dry.plans.length === 1, `scanned=${dry.scanned}`);
+ok("dry-run yields a conversion plan", dry.plans.length === 1 && dry.plans[0].toPath.startsWith(newRoot), dry.plans[0]?.toPath);
+ok("dry-run reports legacy backup target", typeof dry.legacyBackup === "string" && dry.legacyBackup.includes("backup-"), dry.legacyBackup);
+ok("dry-run moves nothing", fs.existsSync(path.join(legacyMem, "01HOTFIX1.md")) && !fs.existsSync(path.join(newRoot, "memories", "personal", "01HOTFIX1.md")));
+ok("dry-run does not rename legacy dir", fs.existsSync(legacyRoot) && !fs.existsSync(dry.legacyBackup!));
+
+const real = migrateV2({ dryRun: false });
+ok("real run converts", real.converted === 1, `converted=${real.converted}`);
+ok("real run writes v2 file to new root", fs.existsSync(path.join(newRoot, "memories", "personal", "01HOTFIX1.md")));
+ok("real run backs up legacy dir", !fs.existsSync(legacyRoot) && fs.existsSync(real.legacyBackup!));
+const backContent = fs.readFileSync(path.join(newRoot, "memories", "personal", "01HOTFIX1.md"), "utf8");
+ok("converted file has schema_version 2", backContent.includes("schema_version: 2"));
+
+// backup rename failure → actionable Error, exit-1-worthy, no raw stack
+// (same process/root: paths() is cached per process)
+const legacyRoot2 = path.join(tmpHome, "my-o-memory");
+const legacyMem2 = path.join(legacyRoot2, "memories", "user");
+fs.mkdirSync(legacyMem2, { recursive: true });
+fs.writeFileSync(path.join(legacyMem2, "01HOTFIX2.md"), v1legacy, "utf8");
+// block the rename: pre-create today's dated backup as a non-empty dir
+const blocked = path.join(tmpHome, "my-o-memory.backup-" + new Date().toISOString().slice(0, 10));
+fs.mkdirSync(blocked, { recursive: true });
+fs.writeFileSync(path.join(blocked, "sentinel"), "x", "utf8");
+let boom: unknown = null;
+try {
+  migrateV2({ dryRun: false });
+} catch (e) {
+  boom = e;
+}
+ok("backup failure throws", boom instanceof Error, String(boom));
+ok("backup failure message is actionable", boom instanceof Error && boom.message.includes("could not back up") && boom.message.includes("Your memories are safe"), boom instanceof Error ? boom.message.slice(0, 60) : "");
+ok("failed backup keeps moved files safe in new root", fs.existsSync(path.join(newRoot, "memories", "user", "01HOTFIX2.md")));
+ok("failed backup leaves legacy dir for retry", fs.existsSync(legacyRoot2));
+delete process.env.MY_O_MEMORY_HOME;
+fs.rmSync(tmpHome, { recursive: true, force: true });
 
 console.log("== lifecycle pure: contentHash / similarity ==");
 ok("hash deterministic + whitespace-insensitive", contentHash("hello   world\n") === contentHash("hello world"));

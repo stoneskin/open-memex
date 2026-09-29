@@ -8,19 +8,21 @@ import {
   inRepoMemoriesDirPath,
 } from "../paths.ts";
 
-/** v2 content-kind taxonomy (V2-DESIGN §3.1). `type` = what the memory IS. */
+/** v2 content-kind taxonomy (V2-DESIGN §3.1). `type` = what the memory IS
+ *  (single-valued, drives behavior). D41: 11 types; `warning`→`gotcha`,
+ *  `workflow`→`howto`, `incident`→`lesson`, `architecture`→`knowledge`. */
 export const MEMORY_TYPE_TAXONOMY = [
-  "preference",
   "fact",
+  "preference",
   "decision",
-  "lesson",
-  "warning",
-  "workflow",
-  "architecture",
   "constraint",
   "todo",
   "knowledge",
+  "howto",
+  "gotcha",
+  "lesson",
   "observation",
+  "reference",
 ] as const;
 
 const TAXONOMY = new Set<string>(MEMORY_TYPE_TAXONOMY);

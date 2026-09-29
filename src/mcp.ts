@@ -80,6 +80,15 @@ propose, promote, resolve, pr_status).
 - BE PROACTIVE: when the user shares something worth remembering across sessions
   (a decision, a preference, a project convention, a fix and its cause), call
   memory_add without being asked. Keep each memory to one self-contained statement.
+- At the same checkpoints (session start, end of a work chunk, after the user
+  commits, after any memory_* action), DISTILL the session: propose 1–3 short
+  memories capturing the useful conclusion — what was learned or decided, how an
+  issue was resolved, what to avoid, where the authoritative doc lives — not the
+  raw transcript. Save NOTHING the user did not approve; on approval call
+  memory_add with source "inference" at the confirmed scope. If the knowledge
+  already lives in project docs, save a \`reference\` memory pointing at the doc
+  instead of copying it. Long-form notes are fine ONLY when the user explicitly
+  asks to save one.
 - Before asking the user about past decisions, conventions, or preferences they
   may have told you before, call memory_search first.
 - Memories default to this project's scope; use the personal scope for facts

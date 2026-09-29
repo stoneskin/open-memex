@@ -77,9 +77,15 @@ export const memoryAddArgs = {
   type: z
     .enum(MEMORY_TYPE_TAXONOMY)
     .optional()
-    .describe("Category of memory. Default: note."),
+    .describe("Category of memory. Default: fact."),
   scope: scopeArg,
   tags: z.array(z.string()).optional().describe("Optional tags for filtering."),
+  source: z
+    .string()
+    .optional()
+    .describe(
+      "Where this memory came from. Default: tool. Pass 'inference' for agent-proposed captures at checkpoints (V2-DESIGN §3.5).",
+    ),
 };
 export type MemoryAddArgs = z.infer<z.ZodObject<typeof memoryAddArgs>>;
 
@@ -239,7 +245,7 @@ export async function addMemory(
   const fm = buildFrontmatter(s, {
     type: args.type ?? "fact",
     tags: args.tags ?? [],
-    source: "tool",
+    source: args.source ?? "tool",
   });
   const { filePath } = writeMemoryFile(fm, redacted);
   const mf = readMemoryFile(filePath);

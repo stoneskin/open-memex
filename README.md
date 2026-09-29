@@ -375,10 +375,13 @@ server with cwd set to your project root (`init` handles this for you).
 **In progress — `0.4.0`:** team sync — shared memory via git: appdata draft
 outbox → `sync-status` → `submit` (local branch+commit, push/PR on your Yes)
 → `promote` / `resolve` review workflow, in-repo `.ai/open-memex/` dir, 1–2
-colleague pilot.
+colleague pilot; capture — §3.5 checkpoint distillation in MCP handshake +
+init instructions (agent proposes 1–3 captures, human decides).
 
 **Coming — `0.3.0` (stable):** org layer — org memory repo, curator convention,
-distill-to-AGENTS.md assist.
+distill-to-AGENTS.md assist, `export`/`import` archive for user portability
+(Markdown + manifest, no walled garden; private excluded by default,
+`-a`/`--all` for full migration).
 
 **Future (signal-gated, no version committed):** native agent plugins (Claude Code /
 Codex hooks as enhancement paths over the same MCP tools); local embeddings as a

@@ -365,10 +365,13 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 **进行中 —— `0.4.0`：** 团队同步——用 git 做共享记忆：appdata 草稿箱 →
 `sync-status` → `submit`（本地分支+commit，push/PR 拿你的 Yes 才做）
 → `promote` / `resolve` 评审工作流、仓库内 `.ai/open-memex/` 目录，
-找 1–2 个同事做 pilot。
+找 1–2 个同事做 pilot；捕获——§3.5 检查点蒸馏写进 MCP 握手指令和
+init 指令文件（agent 提议 1–3 条，人来定）。
 
 **Coming —— `0.3.0`（稳定版）：** 组织层——组织记忆仓库、
-curator 约定、distill-to-AGENTS.md 辅助。
+curator 约定、distill-to-AGENTS.md 辅助、`export`/`import` 归档
+（Markdown + manifest，不造围墙花园，用户可带走；
+private 默认不导出，`-a`/`--all` 全量迁移）。
 
 **未来（看信号再定，不承诺版本）：** 原生 agent 插件
 （Claude Code / Codex hooks，作为同一套 MCP tools 的增强路径）；

@@ -534,8 +534,10 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 | atlaso-labs/codex | Codex marketplace | long-term memory plugin for Codex (hooks + MCP + cloud-sync upsell) | **direct comparable** for a future Codex plugin; their cloud upsell vs our local-first |
 
 (Star counts / funding as of Sep 2026 — re-verify before quoting publicly.)
-- **Phase 3 — Org layer.** Org memory repo · curator convention · `examples/remote-server/` ·
-  distill-to-AGENTS.md assist · export/import archive command for user portability.
+- **Phase 3 — Org layer.** Org memory repo · `examples/remote-server/` ·
+  curator convention ✅ `docs/CURATOR.md` (2026-09-29, pulled forward) ·
+  distill-to-AGENTS.md assist ✅ `open-memex distill-agents` (2026-09-29, pulled forward) ·
+  export/import archive command ✅ `open-memex export` / `import` (2026-09-29, pulled forward, D40).
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.

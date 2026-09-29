@@ -359,6 +359,10 @@ open-memex resolve [id-or-path]
 # Semantic conflicts are reported, never auto-resolved.
 ```
 
+Whoever tends the shared memory follows the curator convention —
+`docs/CURATOR.md`: what to approve, what to send back, and the hygiene
+rules that keep shared memory from rotting.
+
 Maintenance:
 
 ```sh

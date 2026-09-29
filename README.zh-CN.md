@@ -346,6 +346,9 @@ open-memex resolve [id-or-path]
 # 语义冲突只报告、不自动解决。
 ```
 
+打理共享记忆的人遵循 curator 公约——`docs/CURATOR.md`：
+批什么、退回什么，以及防止共享记忆腐烂的卫生规则。
+
 维护：
 
 ```sh

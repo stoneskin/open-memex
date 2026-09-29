@@ -3,9 +3,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { DEFAULT_CONFIG, saveConfig } from "./config.ts";
+import { projectRoot } from "./paths.ts";
 
 const MARKER = "<!-- open-memex -->";
 
@@ -50,33 +50,59 @@ const INSTRUCTIONS = `${MARKER}
 > Applies only when the \`open-memex\` MCP server is available in this session
 > (the \`memory_*\` tools exist). Otherwise ignore this section.
 
-You have a local memory MCP server (\`open-memex\`) with five tools:
-\`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`, \`memory_forget\`.
+You have a local memory MCP server (\`open-memex\`) with eleven tools:
+\`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`, \`memory_forget\`,
+\`memory_status\`, \`memory_submit\`, \`memory_propose\`, \`memory_promote\`, \`memory_resolve\`,
+\`memory_pr_status\`.
 
 - BE PROACTIVE. When the user shares something worth remembering across sessions
   (a decision, a preference, a project convention, a fix and its cause), call
   \`memory_add\` without being asked. Keep each memory to one self-contained statement.
+- At checkpoints (session start, end of a work chunk, after the user commits, after
+  any memory_* action), DISTILL the session: propose 1–3 short memories capturing the
+  useful conclusion — what was learned or decided, how an issue was resolved, what to
+  avoid, where the authoritative doc lives — not the raw transcript. Save NOTHING the
+  user did not approve; on approval call \`memory_add\` with source "inference" at the
+  confirmed scope. If the knowledge already lives in project docs, save a \`reference\`
+  memory pointing at the doc instead of copying it. Long-form notes are fine ONLY when
+  the user explicitly asks to save one.
 - Before asking the user about past decisions, conventions, or preferences they may
   have told you before, call \`memory_search\` first — try a few keyword variants
   (including the user's own language) when the first search comes up empty.
 - Memories default to this project's scope; use the \`personal\` scope for facts about
   the user that hold across all projects. When a saved fact becomes outdated, call
   \`memory_supersede\` instead of adding a duplicate.
-`;
 
-/** Project root: git top-level, falling back to cwd. */
-function projectRoot(): string {
-  try {
-    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    if (top) return top;
-  } catch {
-    /* not a git repo — use cwd */
-  }
-  return process.cwd();
-}
+## Syncing project memories for review (D26)
+
+Project memories you save land in a local outbox first — they are NOT in git yet.
+Syncing them into the repo for review is an explicit, user-approved step:
+
+- At session start, when you finish a meaningful chunk of work, after the user
+  commits (git commit), and after any memory_* action completes, call
+  \`memory_status\`. If the outbox has drafts, summarize them (one line each) and ask
+  the user which ones to sync. Sync NOTHING the user did not name.
+- When the user says "sync memory" (or "同步记忆"), treat it as a request to run
+  the sync flow above: call \`memory_status\`, summarize the outbox drafts, and ask
+  which ones to sync.
+- When the user approves, call \`memory_submit\` with the approved ids. It copies
+  the drafts into the repo as \`proposed\`, commits locally on the CURRENT branch,
+  and prints the push + PR commands. It NEVER creates a branch on its own.
+- After the submit, ask ONE follow-up: "want me to create a branch + push +
+  open the PR, or will you handle it yourself?" A "yes, you do it" answer covers
+  the whole chain — branch creation, push, PR creation — do NOT re-ask at each
+  step. If the user says they will do it themselves, hand them the printed
+  push/PR commands and do nothing. NEVER create branches, push, or open PRs
+  without their explicit approval.
+- Base branch for the memory PR defaults to the branch you are on; the user may
+  redirect it to the integration branch (main) for branch-independent knowledge.
+- If anything conflicts (same id with different content, push rejected), STOP and
+  let the user judge — never overwrite.
+- After the PR merges, call \`memory_pr_status\` (with \`apply\` when the user
+  approves) to map the PR's review state back onto each memory — merged means
+  \`published\`, an approval means \`approved\` (credited to the reviewer).
+- \`personal\` scope memories NEVER leave the machine.
+`;
 
 function writeMcpJson(root: string, client: string, force: boolean): string | null {
   if (client === "opencode") return writeOpencodeMcpJson(root, force);

@@ -134,7 +134,7 @@ function mcpCheck(): Promise<Check> {
             ok: missing.length === 0,
             detail:
               missing.length === 0
-                ? `handshake OK, 5 tools listed (${names.join(", ")})`
+                ? `handshake OK, ${names.length} tools listed (${names.join(", ")})`
                 : `missing tools: ${missing.join(", ")}`,
           });
         }

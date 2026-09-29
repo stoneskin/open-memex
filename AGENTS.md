@@ -12,7 +12,7 @@ via `prepublishOnly` — Node refuses `--experimental-strip-types` for files und
 
 - **opencode host** loads `src/index.ts` under embedded **Bun**. SQLite here is `bun:sqlite` (built-in).
 - **CLI** (`src/cli.ts`) and smoke tests run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
-- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same five memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
+- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same ten memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
 
 `src/store/db.ts` picks the backend at runtime by sniffing `globalThis.Bun`. Both backends share the same surface (`new Database(path)`, `.exec`, `.prepare().run/all/get`, `.close`). Any DB code you write must stay on that common subset — do not import `better-sqlite3` or `bun:sqlite` directly outside `db.ts`.
 
@@ -29,6 +29,18 @@ Consequences:
 npm install                                          # once
 npm run typecheck                                    # tsc --noEmit — the only lint/type gate
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
+npm run cli -- <command> --help                          # per-command help (AI assistants discover flags this way)
+npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
+npm run cli -- pull                                          # fetch + fast-forward only (explicit; diverged = clean failure, never force-merge)
+npm run cli -- push                                          # push current branch to remote (explicit only; open-memex never auto-pushes)
+npm run cli -- export [--scope project|personal|both] [--all] [-o <file>]  # portable .tar.gz bundle (markdown + manifest); private excluded unless --all
+npm run cli -- import <bundle.tar.gz> [--dry-run]               # restore: personal → personal dir, project → outbox re-keyed; conflicts reported, never overwritten
+npm run cli -- distill-agents [--type t1,t2] [-o <file>]         # propose an AGENTS.md snippet from project memories (assist only; you merge by hand)
+npm run cli -- submit <id...> [--branch <name>] [--base <branch>]  # drafts → .ai/open-memex/ (current branch + local commit; never auto-branches)
+npm run cli -- propose <id...> --to project [--local-approve]  # copy personal → project outbox (batch OK)
+npm run cli -- promote <id> [--reject] [--resubmit] [--note "..."]        # proposed → approved → published (audit trail appended)
+npm run cli -- pr-status [--apply]                          # map branch PR's GitHub state onto review_state (report; apply = local only)
+npm run cli -- resolve [id-or-path]                          # list / 3-way-merge conflicted memories
 npm run mcp                                          # start the stdio MCP server
 node --experimental-strip-types scripts\smoke-pure.ts   # runs pure-logic checks (no sqlite)
 node --experimental-strip-types scripts\smoke-mcp.ts    # MCP handshake + tool round-trip (temp dirs, no real data)
@@ -129,3 +141,10 @@ hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
   and the frozen `docs/V2-DESIGN.md` (append a `D<n>` decision entry, never rewrite history);
   new commands → README CLI sections + this file's Commands. A change without its docs
   is not done.
+- **Version bumps ship with features.** `package.json` + `package-lock.json` carry the
+  in-development version. New features on a dev branch bump the minor on the alpha
+  line (`0.3.0` → `0.4.0-alpha.1`); fixes bump the patch (`-alpha.1` → `-alpha.2`).
+  The bump goes in the same commit as the feature, never as an afterthought.
+  The version number serves the publish: no publish, no mandatory bump. But once a
+  version has been pushed to the remote (shared), later changes must bump — two
+  different code states must never share one version number.

@@ -1,17 +1,21 @@
 import fs from "node:fs";
+import path from "node:path";
 import { db } from "./db.ts";
 import { cjkIndexText } from "../retrieve/cjk.ts";
 import { contentHash, repairChain } from "./lifecycle.ts";
 import {
   iterMemoryFiles,
+  iterInRepoMemoryFiles,
   readMemoryFile,
   timeToMs,
   type MemoryFile,
 } from "./markdown.ts";
+import { projectRoot, paths } from "../paths.ts";
+import { loadConfig } from "../config.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
     scope        = excluded.scope,
@@ -27,6 +31,7 @@ const UPSERT_SQL = `
     content_hash = excluded.content_hash,
     superseded_by = excluded.superseded_by,
     source       = excluded.source,
+    review_state = excluded.review_state,
     file_path    = excluded.file_path,
     mtime_ms     = excluded.mtime_ms,
     updated_at   = excluded.updated_at
@@ -77,6 +82,7 @@ function writeRow(mf: MemoryFile, mtimeMs: number): void {
     mtimeMs,
     timeToMs(fm.created_at),
     timeToMs(fm.updated_at),
+    fm.review_state ?? "draft",
   );
 }
 
@@ -91,7 +97,7 @@ export interface SyncStats {
   scanned: number;
 }
 
-export function syncScope(scopeKey: string): SyncStats {
+export function syncScope(scopeKey: string, kind: SyncKind = "auto"): SyncStats {
   const d = db();
   const stats: SyncStats = { added: 0, updated: 0, removed: 0, scanned: 0 };
 
@@ -101,7 +107,22 @@ export function syncScope(scopeKey: string): SyncStats {
   const existingById = new Map(existing.map((r) => [r.id, r]));
   const seen = new Set<string>();
 
-  for (const fp of iterMemoryFiles(scopeKey)) {
+  // 2B/D26: project scopes have two homes — the appdata outbox (drafts,
+  // branch-independent) and the in-repo dir (submitted memories, following
+  // the current branch). No migration: appdata files stay put until an
+  // explicit `submit` moves them. On the near-impossible id collision the
+  // in-repo (submitted) copy wins, so scan appdata first.
+  const filePaths: string[] = [];
+  if (scopeKey.startsWith("project__")) {
+    const root = projectRoot();
+    const memoryDir = loadConfig().memoryDir;
+    for (const fp of iterMemoryFiles(scopeKey)) filePaths.push(fp);
+    for (const fp of iterInRepoMemoryFiles(root, memoryDir)) filePaths.push(fp);
+  } else {
+    for (const fp of iterMemoryFiles(scopeKey)) filePaths.push(fp);
+  }
+
+  for (const fp of filePaths) {
     const mf = readMemoryFile(fp);
     if (!mf) continue;
     stats.scanned++;
@@ -123,5 +144,65 @@ export function syncScope(scopeKey: string): SyncStats {
     }
   }
 
+  recordSync(scopeKey, kind, stats);
   return stats;
+}
+
+// ---------------------------------------------------------------------------
+// D31: last-sync visibility
+// ---------------------------------------------------------------------------
+
+/** What triggered the sync — shown in sync-status so the user can see it. */
+export type SyncKind = "session" | "request" | "cli" | "submit" | "pull" | "push" | "auto";
+
+export interface SyncStateEntry {
+  lastSyncAt: string; // RFC 3339
+  lastSyncKind: SyncKind;
+  added: number;
+  updated: number;
+  removed: number;
+  scanned: number;
+}
+
+function syncStatePath(): string {
+  return path.join(paths().root, "sync-state.json");
+}
+
+/** Best-effort: a failed write never breaks the sync itself. */
+export function recordSync(scopeKey: string, kind: SyncKind, stats: SyncStats): void {
+  try {
+    const p = syncStatePath();
+    let all: Record<string, SyncStateEntry> = {};
+    if (fs.existsSync(p)) {
+      try {
+        all = JSON.parse(fs.readFileSync(p, "utf8")) as Record<string, SyncStateEntry>;
+      } catch {
+        /* corrupt — start fresh */
+      }
+    }
+    all[scopeKey] = {
+      lastSyncAt: new Date().toISOString(),
+      lastSyncKind: kind,
+      added: stats.added,
+      updated: stats.updated,
+      removed: stats.removed,
+      scanned: stats.scanned,
+    };
+    fs.writeFileSync(p, JSON.stringify(all, null, 2), "utf8");
+  } catch {
+    /* visibility is advisory — never fail a sync over it */
+  }
+}
+
+export function readSyncState(scopeKey: string): SyncStateEntry | null {
+  try {
+    const p = syncStatePath();
+    if (!fs.existsSync(p)) return null;
+    const all = JSON.parse(fs.readFileSync(p, "utf8")) as Record<string, unknown>;
+    const e = all?.[scopeKey] as SyncStateEntry | undefined;
+    if (!e || typeof e.lastSyncAt !== "string") return null;
+    return e;
+  } catch {
+    return null;
+  }
 }

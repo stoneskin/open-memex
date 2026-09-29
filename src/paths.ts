@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 
 function dataRoot(): string {
   if (process.env.MY_O_MEMORY_HOME) return path.resolve(process.env.MY_O_MEMORY_HOME);
@@ -42,4 +43,35 @@ export function memoriesDirFor(scopeKey: string): string {
 export function memoriesDirPath(scopeKey: string): string {
   const { memories } = paths();
   return path.join(memories, scopeKey);
+}
+
+/** Project root: git top-level, falling back to cwd (2B: in-repo memory dir anchor). */
+export function projectRoot(cwd: string = process.cwd()): string {
+  try {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (top) return top;
+  } catch {
+    /* not a git repo — use cwd */
+  }
+  return path.resolve(cwd);
+}
+
+/**
+ * In-repo memory directory for a project scope (2B/D23): `<root>/<memoryDir>/`,
+ * default `<root>/.ai/open-memex/`. Created on demand. `memoryDir` must be a
+ * relative path without `..` segments (validated by `config set`).
+ */
+export function inRepoMemoriesDir(root: string, memoryDir: string): string {
+  const dir = path.join(root, memoryDir);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Same as `inRepoMemoriesDir` but never creates the directory. */
+export function inRepoMemoriesDirPath(root: string, memoryDir: string): string {
+  return path.join(root, memoryDir);
 }

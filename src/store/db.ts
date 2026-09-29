@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS memories (
   file_path    TEXT NOT NULL,
   mtime_ms     REAL NOT NULL,
   created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
+  updated_at   INTEGER NOT NULL,
+  review_state TEXT NOT NULL DEFAULT 'draft'
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_scope_updated
@@ -88,7 +89,7 @@ END;
 `;
 
 /** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 function userVersion(d: AnyDatabase): number {
   const row = d.prepare("PRAGMA user_version").get() as { user_version: number };

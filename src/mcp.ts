@@ -1,9 +1,10 @@
 /**
  * open-memex generic MCP server (stdio transport).
  *
- * Exposes the same five memory tools as the opencode plugin
+ * Exposes the memory tools as the opencode plugin
  * (memory_add / memory_search / memory_list / memory_supersede /
- * memory_forget) over the Model Context Protocol, so any MCP client —
+ * memory_forget, plus memory_status / memory_submit / memory_propose /
+ * memory_promote / memory_resolve / memory_pr_status) over the Model Context Protocol, so any MCP client —
  * VS Code Copilot Chat, Cursor, Claude Code, etc. — can use open-memex
  * without a host-specific plugin.
  *
@@ -19,6 +20,9 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { loadConfig } from "./config.ts";
 import { resolveProjectScope, PERSONAL_SCOPE, type Scope } from "./scope.ts";
@@ -30,16 +34,81 @@ import {
   listMemories,
   supersedeMemory,
   forgetMemory,
+  statusMemories,
+  submitMemoriesOp,
+  proposeMemoriesOp,
+  promoteMemoryOp,
+  resolveMemoryOp,
+  prStatusOp,
   memoryAddArgs,
   memorySearchArgs,
   memoryListArgs,
   memorySupersedeArgs,
   memoryForgetArgs,
+  memoryStatusArgs,
+  memorySubmitArgs,
+  memoryProposeArgs,
+  memoryPromoteArgs,
+  memoryResolveArgs,
+  memoryPrStatusArgs,
   TOOL_DESCRIPTIONS,
   type ToolResult,
 } from "./tools/ops.ts";
 
-const SERVER_VERSION = "0.2.0-alpha";
+// Server version tracks package.json — never hardcode it here again.
+// package.json sits two levels above this file in both layouts
+// (src/mcp.ts and dist/mcp.js), same convention as cli.ts --version.
+const SERVER_VERSION: string = (() => {
+  try {
+    const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0-unknown";
+  } catch {
+    return "0.0.0-unknown";
+  }
+})();
+
+/**
+ * D26: session-start guidance delivered through the MCP handshake itself.
+ * The init-written instruction files only exist if the user ran
+ * `open-memex init --client`; the initialize `instructions` reach every MCP
+ * client at connect time. Still advisory — no MCP consumer offers a hard
+ * session-start hook — but it is the strongest signal available.
+ */
+const SERVER_INSTRUCTIONS = `You are connected to an open-memex local memory MCP server
+(eleven memory_* tools: add, search, list, supersede, forget, status, submit,
+propose, promote, resolve, pr_status).
+
+- At the START of this session, when you finish a meaningful chunk of work,
+  after the user commits (git commit), and after any memory_* action completes,
+  call memory_status. If the project outbox has drafts waiting for review,
+  summarize them (one line each) and ask the user which ones to sync into the
+  repo. Sync NOTHING the user did not name.
+- When the user says "sync memory" (or "同步记忆"), treat it as a request to run
+  the sync flow: call memory_status, summarize the outbox drafts, and ask which
+  ones to sync. ALWAYS use the memory_status tool for this — never browse the
+  appdata directory directly.
+- After memory_submit, ask ONE follow-up: "want me to create a branch + push +
+  open the PR, or will you handle it yourself?" NEVER create branches, push, or
+  open PRs without the user's explicit approval. A "yes, you do it" covers the
+  whole chain — do NOT re-ask at each step.
+- BE PROACTIVE: when the user shares something worth remembering across sessions
+  (a decision, a preference, a project convention, a fix and its cause), call
+  memory_add without being asked. Keep each memory to one self-contained statement.
+- At the same checkpoints (session start, end of a work chunk, after the user
+  commits, after any memory_* action), DISTILL the session: propose 1–3 short
+  memories capturing the useful conclusion — what was learned or decided, how an
+  issue was resolved, what to avoid, where the authoritative doc lives — not the
+  raw transcript. Save NOTHING the user did not approve; on approval call
+  memory_add with source "inference" at the confirmed scope. If the knowledge
+  already lives in project docs, save a \`reference\` memory pointing at the doc
+  instead of copying it. Long-form notes are fine ONLY when the user explicitly
+  asks to save one.
+- Before asking the user about past decisions, conventions, or preferences they
+  may have told you before, call memory_search first.
+- Memories default to this project's scope; use the personal scope for facts
+  about the user that hold across all projects.
+- personal scope memories NEVER leave this machine.`;
 
 /** Adapt a framework-agnostic op result to an MCP tool response. */
 function toMcp(p: Promise<ToolResult>) {
@@ -64,11 +133,41 @@ export async function runMcpServer() {
 
   // Init DB and one-shot sync of markdown -> index, mirroring the plugin.
   db();
-  syncScope(scope.key);
-  syncScope(PERSONAL_SCOPE.key);
+  syncScope(scope.key, "session");
+  syncScope(PERSONAL_SCOPE.key, "session");
   console.error(`[open-memex] MCP server up. scope=${scope.key}`);
 
-  const server = new McpServer({ name: "open-memex", version: SERVER_VERSION });
+  // D12: pulls are explicit by default — session start never touches the
+  // network. With sync.autoPull, one best-effort pull; a failure never
+  // blocks the session, it just logs and continues.
+  if (cfg.sync?.autoPull) {
+    try {
+      const { GitProvider } = await import("./providers/git.ts");
+      const r = new GitProvider().pull(process.cwd());
+      syncScope(scope.key, "pull");
+      console.error(
+        `[open-memex] auto-pull: ${r.branch} ${r.fastForwarded ? "fast-forwarded" : "already up to date"}`,
+      );
+    } catch (e) {
+      console.error(`[open-memex] auto-pull skipped: ${(e as Error).message}`);
+    }
+  }
+
+  // D26: re-sync on every request, not just at startup. The in-repo dir
+  // follows the current git branch, so a branch switch mid-session would
+  // otherwise leave the index pointing at files that no longer exist.
+  const withSync = <A extends object, R>(fn: (args: A) => R) => {
+    return (args: A): R => {
+      syncScope(scope.key, "request");
+      syncScope(PERSONAL_SCOPE.key, "request");
+      return fn(args);
+    };
+  };
+
+  const server = new McpServer(
+    { name: "open-memex", version: SERVER_VERSION },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   server.registerTool(
     "memory_add",
@@ -76,7 +175,7 @@ export async function runMcpServer() {
       description: TOOL_DESCRIPTIONS.memory_add,
       inputSchema: z.object(memoryAddArgs),
     },
-    (args) => toMcp(addMemory(getScope, cfg, args)),
+    withSync((args) => toMcp(addMemory(getScope, cfg, args))),
   );
 
   server.registerTool(
@@ -86,7 +185,7 @@ export async function runMcpServer() {
       inputSchema: z.object(memorySearchArgs),
       annotations: { readOnlyHint: true },
     },
-    (args) => toMcp(searchMemories(getScope, args)),
+    withSync((args) => toMcp(searchMemories(getScope, args))),
   );
 
   server.registerTool(
@@ -96,7 +195,7 @@ export async function runMcpServer() {
       inputSchema: z.object(memoryListArgs),
       annotations: { readOnlyHint: true },
     },
-    (args) => toMcp(listMemories(getScope, args)),
+    withSync((args) => toMcp(listMemories(getScope, args))),
   );
 
   server.registerTool(
@@ -105,7 +204,7 @@ export async function runMcpServer() {
       description: TOOL_DESCRIPTIONS.memory_supersede,
       inputSchema: z.object(memorySupersedeArgs),
     },
-    (args) => toMcp(supersedeMemory(cfg, args)),
+    withSync((args) => toMcp(supersedeMemory(cfg, args))),
   );
 
   server.registerTool(
@@ -115,7 +214,63 @@ export async function runMcpServer() {
       inputSchema: z.object(memoryForgetArgs),
       annotations: { destructiveHint: true },
     },
-    (args) => toMcp(forgetMemory(args)),
+    withSync((args) => toMcp(forgetMemory(args))),
+  );
+
+  server.registerTool(
+    "memory_status",
+    {
+      description: TOOL_DESCRIPTIONS.memory_status,
+      inputSchema: z.object(memoryStatusArgs),
+      annotations: { readOnlyHint: true },
+    },
+    withSync((_args) => toMcp(statusMemories())),
+  );
+
+  server.registerTool(
+    "memory_submit",
+    {
+      description: TOOL_DESCRIPTIONS.memory_submit,
+      inputSchema: z.object(memorySubmitArgs),
+    },
+    withSync((args) => toMcp(submitMemoriesOp(args))),
+  );
+
+  server.registerTool(
+    "memory_propose",
+    {
+      description: TOOL_DESCRIPTIONS.memory_propose,
+      inputSchema: z.object(memoryProposeArgs),
+    },
+    withSync((args) => toMcp(proposeMemoriesOp(args))),
+  );
+
+  server.registerTool(
+    "memory_promote",
+    {
+      description: TOOL_DESCRIPTIONS.memory_promote,
+      inputSchema: z.object(memoryPromoteArgs),
+    },
+    withSync((args) => toMcp(promoteMemoryOp(args))),
+  );
+
+  server.registerTool(
+    "memory_resolve",
+    {
+      description: TOOL_DESCRIPTIONS.memory_resolve,
+      inputSchema: z.object(memoryResolveArgs),
+    },
+    withSync((args) => toMcp(resolveMemoryOp(args))),
+  );
+
+  server.registerTool(
+    "memory_pr_status",
+    {
+      description: TOOL_DESCRIPTIONS.memory_pr_status,
+      inputSchema: z.object(memoryPrStatusArgs),
+      annotations: { readOnlyHint: true },
+    },
+    withSync((args) => toMcp(prStatusOp(args))),
   );
 
   const transport = new StdioServerTransport();

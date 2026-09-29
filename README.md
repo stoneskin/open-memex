@@ -312,6 +312,18 @@ open-memex pr-status [--apply]
 # changes-requested → suggestion only. Report by default; --apply performs
 # the mapped transitions locally (no push).
 
+open-memex pull
+# pull shared memories from the git remote: fetch + fast-forward ONLY.
+# A diverged branch fails with a clear message — open-memex never
+# force-merges; resolve it by hand, then pull again. On success the
+# local index re-syncs. Pulls are explicit by default; set
+# `open-memex config set sync.autoPull true` for a best-effort pull
+# at MCP session start (a failed pull never blocks the session).
+
+open-memex push
+# push the current branch (with its submitted memories) to the git remote.
+# Explicit only — open-memex never pushes on its own.
+
 open-memex propose <id...> --to project [--local-approve]
 # propose one or several personal memories at once (one branch, one PR);
 # each is copied with its own new id. All-or-nothing: a bad id aborts the

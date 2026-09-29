@@ -305,6 +305,17 @@ open-memex pr-status [--apply]
 # PR merged → published，PR approved → approved（approved_by = reviewer），
 # changes requested 只给建议。默认只报告；--apply 在本地执行映射的流转（不 push）。
 
+open-memex pull
+# 从 git 远端拉共享记忆：fetch + 只允许 fast-forward。
+# 分支 diverged 时直接报错退出——open-memex 永不强行 merge；
+# 手工解决（rebase 或 merge）后再 pull。成功后本地索引重新同步。
+# pull 默认只显式触发；`open-memex config set sync.autoPull true`
+# 可在 MCP session start 时尝试自动 pull（失败永不阻塞 session）。
+
+open-memex push
+# 把当前分支（含已 submit 的记忆）push 到 git 远端。
+# 只显式触发——open-memex 永不自动 push。
+
 open-memex propose <id...> --to project [--local-approve]
 # 一次 propose 一条或多条（一个分支、一个 PR），每条独立新 id。
 # 全有或全无：id 有错整批回滚，不会留半截。

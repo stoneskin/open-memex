@@ -19,6 +19,14 @@ export interface MyOMemoryConfig {
    * memories can never escape the repo.
    */
   memoryDir: string;
+  /**
+   * Sync behavior (§9, D12). Pulls are explicit by default; session start
+   * never touches the network unless autoPull is true — and even then a
+   * failed pull never blocks the session.
+   */
+  sync: {
+    autoPull: boolean;
+  };
 }
 
 export const DEFAULT_CONFIG: MyOMemoryConfig = {
@@ -54,6 +62,7 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   redactPatterns: [],
   logLevel: "info",
   memoryDir: ".ai/open-memex",
+  sync: { autoPull: false },
 };
 
 function stripJsonComments(raw: string): string {
@@ -102,6 +111,7 @@ export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
   injectOnFirstTurn: toBool,
   keywordCaptureEnabled: toBool,
   memoryDir: toRelativeDir,
+  "sync.autoPull": toBool,
   logLevel: (v) => {
     if (v !== "info" && v !== "debug") throw new Error('must be "info" or "debug"');
     return v;

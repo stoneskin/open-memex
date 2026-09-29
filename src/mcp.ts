@@ -137,6 +137,22 @@ export async function runMcpServer() {
   syncScope(PERSONAL_SCOPE.key, "session");
   console.error(`[open-memex] MCP server up. scope=${scope.key}`);
 
+  // D12: pulls are explicit by default — session start never touches the
+  // network. With sync.autoPull, one best-effort pull; a failure never
+  // blocks the session, it just logs and continues.
+  if (cfg.sync?.autoPull) {
+    try {
+      const { GitProvider } = await import("./providers/git.ts");
+      const r = new GitProvider().pull(process.cwd());
+      syncScope(scope.key, "pull");
+      console.error(
+        `[open-memex] auto-pull: ${r.branch} ${r.fastForwarded ? "fast-forwarded" : "already up to date"}`,
+      );
+    } catch (e) {
+      console.error(`[open-memex] auto-pull skipped: ${(e as Error).message}`);
+    }
+  }
+
   // D26: re-sync on every request, not just at startup. The in-repo dir
   // follows the current git branch, so a branch switch mid-session would
   // otherwise leave the index pointing at files that no longer exist.

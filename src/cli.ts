@@ -18,7 +18,7 @@ import {
   type Frontmatter,
 } from "./store/markdown.ts";
 import { loadConfig } from "./config.ts";
-import { paths } from "./paths.ts";
+import { paths, projectRoot } from "./paths.ts";
 import { redact } from "./redact.ts";
 import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
@@ -124,6 +124,17 @@ repo awaiting review or published, and repo files not yet committed.
 
 Usage: open-memex sync-status`,
 
+  pull: `Pull shared project memories from the git remote: fetch + fast-forward
+only. Never auto-merges — a diverged branch fails with a clear message and is
+left for you to resolve by hand. On success the local index re-syncs.
+
+Usage: open-memex pull`,
+
+  push: `Push the current branch (with its submitted memories) to the git
+remote. Explicit only — open-memex never pushes on its own.
+
+Usage: open-memex push`,
+
   submit: `Move outbox drafts into the repo for review: copies the drafts into
 the repo memory dir as proposed (a local-approved copy keeps its approval),
 commits locally on the CURRENT branch, and moves the outbox originals out.
@@ -223,6 +234,8 @@ Usage:
   open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
   open-memex resolve [id-or-path]
   open-memex sync-status
+  open-memex pull
+  open-memex push
   open-memex submit <id...> [--branch <name>] [--base <branch>]
   open-memex pr-status [--apply]
   open-memex reindex
@@ -266,6 +279,33 @@ type: instruction→role split. Always preview with --dry-run first.
 
 Run \`open-memex <command> --help\` for details on a single command.`);
   process.exit(exitCode);
+}
+
+/**
+ * Build a saveConfig patch for a (possibly dotted) config key, preserving
+ * sibling keys already present in the nested object.
+ */
+function setConfigPath(key: string, value: unknown): Record<string, unknown> {
+  const parts = key.split(".");
+  if (parts.length === 1) return { [key]: value };
+  const cfg = loadConfig() as unknown as Record<string, unknown>;
+  const top = parts[0]!;
+  const cur =
+    cfg[top] && typeof cfg[top] === "object"
+      ? { ...(cfg[top] as Record<string, unknown>) }
+      : {};
+  let node: Record<string, unknown> = cur;
+  for (let i = 1; i < parts.length - 1; i++) {
+    const seg = parts[i]!;
+    const nxt =
+      node[seg] && typeof node[seg] === "object"
+        ? { ...(node[seg] as Record<string, unknown>) }
+        : {};
+    node[seg] = nxt;
+    node = nxt;
+  }
+  node[parts[parts.length - 1]!] = value;
+  return { [top]: cur };
 }
 
 function parseFlags(argv: string[]): Record<string, string> {
@@ -483,7 +523,9 @@ async function main() {
       }
       try {
         const saved = validate(value);
-        const file = saveConfig({ [key!]: saved });
+        // Dotted keys (e.g. sync.autoPull) write into the nested config
+        // object, preserving sibling keys already on disk.
+        const file = saveConfig(setConfigPath(key!, saved));
         console.log(`set ${key} = ${JSON.stringify(saved)} (${file})`);
       } catch (err) {
         console.error(`invalid value for ${key}: ${(err as Error).message}`);
@@ -850,6 +892,45 @@ function positionalArgs(argv: string[]): string[] {
       console.log(formatSyncStatus(getSyncStatus()));
     } catch (e) {
       console.error(`sync-status failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  // §9 / D12: explicit pull — fetch + fast-forward only, never auto-merge.
+  if (cmd === "pull") {
+    const { GitProvider } = await import("./providers/git.ts");
+    const root = projectRoot();
+    try {
+      const r = new GitProvider().pull(root);
+      const stats = syncScope(project.key, "pull");
+      if (r.fastForwarded) {
+        console.log(
+          `pulled ${r.branch} from ${r.remote}: ${r.before.slice(0, 8)} → ${r.after.slice(0, 8)} (fast-forward)`,
+        );
+      } else {
+        console.log(`already up to date: ${r.branch} @ ${r.after.slice(0, 8)}`);
+      }
+      console.log(
+        `index: +${stats.added} ~${stats.updated} -${stats.removed} (scanned ${stats.scanned})`,
+      );
+    } catch (e) {
+      console.error(`pull failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  // Explicit push — open-memex never pushes on its own (D36).
+  if (cmd === "push") {
+    const { GitProvider } = await import("./providers/git.ts");
+    const root = projectRoot();
+    try {
+      const r = new GitProvider().push(root);
+      syncScope(project.key, "push");
+      console.log(`pushed ${r.branch} to ${r.remote} @ ${r.head.slice(0, 8)}`);
+    } catch (e) {
+      console.error(`push failed: ${(e as Error).message}`);
       process.exit(2);
     }
     return;

@@ -153,7 +153,7 @@ export function syncScope(scopeKey: string, kind: SyncKind = "auto"): SyncStats 
 // ---------------------------------------------------------------------------
 
 /** What triggered the sync — shown in sync-status so the user can see it. */
-export type SyncKind = "session" | "request" | "cli" | "submit" | "auto";
+export type SyncKind = "session" | "request" | "cli" | "submit" | "pull" | "push" | "auto";
 
 export interface SyncStateEntry {
   lastSyncAt: string; // RFC 3339

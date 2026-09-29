@@ -250,11 +250,15 @@ Usage: open-memex migrate [--from <key>] [--to <key>] [--dry-run] [--on-conflict
 
 Flags:
   --from / --to   scope keys (default: current project → personal)
-  --dry-run       preview without moving anything
+  --dry-run       preview without moving anything (--to-v2 previews the legacy
+                  files in place, including per-file conversion plans)
   --on-conflict   newer (default), overwrite, or skip
   --to-v2         convert a legacy my-o-memory data dir to the v2 layout
 
 Always preview with --dry-run first; nothing moves without confirmation.
+On Windows, if another program holds the legacy folder open, the backup
+rename fails with an actionable message instead of a stack trace — close
+the program and re-run.
 
 Examples:
   open-memex migrate --dry-run
@@ -412,13 +416,20 @@ function parseFlags(argv: string[]): Record<string, string> {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a.startsWith("--")) {
-      const key = a.slice(2);
+      const raw = a.slice(2);
+      const eq = raw.indexOf("=");
+      if (eq >= 0) {
+        // D44: accept --key=value as well as --key value (issue #7 — the
+        // = form was silently misparsed before, dropping the flag).
+        out[raw.slice(0, eq)] = raw.slice(eq + 1);
+        continue;
+      }
       const val = argv[i + 1];
       if (val !== undefined && !val.startsWith("--")) {
-        out[key] = val;
+        out[raw] = val;
         i++;
       } else {
-        out[key] = "true";
+        out[raw] = "true";
       }
     }
   }
@@ -548,7 +559,14 @@ async function main() {
   if (cmd === "migrate" && rest.includes("--to-v2")) {
     const flags = parseFlags(rest);
     const dryRun = flags["dry-run"] === "true";
-    const stats = migrateV2({ dryRun });
+    let stats;
+    try {
+      stats = migrateV2({ dryRun });
+    } catch (err) {
+      // D44: actionable message, not a raw syscall stack (issue #7).
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
     console.log(
       `${dryRun ? "DRY RUN: " : ""}scanned ${stats.scanned} files: ` +
         `${stats.converted} to convert, ${stats.skippedV2} already v2`,
@@ -562,7 +580,9 @@ async function main() {
     }
     if (stats.legacyBackup) {
       console.log(
-        `\nlegacy my-o-memory data dir merged; backup kept at:\n  ${stats.legacyBackup}`,
+        dryRun
+          ? `\nDRY RUN: legacy my-o-memory data dir found — it would be merged and backed up at:\n  ${stats.legacyBackup}`
+          : `\nlegacy my-o-memory data dir merged; backup kept at:\n  ${stats.legacyBackup}`,
       );
     }
     if (!dryRun && stats.converted > 0) {

@@ -867,6 +867,21 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   MCP handshake instructions or the `init`-written instruction files — but
   opencode reads AGENTS.md natively, so the distilled snippet teaches the
   checkpoint habit wherever it lands. Approved 2026-09-29.*
+- **D44** — `migrate --to-v2` hotfix (issue #7, 0.4.1): (1) `--dry-run` now
+  previews the legacy `my-o-memory` files in place — per-file conversion plans
+  without moving anything (previously it scanned only the new, still-empty
+  root and always reported "0 files", making the preview useless); (2) dry-run
+  no longer prints the false "legacy data dir merged" line; (3) the Windows
+  EPERM on the legacy-dir backup rename is caught and rethrown as an actionable
+  message (close the program holding the folder — e.g. a running MCP server —
+  and re-run; nothing was deleted), and the CLI prints it as `Error: …` with
+  exit 1 instead of a raw syscall stack; (4) `parseFlags` accepts `--key=value`
+  in addition to `--key value` (the `=` form was silently misparsed before,
+  dropping the flag — which can turn a `--dry-run` into a real run).
+  *Rationale: a preview that shows nothing is worse than no preview — the user
+  cannot confirm what the real run will do; and a destructive-path failure must
+  speak in user terms. Shipped as 0.4.1 hotfix on the stable line. Approved
+  2026-09-29.*
 - **D41** — The type taxonomy is reconciled to 11 types with one-line definitions
   (§3.1): `fact` `preference` `decision` `constraint` `todo` `knowledge` `howto`
   `gotcha` `lesson` `observation` `reference`. Merged away: `warning`→`gotcha`,

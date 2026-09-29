@@ -30,7 +30,10 @@ import { fileURLToPath } from "node:url";
 const COMMAND_HELP: Record<string, string> = {
   where: `Show which project scope the current directory resolves to, and where its data lives.
 
-Usage: open-memex where`,
+Usage: open-memex where
+
+Example:
+  open-memex where`,
 
   list: `List memories in a scope, newest first.
 
@@ -71,15 +74,24 @@ Example:
 
   supersede: `Replace a memory with a newer version. The old one is kept as history.
 
-Usage: open-memex supersede <id> "new content" [--type T] [--tag t1,t2]`,
+Usage: open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
+
+Example:
+  open-memex supersede 01ABC "We deploy on Thursdays now"`,
 
   status: `Change a memory's lifecycle status.
 
-Usage: open-memex status <id> active|deprecated|retracted|archived`,
+Usage: open-memex status <id> active|deprecated|retracted|archived
+
+Example:
+  open-memex status 01ABC deprecated`,
 
   forget: `Delete a memory by id.
 
-Usage: open-memex forget <id>`,
+Usage: open-memex forget <id>
+
+Example:
+  open-memex forget 01ABC`,
 
   propose: `Copy personal memories into the project outbox as review drafts.
 The personal originals stay put. Nothing enters git at this step.
@@ -116,24 +128,37 @@ Usage: open-memex resolve [id-or-path]
 
 With no argument, lists conflicts. With an id or file path, shows the
 3-way merge (base / outbox / repo) so you can resolve it by hand.
-Conflicts are never auto-resolved.`,
+Conflicts are never auto-resolved.
+
+Examples:
+  open-memex resolve
+  open-memex resolve 01ABC`,
 
   "sync-status": `Show the project memory sync pipeline: when the index last synced
 and what triggered it, drafts waiting in the outbox (appdata), memories in the
 repo awaiting review or published, and repo files not yet committed.
 
-Usage: open-memex sync-status`,
+Usage: open-memex sync-status
+
+Example:
+  open-memex sync-status`,
 
   pull: `Pull shared project memories from the git remote: fetch + fast-forward
 only. Never auto-merges — a diverged branch fails with a clear message and is
 left for you to resolve by hand. On success the local index re-syncs.
 
-Usage: open-memex pull`,
+Usage: open-memex pull
+
+Example:
+  open-memex pull`,
 
   push: `Push the current branch (with its submitted memories) to the git
 remote. Explicit only — open-memex never pushes on its own.
 
-Usage: open-memex push`,
+Usage: open-memex push
+
+Example:
+  open-memex push`,
 
   export: `Export memories to a portable .tar.gz bundle (markdown source of
 truth + manifest.json) for moving to another machine or another app.
@@ -146,21 +171,33 @@ Flags:
   --type    filter by memory type
   --tag     filter by tag
   --all, -a include private memories (full migration)
-  -o        output file (default: ./open-memex-export-<timestamp>.tar.gz)`,
+  -o        output file (default: ./open-memex-export-<timestamp>.tar.gz)
+
+Examples:
+  open-memex export -o backup.tar.gz
+  open-memex export --scope both --all -o full-migration.tar.gz`,
 
   import: `Import a bundle created by \`open-memex export\`. Personal memories
 go to the personal dir; project memories are re-keyed to the current project
 and land in the outbox as drafts. Existing identical memories are skipped;
 conflicting ids are reported, never overwritten.
 
-Usage: open-memex import <bundle.tar.gz> [--dry-run]`,
+Usage: open-memex import <bundle.tar.gz> [--dry-run]
+
+Examples:
+  open-memex import backup.tar.gz --dry-run
+  open-memex import backup.tar.gz`,
 
   "distill-agents": `Propose an AGENTS.md snippet distilled from project
 memories (decisions, constraints, lessons, gotchas, howtos). Prints markdown
 to stdout, or writes it with -o. Review and merge by hand — open-memex never
 rewrites your AGENTS.md on its own.
 
-Usage: open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]`,
+Usage: open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]
+
+Examples:
+  open-memex distill-agents
+  open-memex distill-agents --type decision,gotcha -o agents-snippet.md`,
 
   submit: `Move outbox drafts into the repo for review: copies the drafts into
 the repo memory dir as proposed (a local-approved copy keeps its approval),
@@ -186,15 +223,25 @@ overwritten. Report-only by default.
 Usage: open-memex pr-status [--apply]
 
 Flags:
-  --apply   write the transitions locally (still never pushes)`,
+  --apply   write the transitions locally (still never pushes)
+
+Examples:
+  open-memex pr-status
+  open-memex pr-status --apply`,
 
   reindex: `Rebuild the SQLite index from the markdown files.
 
-Usage: open-memex reindex`,
+Usage: open-memex reindex
+
+Example:
+  open-memex reindex`,
 
   scopes: `List the known scopes (personal + project).
 
-Usage: open-memex scopes`,
+Usage: open-memex scopes
+
+Example:
+  open-memex scopes`,
 
   migrate: `Move memories between scopes, or convert a legacy my-o-memory data dir.
 
@@ -207,14 +254,22 @@ Flags:
   --on-conflict   newer (default), overwrite, or skip
   --to-v2         convert a legacy my-o-memory data dir to the v2 layout
 
-Always preview with --dry-run first; nothing moves without confirmation.`,
+Always preview with --dry-run first; nothing moves without confirmation.
+
+Examples:
+  open-memex migrate --dry-run
+  open-memex migrate --from personal --to project --dry-run`,
 
   mcp: `Start the stdio MCP server (the same server editors connect to).
 
 Usage: open-memex mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
 
 Flags:
-  --print-config   print the MCP client config instead of starting the server`,
+  --print-config   print the MCP client config instead of starting the server
+
+Examples:
+  open-memex mcp
+  open-memex mcp --print-config vscode`,
 
   init: `One-command project setup: writes the MCP config for your editor and the
 agent memory instructions. Existing files are merged, never clobbered.
@@ -226,24 +281,35 @@ Flags:
   --client        editor to configure (default: auto-detect)
   --instructions  personal (default, ~/.copilot/copilot-instructions.md) or project
   --force         overwrite existing config
-  --yes           accept all defaults, never prompt`,
+  --yes           accept all defaults, never prompt
+
+Examples:
+  open-memex init
+  open-memex init --client cursor --yes`,
 
   config: `Show config, or set a key.
 
 Usage: open-memex config [set <key> <value>]
 
-Example:
+Examples:
+  open-memex config
   open-memex config set sync.autoPull false`,
 
   capture: `Preview what the keyword-capture watcher would extract from text.
 
-Usage: open-memex capture --dry-run "text"`,
+Usage: open-memex capture --dry-run "text"
+
+Example:
+  open-memex capture --dry-run "remember: we deploy on Fridays"`,
 
   doctor: `Environment health check: Node version, config source, scope resolution,
 storage writability, then boots a real MCP server and runs initialize +
 tools/list against it — all eleven tools must show up.
 
-Usage: open-memex doctor`,
+Usage: open-memex doctor
+
+Example:
+  open-memex doctor`,
 };
 
 function usage(exitCode = 1): never {
@@ -279,6 +345,9 @@ Usage:
   open-memex config [set <key> <value>]
   open-memex capture --dry-run "text"
   open-memex doctor
+
+Every command has its own help with description and examples:
+  open-memex <command> --help   (or -h)
 
 One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
 the MCP config for your editor (\`.vscode/mcp.json\`, \`.cursor/mcp.json\`,

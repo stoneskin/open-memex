@@ -475,7 +475,9 @@ open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] 
 # propose an AGENTS.md snippet distilled from project memories
 # (decisions, constraints, lessons, gotchas, howtos). Prints markdown;
 # -o writes it to a file. You review and merge by hand — open-memex
-# never rewrites your AGENTS.md on its own.
+# never rewrites your AGENTS.md on its own. The snippet ends with a
+# "memory hygiene" section (§3.5 checkpoint guidance) so agents reading
+# AGENTS.md learn to propose distilled captures at checkpoints.
 
 open-memex propose <id...> --to project [--local-approve]
 # propose one or several personal memories at once (one branch, one PR);

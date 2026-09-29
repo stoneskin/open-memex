@@ -860,6 +860,13 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   saved via `memory_add` with the new optional `source` param set to
   `"inference"` (default `"tool"`). *Rationale: closes the 0.4.0 TODO from D41 —
   the design's capture loop now reaches the agent. Implemented 2026-09-29.*
+- **D43** — `distill-agents` output gains a "Memory hygiene (open-memex)"
+  footer carrying the §3.5 checkpoint guidance (propose 1–3 distilled captures
+  at checkpoints; save nothing without approval; prefer `reference` over
+  copying). *Rationale: double insurance for opencode users, who never see the
+  MCP handshake instructions or the `init`-written instruction files — but
+  opencode reads AGENTS.md natively, so the distilled snippet teaches the
+  checkpoint habit wherever it lands. Approved 2026-09-29.*
 - **D41** — The type taxonomy is reconciled to 11 types with one-line definitions
   (§3.1): `fact` `preference` `decision` `constraint` `todo` `knowledge` `howto`
   `gotcha` `lesson` `observation` `reference`. Merged away: `warning`→`gotcha`,

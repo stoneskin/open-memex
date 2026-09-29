@@ -448,7 +448,8 @@ open-memex import <bundle.tar.gz> [--dry-run]
 open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]
 # 把项目记忆（decision/constraint/lesson/gotcha/howto）提炼成
 # AGENTS.md 片段。默认打印到 stdout；-o 写文件。人工审阅后手工合并——
-# open-memex 永不自动改写你的 AGENTS.md。
+# open-memex 永不自动改写你的 AGENTS.md。片段末尾带一段"记忆卫生"
+# （§3.5 检查点指引），让读 AGENTS.md 的 agent 学会在检查点提议蒸馏捕获。
 
 open-memex propose <id...> --to project [--local-approve]
 # 一次 propose 一条或多条（一个分支、一个 PR），每条独立新 id。

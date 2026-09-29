@@ -88,7 +88,7 @@ personal scope: this machine only — never synced, never enters a repo.
 npm install -g open-memex
 ```
 
-This installs the `0.3.0` stable release.
+This installs the `0.4.0` stable release.
 
 **Alpha** (bleeding edge, for testers) — the `alpha` tag:
 
@@ -543,7 +543,7 @@ server with cwd set to your project root (`init` handles this for you).
 `init` setup, Chinese keyword capture with personal/project routing, `config` /
 `capture --dry-run` / `doctor` helpers, Visual Studio support.
 
-**`0.4.0` (in development):** team sync — shared memory via git: appdata draft
+**`0.4.0` (stable):** team sync — shared memory via git: appdata draft
 outbox → `sync-status` → `submit` (local branch+commit, push/PR on your Yes)
 → `promote` / `resolve` review workflow, in-repo `.ai/open-memex/` dir;
 `export` / `import` archive for user portability (Markdown + manifest, no walled

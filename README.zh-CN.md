@@ -85,7 +85,7 @@ personal scope：只属于这台机器——永不同步，永远进不了仓库
 npm install -g open-memex
 ```
 
-安装的是 `0.3.0` 正式版。
+安装的是 `0.4.0` 正式版。
 
 **Alpha 版**（最新开发版，给测试者）——`alpha` 标签：
 
@@ -511,7 +511,7 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 一键 `init` 配置、中文关键词捕获（含 personal/project 路由）、
 `config` / `capture --dry-run` / `doctor` 助手命令、Visual Studio 支持。
 
-**`0.4.0`（开发中）：** 团队同步——用 git 做共享记忆：appdata 草稿箱 →
+**`0.4.0`（稳定版）：** 团队同步——用 git 做共享记忆：appdata 草稿箱 →
 `sync-status` → `submit`（本地分支+commit，push/PR 拿你的 Yes 才做）
 → `promote` / `resolve` 评审工作流、仓库内 `.ai/open-memex/` 目录；
 `export` / `import` 归档做用户可携带（Markdown + manifest，不造围墙花园；

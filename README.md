@@ -324,6 +324,17 @@ open-memex push
 # push the current branch (with its submitted memories) to the git remote.
 # Explicit only — open-memex never pushes on its own.
 
+open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
+# bundle memories into a portable .tar.gz (markdown + manifest.json) for
+# moving to another machine or another app. Excludes visibility:private
+# memories by default; --all / -a includes everything (full migration).
+
+open-memex import <bundle.tar.gz> [--dry-run]
+# restore a bundle: personal memories go to the personal dir; project
+# memories are re-keyed to the current project and land in the outbox as
+# drafts. Identical ids are skipped; conflicting ids are reported,
+# never overwritten.
+
 open-memex propose <id...> --to project [--local-approve]
 # propose one or several personal memories at once (one branch, one PR);
 # each is copied with its own new id. All-or-nothing: a bad id aborts the

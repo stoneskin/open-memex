@@ -316,6 +316,16 @@ open-memex push
 # 把当前分支（含已 submit 的记忆）push 到 git 远端。
 # 只显式触发——open-memex 永不自动 push。
 
+open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
+# 把记忆打包成可携带的 .tar.gz（markdown 原件 + manifest.json），
+# 用于搬到另一台机器或导入别的工具。默认排除 visibility:private 的记忆；
+# --all / -a 全量包含（完整迁移）。
+
+open-memex import <bundle.tar.gz> [--dry-run]
+# 恢复 export 的包：personal 记忆进 personal 目录；project 记忆按当前
+# 项目重新编号 scope_key，进 outbox 当草稿。内容相同的 id 跳过；
+# 内容冲突的 id 只报告，永不覆盖。
+
 open-memex propose <id...> --to project [--local-approve]
 # 一次 propose 一条或多条（一个分支、一个 PR），每条独立新 id。
 # 全有或全无：id 有错整批回滚，不会留半截。

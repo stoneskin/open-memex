@@ -135,6 +135,26 @@ remote. Explicit only — open-memex never pushes on its own.
 
 Usage: open-memex push`,
 
+  export: `Export memories to a portable .tar.gz bundle (markdown source of
+truth + manifest.json) for moving to another machine or another app.
+Excludes visibility:private memories by default; --all includes everything.
+
+Usage: open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
+
+Flags:
+  --scope   project (default), personal, or both
+  --type    filter by memory type
+  --tag     filter by tag
+  --all, -a include private memories (full migration)
+  -o        output file (default: ./open-memex-export-<timestamp>.tar.gz)`,
+
+  import: `Import a bundle created by \`open-memex export\`. Personal memories
+go to the personal dir; project memories are re-keyed to the current project
+and land in the outbox as drafts. Existing identical memories are skipped;
+conflicting ids are reported, never overwritten.
+
+Usage: open-memex import <bundle.tar.gz> [--dry-run]`,
+
   submit: `Move outbox drafts into the repo for review: copies the drafts into
 the repo memory dir as proposed (a local-approved copy keeps its approval),
 commits locally on the CURRENT branch, and moves the outbox originals out.
@@ -236,6 +256,8 @@ Usage:
   open-memex sync-status
   open-memex pull
   open-memex push
+  open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
+  open-memex import <bundle.tar.gz> [--dry-run]
   open-memex submit <id...> [--branch <name>] [--base <branch>]
   open-memex pr-status [--apply]
   open-memex reindex
@@ -931,6 +953,68 @@ function positionalArgs(argv: string[]): string[] {
       console.log(`pushed ${r.branch} to ${r.remote} @ ${r.head.slice(0, 8)}`);
     } catch (e) {
       console.error(`push failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  // §9 / D40: portable export bundle (markdown + manifest).
+  if (cmd === "export") {
+    const { exportMemories } = await import("./export.ts");
+    const flags = parseFlags(rest);
+    const all = flags["all"] === "true" || flags["a"] === "true" || rest.includes("--all") || rest.includes("-a");
+    const scopeFlag = flags["scope"] ?? "project";
+    // parseFlags only handles `--` flags; `-o <file>` is picked up here.
+    const oIdx = rest.findIndex((a) => a === "-o");
+    const outFile = flags["o"] ?? flags["output"] ?? (oIdx >= 0 ? rest[oIdx + 1] : undefined);
+    const scopeKeys =
+      scopeFlag === "both"
+        ? [project.key, PERSONAL_SCOPE.key]
+        : scopeFlag === "personal"
+          ? [PERSONAL_SCOPE.key]
+          : [project.key];
+    try {
+      const r = exportMemories({
+        scopeKeys,
+        type: flags["type"],
+        tag: flags["tag"],
+        includePrivate: all,
+        outFile,
+      });
+      console.log(`exported ${r.exported} memories → ${r.file}`);
+      if (!r.includePrivate && r.skippedPrivate > 0) {
+        console.log(`skipped ${r.skippedPrivate} private memories (use --all to include them)`);
+      }
+    } catch (e) {
+      console.error(`export failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "import") {
+    const { importBundle } = await import("./export.ts");
+    const flags = parseFlags(rest);
+    const bundle = positionalArgs(rest)[0];
+    if (!bundle) {
+      console.error(`usage: open-memex import <bundle.tar.gz> [--dry-run]`);
+      process.exit(2);
+    }
+    const dryRun = flags["dry-run"] === "true";
+    try {
+      const r = importBundle(bundle, { projectScopeKey: project.key, dryRun });
+      if (!dryRun) {
+        syncScope(project.key, "cli");
+        syncScope(PERSONAL_SCOPE.key, "cli");
+      }
+      console.log(
+        `${dryRun ? "DRY RUN: " : ""}imported ${r.imported}, skipped ${r.skippedIdentical} identical`,
+      );
+      for (const c of r.skippedConflict) {
+        console.log(`  conflict (kept existing): ${c.id} from ${c.file}`);
+      }
+    } catch (e) {
+      console.error(`import failed: ${(e as Error).message}`);
       process.exit(2);
     }
     return;

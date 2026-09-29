@@ -2,21 +2,27 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import yaml from "js-yaml";
-import { memoriesDirFor, memoriesDirPath } from "../paths.ts";
+import {
+  memoriesDirFor,
+  memoriesDirPath,
+  inRepoMemoriesDirPath,
+} from "../paths.ts";
 
-/** v2 content-kind taxonomy (V2-DESIGN §3.1). `type` = what the memory IS. */
+/** v2 content-kind taxonomy (V2-DESIGN §3.1). `type` = what the memory IS
+ *  (single-valued, drives behavior). D41: 11 types; `warning`→`gotcha`,
+ *  `workflow`→`howto`, `incident`→`lesson`, `architecture`→`knowledge`. */
 export const MEMORY_TYPE_TAXONOMY = [
-  "preference",
   "fact",
+  "preference",
   "decision",
-  "lesson",
-  "warning",
-  "workflow",
-  "architecture",
   "constraint",
   "todo",
   "knowledge",
+  "howto",
+  "gotcha",
+  "lesson",
   "observation",
+  "reference",
 ] as const;
 
 const TAXONOMY = new Set<string>(MEMORY_TYPE_TAXONOMY);
@@ -52,6 +58,62 @@ export interface Frontmatter {
   updated_at: string; // RFC 3339
   supersedes: string | null; // on the NEW memory → points BACK (§3.3)
   superseded_by: string | null; // on the OLD memory → points FORWARD
+  /** 2B/D25: where this memory sits in the propose → promote workflow. */
+  review_state: ReviewState;
+  /** Who proposed / approved it (git user.name, fallback OS user). */
+  proposed_by: string | null;
+  approved_by: string | null;
+  /** For propose-copies: the personal memory this was derived from. */
+  derived_from: string | null;
+  /** Curator note on the latest review transition (e.g. rejection reason). */
+  review_note: string | null;
+  /** 2B/D29: append-only audit trail of review transitions. Lives in the
+   *  file (source of truth), so it travels through branches and PRs. */
+  review_history: ReviewTransition[];
+}
+
+/** One step in a memory's review lifecycle — who moved it, when, why. */
+export interface ReviewTransition {
+  at: string; // RFC 3339
+  by: string; // author identity (git user.name, fallback OS user)
+  from: ReviewState;
+  to: ReviewState;
+  note: string | null;
+}
+
+/** Defensive parse: malformed entries are dropped, never fatal. */
+export function asReviewHistory(v: unknown): ReviewTransition[] {
+  if (!Array.isArray(v)) return [];
+  const out: ReviewTransition[] = [];
+  for (const e of v) {
+    if (!e || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    const from = asReviewState(r.from);
+    const to = asReviewState(r.to);
+    const at = typeof r.at === "string" && r.at ? r.at : null;
+    const by = typeof r.by === "string" && r.by ? r.by : null;
+    if (!at || !by) continue;
+    out.push({
+      at,
+      by,
+      from,
+      to,
+      note: typeof r.note === "string" && r.note ? r.note : null,
+    });
+  }
+  return out;
+}
+
+/** Review lifecycle for shared memories (2B/D25): draft → proposed →
+ *  approved/rejected → published. Personal memories stay `draft`. */
+export type ReviewState = "draft" | "proposed" | "approved" | "rejected" | "published";
+
+const REVIEW_STATES: ReviewState[] = ["draft", "proposed", "approved", "rejected", "published"];
+
+export function asReviewState(v: unknown): ReviewState {
+  return typeof v === "string" && (REVIEW_STATES as string[]).includes(v)
+    ? (v as ReviewState)
+    : "draft";
 }
 
 export interface MemoryFile {
@@ -179,6 +241,16 @@ export function normalizeFrontmatter(
       typeof raw.superseded_by === "string" && raw.superseded_by
         ? raw.superseded_by
         : null,
+    review_state: asReviewState(raw.review_state),
+    proposed_by:
+      typeof raw.proposed_by === "string" && raw.proposed_by ? raw.proposed_by : null,
+    approved_by:
+      typeof raw.approved_by === "string" && raw.approved_by ? raw.approved_by : null,
+    derived_from:
+      typeof raw.derived_from === "string" && raw.derived_from ? raw.derived_from : null,
+    review_note:
+      typeof raw.review_note === "string" && raw.review_note ? raw.review_note : null,
+    review_history: asReviewHistory(raw.review_history),
   };
 }
 
@@ -217,6 +289,9 @@ export function writeMemoryFile(
   fm: Frontmatter,
   body: string,
 ): { filePath: string; mtimeMs: number } {
+  // 2B/D26: project drafts live in appdata (the outbox) — the in-repo dir
+  // only ever holds submitted memories (proposed/approved/published).
+  // Personal stays in appdata and never leaves the machine.
   const dir = memoriesDirFor(fm.scope_key);
   const filePath = path.join(dir, `${fm.id}.md`);
   fs.writeFileSync(filePath, serialize(fm, body), "utf8");
@@ -224,14 +299,16 @@ export function writeMemoryFile(
   return { filePath, mtimeMs: st.mtimeMs };
 }
 
-export function deleteMemoryFile(scopeKey: string, id: string): boolean {
-  const dir = memoriesDirPath(scopeKey);
-  const filePath = path.join(dir, `${id}.md`);
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-    return true;
+/** Yield `*.md` files in the in-repo dir (read path — never creates it). */
+export function* iterInRepoMemoryFiles(
+  root: string,
+  memoryDir: string,
+): Generator<string> {
+  const dir = inRepoMemoriesDirPath(root, memoryDir);
+  if (!fs.existsSync(dir)) return;
+  for (const name of fs.readdirSync(dir)) {
+    if (name.endsWith(".md")) yield path.join(dir, name);
   }
-  return false;
 }
 
 export function readMemoryFile(filePath: string): MemoryFile | null {

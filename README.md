@@ -1,14 +1,76 @@
 # open-memex
 
+[![npm version](https://img.shields.io/npm/v/open-memex.svg)](https://www.npmjs.com/package/open-memex)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+
 [中文文档](./README.zh-CN.md)
 
 Local-first persistent memory for AI coding agents: an [opencode](https://opencode.ai) plugin
 plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, Visual Studio, …).
 
+## Why open-memex?
+
+Engineering knowledge lives in two places: the code, and people's heads.
+Every new AI coding session starts from zero — the same project context gets
+explained again, the same gotchas get rediscovered, the same incident lessons
+fade when the chat ends.
+
+open-memex captures the part worth remembering — the decision, the constraint,
+the lesson — as reviewable Markdown, and injects it back into the next session
+automatically.
+
+> No capture, nothing to inherit.
+
+It also complements agentic development workflows (spec-driven development,
+plan/implement/verify loops): plans produce decisions, verification produces
+rules — open-memex is the memory layer that keeps them across sessions instead
+of re-deriving them on every run.
+
+## How it compares
+
+| | open-memex | Cloud memory services | Wiki / docs portal | Chat history |
+|---|---|---|---|---|
+| Data location | Your machine + your repos | Vendor servers | Central server | Gone when the chat ends |
+| Review before sharing | Yes — outbox + PR | Varies | Yes | No |
+| Agent recall | Session-start injection + search | API calls | Manual lookup | No |
+| Human-readable | Plain Markdown files | Dashboard / API | Yes | No |
+
 - **Markdown files** as the source of truth (human-editable, git-friendly)
 - **SQLite FTS5** as a rebuildable index (BM25 keyword search, via `better-sqlite3`)
 - **Zero cloud**, zero account, zero third-party API
 - Loads directly under opencode's embedded Bun runtime; CLI and MCP server run under Node — no build step in development (the published npm package ships pre-compiled JS), no Bun install
+
+## Architecture
+
+```text
+                        ┌──────────────────┐
+                        │     AI agent     │
+                        │ Copilot / Cursor │
+                        │ Claude / opencode│
+                        └────────┬─────────┘
+                                 │ MCP (stdio) — 11 tools
+                                 │ session-start injection
+                        ┌────────▼─────────┐
+                        │    open-memex    │
+                        │    MCP server    │
+                        └──┬────────────┬──┘
+                           │            │
+              ┌────────────▼───┐  ┌─────▼──────────┐
+              │ Markdown files │  │ SQLite FTS5    │
+              │ source of truth│  │ rebuildable    │
+              │ local-first    │  │ index (BM25)   │
+              └─────────────┬──┘  └────────────────┘
+                            │ submit (explicit,
+                            │  local commit)
+                    ┌───────▼────────┐
+                    │    Git repo    │
+                    │ .ai/open-memex/│
+                    │  PR-reviewed   │
+                    │  team memory   │
+                    └────────────────┘
+
+personal scope: this machine only — never synced, never enters a repo.
+```
 
 ## Installation
 
@@ -18,18 +80,36 @@ plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, Visual Studio, 
 
 ### Step 1 — Install the CLI
 
-**npm (recommended):**
+#### Stable vs alpha
+
+**Stable** (recommended for most users) — the `latest` tag:
 
 ```sh
 npm install -g open-memex
 ```
 
-This installs the `0.3.0` stable release.
+This installs the `0.4.0` stable release.
+
+**Alpha** (bleeding edge, for testers) — the `alpha` tag:
+
+```sh
+npm install -g open-memex@alpha
+```
+
+See what's published:
+
+```sh
+npm view open-memex version         # latest stable
+npm view open-memex@alpha version   # latest alpha
+```
+
+Alpha builds may have rough edges — bug reports are welcome.
 
 **No install — run via npx:**
 
 ```sh
-npx -y open-memex <command>   # e.g. npx -y open-memex init --client vscode
+npx -y open-memex <command>         # e.g. npx -y open-memex init --client vscode
+npx -y open-memex@alpha <command>  # alpha line, no install
 ```
 
 **From source** (bleeding edge, `V2-dev-p2` branch):
@@ -153,7 +233,7 @@ open-memex doctor
 
 Checks: Node version, config source, scope resolution for the current directory,
 storage writability, then boots a real MCP server and runs `initialize` +
-`tools/list` against it — all five tools must show up.
+`tools/list` against it — all eleven tools must show up.
 
 ## Tools the agent gets
 
@@ -164,6 +244,12 @@ storage writability, then boots a real MCP server and runs `initialize` +
 | `memory_list`      | List memories in a scope, newest first |
 | `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
 | `memory_forget`    | Delete a memory by id |
+| `memory_status`    | Show the sync queue: outbox drafts, repo review states, uncommitted files |
+| `memory_submit`    | Move named drafts into the repo memory dir (local branch + commit) |
+| `memory_propose`   | Copy personal memories into the project scope as review candidates |
+| `memory_promote`   | Advance `proposed → approved → published` (or reject / resubmit) |
+| `memory_resolve`   | List conflicted memory files / 3-way-merge one of them |
+| `memory_pr_status` | Map the branch PR's GitHub state onto each memory's review state |
 
 ## Capture
 
@@ -178,6 +264,62 @@ storage writability, then boots a real MCP server and runs `initialize` +
   secrets (API keys, tokens, high-entropy credentials) are masked in place — first
   4 characters kept, the rest replaced with `x` — and the memory is saved.
   Preview what a message would capture with `open-memex capture --dry-run "…"`.
+
+## Memory types
+
+Eleven types — `type` says what the memory is, `tags` say what it's about:
+
+| Type | Captures |
+|---|---|
+| `fact` | A stable true statement about the project or world |
+| `preference` | How someone likes things done |
+| `decision` | A choice that was made — the why and the trade-off |
+| `constraint` | A rule that must not be violated |
+| `todo` | A commitment to do something later |
+| `knowledge` | Durable domain or architecture knowledge |
+| `howto` | A procedure that worked |
+| `gotcha` | A trap to avoid |
+| `lesson` | What an incident or mistake taught us |
+| `observation` | Something noticed, not yet a conclusion |
+| `reference` | A pointer to the authoritative doc (no copying) |
+
+## Team memory workflow
+
+Personal notes stay private. Project knowledge follows an explicit, reviewable
+pipeline — nothing is shared automatically:
+
+```
+capture → outbox (draft, local) → submit → repo (.ai/open-memex/) → PR review → published → recall
+```
+
+1. **Capture** — save decisions, gotchas, lessons as drafts during normal work.
+2. **Review** — drafts wait in a local outbox; `sync-status` (or saying
+   "sync memory" in chat) shows what's pending.
+3. **Submit** — you name the memories; they move into `<repo>/.ai/open-memex/`
+   with a local commit. open-memex never auto-pushes.
+4. **PR review** — memories are plain Markdown; reviewers approve, request
+   changes, or reject through the normal branch/PR process (`promote`,
+   `pr-status`, `resolve`).
+5. **Recall** — published memories are injected at session start and searchable
+   on demand, for humans and agents alike.
+
+Reviewer convention: [docs/CURATOR.md](./docs/CURATOR.md).
+
+## Security & data
+
+- **Local-first:** everything lives on your machine (`%APPDATA%\open-memex` /
+  `~/.local/share/open-memex`) plus the repos you choose. Zero cloud calls,
+  zero accounts, zero third-party APIs, zero telemetry.
+- **Secrets stay out:** `<private>…</private>` spans are stripped; detected API
+  keys/tokens are masked in place before saving. Preview with
+  `open-memex capture --dry-run "…"`.
+- **Personal never syncs:** the `personal` scope is this machine only — excluded
+  from export by default and can never enter a repo.
+- **Auditable sharing:** team memories move only by explicit `submit`, travel
+  through branch/PR review, and every `promote` transition is appended to the
+  memory's `review_history` (who / when / why).
+- **You own the files:** Markdown is the source of truth — inspect, edit, or
+  delete anything by hand; the SQLite index rebuilds from the files.
 
 ## Scopes
 
@@ -222,9 +364,16 @@ Defaults:
   "maxProfileItems": 5,       // top-N personal items injected on first turn
   "injectOnFirstTurn": true,  // [OPEN-MEMEX] system-prompt block
   "keywordCaptureEnabled": true,
-  "logLevel": "info"          // info | debug
+  "logLevel": "info",          // info | debug
+  "memoryDir": ".ai/open-memex" // in-repo project-memory dir, relative to repo root
 }
 ```
+
+Project-scope memories are stored as one Markdown file each under
+`<repo>/<memoryDir>/` (default `.ai/open-memex/`) so they can be shared via git;
+personal memories stay in local appdata and never leave the machine. Existing
+project files from appdata are moved into the repo dir automatically on first
+write/sync.
 
 `open-memex config` prints the effective config (defaults + file).
 Change a setting after install:
@@ -235,7 +384,7 @@ open-memex config set maxProjectMemories 12
 ```
 
 Settable keys: `maxProjectMemories`, `maxProfileItems`, `injectOnFirstTurn`,
-`keywordCaptureEnabled`, `logLevel`. Full design: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
+`keywordCaptureEnabled`, `logLevel`, `memoryDir`. Full design: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
 
 ## CLI reference
 
@@ -249,6 +398,7 @@ open-memex doctor                                  # environment health check
 open-memex capture --dry-run "记住我喜欢简洁的回答"  # preview keyword capture
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio
 open-memex --help      # this reference
+open-memex <command> --help  # help for one command
 open-memex --version   # installed version
 ```
 
@@ -262,6 +412,94 @@ open-memex supersede <id> "Updated content"
 open-memex status <id> deprecated
 open-memex forget <id>
 ```
+
+Team review workflow (Phase 2B — two homes, one per stage):
+
+Project drafts live in the **appdata outbox** (git-invisible, branch-independent);
+only user-approved drafts move into `<repo>/.ai/open-memex/`, where they follow
+branches and PRs. Nothing moves without you naming it.
+
+In an AI chat with the MCP server connected, just say **"sync memory"**
+(or "同步记忆") — the agent runs the status check, summarizes the outbox drafts,
+and asks which ones to sync. The agent also proposes this on its own at session
+start and at work checkpoints.
+
+```sh
+open-memex sync-status
+# show when the index was last synced (and what triggered it), the outbox
+# (pending sync), the repo review states
+# (draft / proposed / approved / published / rejected),
+# and any uncommitted repo memory files.
+
+open-memex submit <id...> [--branch <name>] [--base <branch>]
+# move your named drafts into .ai/open-memex/ as "proposed":
+# copies, flips review_state, local git commit ON THE CURRENT BRANCH.
+# Never creates a branch on its own — branch creation is your call
+# (or the agent's, only with your explicit approval for the full chain).
+# All-or-nothing; conflicts (same id, different content) abort cleanly.
+# Prints the push + gh pr commands; an agent holding your Yes carries
+# through push/PR itself. --branch <name> creates the branch first
+# (agent full-chain path). Default PR base is the current branch; --base
+# redirects to main or your integration branch.
+
+open-memex pr-status [--apply]
+# read the branch's GitHub PR and map its state onto each in-repo memory:
+# merged PR → published, PR approval → approved (approved_by = reviewer),
+# changes-requested → suggestion only. Report by default; --apply performs
+# the mapped transitions locally (no push).
+
+open-memex pull
+# pull shared memories from the git remote: fetch + fast-forward ONLY.
+# A diverged branch fails with a clear message — open-memex never
+# force-merges; resolve it by hand, then pull again. On success the
+# local index re-syncs. Pulls are explicit by default; set
+# `open-memex config set sync.autoPull true` for a best-effort pull
+# at MCP session start (a failed pull never blocks the session).
+
+open-memex push
+# push the current branch (with its submitted memories) to the git remote.
+# Explicit only — open-memex never pushes on its own.
+
+open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
+# bundle memories into a portable .tar.gz (markdown + manifest.json) for
+# moving to another machine or another app. Excludes visibility:private
+# memories by default; --all / -a includes everything (full migration).
+
+open-memex import <bundle.tar.gz> [--dry-run]
+# restore a bundle: personal memories go to the personal dir; project
+# memories are re-keyed to the current project and land in the outbox as
+# drafts. Identical ids are skipped; conflicting ids are reported,
+# never overwritten.
+
+open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]
+# propose an AGENTS.md snippet distilled from project memories
+# (decisions, constraints, lessons, gotchas, howtos). Prints markdown;
+# -o writes it to a file. You review and merge by hand — open-memex
+# never rewrites your AGENTS.md on its own. The snippet ends with a
+# "memory hygiene" section (§3.5 checkpoint guidance) so agents reading
+# AGENTS.md learn to propose distilled captures at checkpoints.
+
+open-memex propose <id...> --to project [--local-approve]
+# propose one or several personal memories at once (one branch, one PR);
+# each is copied with its own new id. All-or-nothing: a bad id aborts the
+# whole batch, never a half-proposed one.
+# copy a personal memory into the project scope as a review candidate
+# (never moves — the personal original stays). Result lands in the outbox;
+# run sync-status / submit when you're ready to put it in the repo.
+open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
+# advance one step: proposed → approved → published (or reject with a note).
+# Every transition is appended to the memory's review_history (who/when/why).
+# A rejection never deletes the file — your call: accept it (close the PR,
+# delete the branch), revise + --resubmit for another round, or keep it as
+# a [rejected] record.
+open-memex resolve [id-or-path]
+# list conflicted memory files, or field-level 3-way merge one of them.
+# Semantic conflicts are reported, never auto-resolved.
+```
+
+Whoever tends the shared memory follows the curator convention —
+`docs/CURATOR.md`: what to approve, what to send back, and the hygiene
+rules that keep shared memory from rotting.
 
 Maintenance:
 
@@ -280,7 +518,7 @@ simple cases — npm swallows unknown `--flag` args, so prefer direct `node`).
 
 ## MCP server
 
-The same five memory tools over the Model Context Protocol via a stdio server —
+The same eleven memory tools over the Model Context Protocol via a stdio server —
 no host-specific plugin needed. Any MCP client can use open-memex.
 
 ```sh
@@ -293,28 +531,35 @@ server with cwd set to your project root (`init` handles this for you).
 
 > **Note:** MCP is request/response — it gives the agent tools, not the opencode
 > plugin's automatic keyword capture or first-turn context injection. Proactive
-> memory use depends on the agent's instructions (the Copilot instructions
-> that `init` writes).
+> memory use depends on the agent's instructions: the server sends session-start
+> guidance (call `memory_status` at session start and at checkpoints) in the MCP
+> handshake `instructions`, and `init` writes the fuller version into the
+> editor's instruction files. Both are advisory — no MCP consumer offers a hard
+> session-start hook.
 
 ## Roadmap
 
-**`0.3.0` (this release):** generic MCP server, `open-memex` bin/CLI, one-command
+**`0.3.0` (stable):** generic MCP server, `open-memex` bin/CLI, one-command
 `init` setup, Chinese keyword capture with personal/project routing, `config` /
 `capture --dry-run` / `doctor` helpers, Visual Studio support.
 
-**Coming — `0.4.0`:** team sync — shared memory via git (`propose` / `promote` /
-`resolve` workflow, in-repo memory dir), 1–2 colleague pilot.
+**`0.4.0` (stable):** team sync — shared memory via git: appdata draft
+outbox → `sync-status` → `submit` (local branch+commit, push/PR on your Yes)
+→ `promote` / `resolve` review workflow, in-repo `.ai/open-memex/` dir;
+`export` / `import` archive for user portability (Markdown + manifest, no walled
+garden; private excluded by default, `-a` / `--all` for full migration);
+distill-to-AGENTS.md assist (`distill-agents`, propose-only — you merge by hand);
+§3.5 checkpoint distillation in the MCP handshake + init instructions (the agent
+proposes 1–3 captures at checkpoints, the human decides); 1–2 colleague pilot.
 
-**Coming — `0.3.0` (stable):** org layer — org memory repo, curator convention,
-distill-to-AGENTS.md assist.
+**Future (signal-gated, no version committed):** org layer — org memory repo,
+curator convention; native agent plugins (Claude Code / Codex hooks as
+enhancement paths over the same MCP tools); local embeddings as a
+benchmark-gated experiment (no embedding model is ever downloaded without
+explicit opt-in); cloud `RemoteProvider` customization only if multi-repo
+sharing, ACL, or compliance needs demand it.
 
-**Future (signal-gated, no version committed):** native agent plugins (Claude Code /
-Codex hooks as enhancement paths over the same MCP tools); local embeddings as a
-benchmark-gated experiment (no embedding model is ever downloaded without explicit
-opt-in); cloud `RemoteProvider` customization only if multi-repo sharing, ACL, or
-compliance needs demand it.
-
-Design details: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md) (append-only decision log D1–D20).
+Design details: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md) (append-only decision log).
 
 ## License
 

@@ -25,6 +25,12 @@ Decisions log; Prior Art; solo-dev adoption path.
 6. **Adapters translate; they never implement memory logic.** All memory logic lives in Core.
 7. **Memory is the entrance of knowledge, not its final form.** Terminal states are docs / ADRs /
    AGENTS.md instructions — memory is how knowledge gets captured and found.
+8. **Distill conversations; do not archive them.** The default unit of memory is the useful
+   conclusion from a conversation, not the full transcript: what was learned, how it was resolved,
+   and where the authoritative source lives.
+9. **Portable second brain, not a walled garden.** Long-form personal notes are valid memories when
+   the user explicitly saves them; Markdown keeps them readable, exportable, and movable to other
+   tools or machines.
 
 ---
 
@@ -40,6 +46,9 @@ Decisions log; Prior Art; solo-dev adoption path.
 - **MCP is an interface, not the identity.** MCP / CLI / REST / SDK are access layers over the protocol,
   so the project is never locked to one transport or one agent tool (opencode, VS Code Copilot, Cursor,
   Claude Code, Windsurf, …).
+- **Second-brain lens:** for individuals, OpenMemex can also be a local Markdown second brain for
+  AI-assisted work — similar in spirit to users asking AI to save notes into Obsidian or Notion, but
+  with agent recall, scopes, review, and redaction built in from the start.
 - **Company lens:** at organizational scale the same pain is tribal knowledge — senior engineers'
   hard-won experience evaporates when they move on, and every incident gets re-debugged by someone
   new. The current phase therefore prioritizes *capture*: valuable knowledge must land in memory
@@ -132,12 +141,36 @@ canonical_ref: docs/adr-003.md       # memory holds a SUMMARY; the doc is canoni
 
 ### 3.1 Type taxonomy (content kind)
 
-`preference` `fact` `decision` `lesson` `warning` `workflow` `architecture` `constraint`
-`todo` `knowledge` `observation`
+`fact` `preference` `decision` `constraint` `todo` `knowledge` `howto` `gotcha`
+`lesson` `observation` `reference`
 
-`type` describes **what the content is**. `role` describes **how it may be used**.
+`type` describes **what the content is** — single-valued, and it drives behavior
+(lifecycle, review, rendering, retrieval). `role` describes **how it may be used**.
 A `decision` with `role: knowledge` is retrievable history. Only `role: instruction` may enter
 instruction context. (Separation adopted from review: mixing usage semantics into `type` was a design smell.)
+
+One-line definitions:
+
+- `fact` — a verifiable atomic statement (timezone, version number, path, account).
+- `preference` — user likes, dislikes, working style.
+- `decision` — a choice made + why; participates in supersede chains.
+- `constraint` — a hard rule that must not be violated (release process, permission boundaries).
+- `todo` — an actionable item with completion state.
+- `knowledge` — declarative knowledge (how a system works, concept explanations).
+- `howto` — steps to accomplish X.
+- `gotcha` — a pitfall: don't do X because Y.
+- `lesson` — a takeaway from experience, including incident postmortems (the incident id goes in `tags`).
+- `observation` — noticed but not yet distilled.
+- `reference` — a pointer to the authoritative doc via `canonical_ref`; the memory holds the summary.
+
+A type earns its place only if the system treats it differently. If two candidates
+share lifecycle, retrieval, and rendering, the loser becomes a tag. (D41 merged
+`warning`→`gotcha`, `workflow`→`howto`, `incident`→`lesson`, `architecture`→`knowledge`.)
+
+`tags` are retrieval hints, not a second type system: `type` says what the memory is, while tags say
+which topics, tools, subsystems, paths, or incidents it relates to. Write paths should preserve
+human-provided tags and may suggest simple normalized tags (for example `vscode`, `mcp`, `windows`,
+`auth`, `onboarding`) to improve search without changing memory semantics.
 
 ### 3.2 Iron rules
 
@@ -169,6 +202,34 @@ instruction context. (Separation adopted from review: mixing usage semantics int
 Content hash + fuzzy match against existing memories. A superseding write does **not** overwrite:
 the old memory becomes `status: superseded` with `superseded_by` pointing forward. History preserved;
 queries rank `active` first.
+
+### 3.5 Conversation distillation
+
+OpenMemex does **not** store raw AI chat transcripts by default. A captured memory should usually be
+a short, human-approved artifact distilled from the conversation: the final conclusion, important
+facts, why the answer matters later, and how the issue was resolved. Good distilled memory candidates
+answer some combination of:
+
+- What did we learn or decide?
+- What solved the problem, including key commands, files, links, or steps?
+- What mistake or gotcha should the next developer avoid?
+- Which scope owns it: `personal`, `project`, or future `org`?
+- If the information already exists in project docs, where is the authoritative doc?
+
+If stable knowledge already lives in a project document, prefer a `type: reference` memory with
+`canonical_ref` pointing at that document over duplicating the full content. Memory should help the
+agent find and apply authoritative docs, not become an outdated second copy of them.
+
+Model-suggested captures use `source: inference` and should default to reviewable draft state. The
+agent may propose 1-3 distilled memories at checkpoints or task end, but humans decide whether to
+save them and which scope they belong to. The product goal is remembering the right conclusion at
+the right scope, not remembering everything.
+
+Long-form notes are still valid when the user explicitly asks to save a long note, write-up, meeting
+summary, research log, or troubleshooting record. In that case OpenMemex behaves like a Markdown
+second-brain target: store the note as user-authored content, preserve the body, tag it for retrieval,
+and keep the same scope/privacy rules. The distinction is intent: implicit/model-suggested capture
+distills; explicit "save this note" may preserve long-form text.
 
 ---
 
@@ -235,7 +296,7 @@ instructions are never candidates.)
 
 ```
 <project-repo>/
-├── .open-memex/            # default; configurable (alt: .ai/memory/)
+├── .ai/open-memex/            # default (D23); configurable (alt: .ai/memory/)
 │   ├── 01K6AB….md           # one memory = one file ("reduces unrelated merge conflicts…")
 │   └── …
 ├── AGENTS.md                # constitution + ONE pointer line to the memory system
@@ -243,9 +304,9 @@ instructions are never candidates.)
 └── docs/                    # human-authored formal docs (ADRs, guides)
 ```
 
-- The in-repo directory name is **configurable** (`memoryDir` in config): default `.open-memex/`
-  (brand clarity, no collisions), alternative `.ai/memory/` for teams that prefer the emerging `.ai/`
-  namespace convention.
+- The in-repo directory name is **configurable** (`memoryDir` in config): default
+  `.ai/open-memex/` (D23 — `.ai/` namespace + brand clarity, no collisions),
+  alternatives `.open-memex/` and `.ai/memory/`.
 - `index.db` is **never committed** — rebuildable from markdown.
 - Org repo layout (Phase 4): `company-memory/{engineering,architecture,decisions,lessons,policies}/…`
 - AGENTS.md pointer: `> Project memory lives in .open-memex/ — query it with memory_search before answering.`
@@ -294,11 +355,21 @@ instructions are never candidates.)
 | Implicit (opt-in) | end-of-session "should I remember X?"; implicit captures default to `confidence: low` and appear in a separate list view for batch cleanup (regret window). |
 | Redaction (hard) | `<private>…</private>` stripped; secret patterns are **masked in place** (first 4 chars kept, rest → `x`) and the write proceeds (D14); pre-commit hook scans shared scopes. |
 
+**Scope routing on capture:** when the user says "save", "remember", or "note this" without an
+explicit scope, the agent should infer ownership from content and current context. Project-specific
+knowledge (repo commands, architecture, code paths, product decisions, team conventions) routes to
+`project`; personal preferences, private working notes, cross-project habits, or content unrelated to
+the current repo routes to `personal`. Ambiguous captures should ask one short clarification instead
+of guessing. `org` capture remains future/curated; a single user's chat never writes org memory
+directly.
+
 ---
 
 ## 9. Sync
 
-- **Git is transport; the local SQLite index is the query layer.** Retrieval never walks git.
+- **Git is a transport, not the product boundary; the local SQLite index is the query layer.**
+  Retrieval never walks git. Git/GitHub is the default sharing provider because it gives teams branch,
+  PR, review, and audit semantics they already trust, but Core must remain provider-agnostic.
 - one-memory-one-file ⇒ concurrent edits almost never conflict.
 - **Pull is explicit** (`open-memex pull`), never automatic on session start — no surprise context changes.
   `pull` = `fetch` + fast-forward only; never auto-commit/push (hard rule for enterprise environments).
@@ -314,6 +385,13 @@ instructions are never candidates.)
 - **Git unavailable:** projects without git (or with unreachable remotes) remain fully usable.
   `personal` scope works everywhere; `project` scope degrades to local-only and `open-memex status`
   annotates it as such. Sync commands fail with a clear message, never with a broken state.
+- **Portability:** because Markdown is the source of truth, memories should be exportable without
+  depending on git. A future `open-memex export` command can archive selected scopes/types/tags into a
+  portable zip/tar bundle (markdown + manifest) for moving to another computer or importing into
+  another application. Export excludes `visibility: private` memories by default; `--all` / `-a`
+  includes everything, for a full personal migration to a new machine. API-backed exporters/providers (Notion, Obsidian-compatible vaults, internal
+  knowledge systems, enterprise stores) are extension paths over the same memory files and admission
+  rules, not separate products.
 
 ---
 
@@ -456,10 +534,13 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 | atlaso-labs/codex | Codex marketplace | long-term memory plugin for Codex (hooks + MCP + cloud-sync upsell) | **direct comparable** for a future Codex plugin; their cloud upsell vs our local-first |
 
 (Star counts / funding as of Sep 2026 — re-verify before quoting publicly.)
-- **Phase 3 — Org layer.** Org memory repo · curator convention · `examples/remote-server/` ·
-  distill-to-AGENTS.md assist.
+- **Phase 3 — Org layer.** Org memory repo · `examples/remote-server/` ·
+  curator convention ✅ `docs/CURATOR.md` (2026-09-29, pulled forward) ·
+  distill-to-AGENTS.md assist ✅ `open-memex distill-agents` (2026-09-29, pulled forward) ·
+  export/import archive command ✅ `open-memex export` / `import` (2026-09-29, pulled forward, D40).
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
-  sharing needs, fine-grained ACL, audit/compliance mandates.
+  sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
+  for enterprise knowledge systems.
 
 ## 19. Migration v1 → v2
 
@@ -488,7 +569,7 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 - **D7** — Embeddings are an optional capability, BM25+CJK is the default. *Rationale: zero-setup
   default; no mandatory 100MB download or native dependency.*
 - **D8** — Contested choices become **configurable with a popular default**, not hard-coded.
-  Applies to: in-repo dir name (default `.open-memex/`), CJK tokenizer (default bigram),
+  Applies to: in-repo dir name (default `.ai/open-memex/` per D23), CJK tokenizer (default bigram),
   embeddings model (default `multilingual-e5-small`). *Rationale: the five-AI review split on all
   three; maintainers shouldn't burn decision capital where config suffices.*
 - **D9** — The LAN reference server lives at `examples/remote-server/`. *Rationale: maintainer decision
@@ -597,6 +678,206 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   keeps the old repo-level behavior for teams where everyone uses open-memex.
   The instructions carry a guard clause ("ignore this section when the
   `open-memex` MCP server is not available") as cheap insurance. 2026-09-27.*
+- **D23** — Default in-repo memory dir is `.ai/open-memex/` (configurable via
+  `memoryDir`; rejects absolute paths and `..`). *Rationale: `.ai/` is the
+  emerging convention for AI-local project state; the `open-memex/` leaf keeps
+  brand clarity and avoids collisions with other tools' `.ai/` content.
+  2026-09-27.*
+- **D24** — Project-scope markdown lives in the repo: writes with
+  `scope: project` go to `<projectRoot>/<memoryDir>/` (D23 default
+  `.ai/open-memex/`); `personal` never leaves appdata. Legacy appdata project
+  files are lazily migrated on first write/`syncScope` — the move is guarded by
+  the appdata dir name (which *is* the scope key), so it can only ever migrate
+  the current scope's files. The index's `file_path` is the single locator for
+  reads/deletes (`findMemoryFile`, `forget`); on the near-impossible id
+  collision between locations, the in-repo copy wins. *Rationale: one home per
+  scope, no silent data loss, no repo pollution before first use.* 2026-09-27.*
+- **D25** — Review workflow semantics (`propose` / `promote` / `resolve`,
+  `src/review.ts`): (1) `review_state` frontmatter field
+  (`draft → proposed → approved/rejected → published`, default `draft`) plus
+  `proposed_by` / `approved_by` / `derived_from` / `review_note` provenance;
+  the SQLite index carries `review_state` (schema v6, rebuilt from markdown —
+  D1). (2) `propose` **copies** personal → project (new id, never moves — the
+  personal original stays private); one call takes several ids (one branch,
+  one PR; all-or-nothing — a bad id aborts the whole batch);
+  `--local-approve` skips the PR for solo
+  devs. (3) `promote` advances exactly one step up the ladder
+  (`proposed → approved → published`), `--reject`s with a note (also from
+  `approved`, withdrawing approval before merge), or `--resubmit`s a rejected
+  memory back to `proposed` for another round; `draft` and terminal states
+  refuse. (4) `resolve` lists conflicted memory files, or
+  attempts a field-level 3-way merge from git stages 1/2/3 (`tags` union,
+  `updated_at` takes latest, body merged only when one side changed); semantic
+  conflicts (same field / body changed differently on both sides) are reported
+  and the file is left untouched — **never auto-resolved**. (5) A rejection
+  never deletes anything: the file stays on the author's branch; the human
+  accepts (close PR, delete branch), revises + `--resubmit`s, or keeps it as
+  a `[rejected]` record. (6) No git
+  automation anywhere in the workflow: no branch creation, no commits, no PRs —
+  the commands print the exact next steps for the human. Org-level promotion is
+  Phase 4. *Rationale: the review ladder must be explicit and auditable; the
+  tool assists merging but a human always decides meaning.* 2026-09-27.*
+- **D26** — **Supersedes D24.** Project-scope markdown has two homes, one per
+  lifecycle stage — never silently moved between them. (1) `memory_add` /
+  `memory_propose` with `scope: project` write to the **appdata outbox**
+  (`memories/<project_key>/<id>.md`, `review_state: draft`); the outbox is
+  git-invisible and branch-independent. The D24 lazy migration is deleted —
+  appdata project files are legitimate drafts, not legacy. (2) `open-memex
+  submit <id...>` / `memory_submit` moves user-named drafts into the repo's
+  `<memoryDir>/` (D23), flipping `review_state` to `proposed`: the file now
+  follows branches and PRs. `sync-status` / `memory_status` shows both sides
+  (outbox drafts, repo review states, uncommitted repo files). (3) The move is
+  one-stage-one-place: copy → verify hash → local commit → verify → delete
+  outbox original; re-running is idempotent (identical content skips, different
+  content aborts). `search` prefers the repo copy when both exist; conflicts
+  (same id, different content; push rejected) stop and ask the human — never
+  overwrite. *Rationale: an AI agent drafts constantly; the repo should only
+  ever see what the human explicitly approved for review. The outbox is the
+  agent's desk, the repo dir is the shared table. Approved 2026-09-28.*
+- **D27** — **Revises D25 §6 (no git automation).** `submit` automates the
+  *local* half of the git workflow: create `mem/sync-<timestamp>` (or
+  `--onto` the current branch for code+memory PRs), copy, `git add` only the
+  memory files, local commit, verify. It prints the push + `gh pr create`
+  commands for the human — but an agent that already holds the user's Yes for
+  this sync carries through push and PR creation without re-asking (each step
+  is not a separate approval). Batch submit is all-or-nothing; an empty-branch
+  abort rolls the branch back. *Rationale: the old "no git automation" rule
+  assumed a human at the keyboard; the agent-driven flow needs local mechanics
+  automated while push/PR stay under the user's explicit per-sync Yes/No.
+  Approved 2026-09-28.*
+- **D28** — Memory PR base defaults to the **current branch**; the user may
+  redirect to `main` or the project's integration branch (`--base`). A
+  standalone memory PR and a code+memory PR are both supported — the agent asks
+  which one each time; on "with code" it uses `--onto` and never commits
+  unrelated staged changes. *Rationale: memory usually reviews against the work
+  it describes (current branch); the integration branch is the exception, not
+  the default. Approved 2026-09-28.*
+- **D29** — Every review transition is written to a per-memory audit trail
+  (`review_history`: at/by/from/to/note) — reject / resubmit / approve /
+  publish all append, never overwrite; `propose` and `submit` seed it; merge
+  conflict resolution unions both sides' histories. *Rationale: review is a
+  decision log, not a flag — "who rejected this and why" must be answerable
+  months later. Approved 2026-09-28.*
+- **D30** — Retrieval ranks by review state: approved/published project
+  memories outrank unreviewed content; project drafts/rejected sink to the
+  bottom and are visibly tagged `[draft]` in search/list/inject output, while
+  personal memories (always draft by design) are never demoted or tagged.
+  Explicit search still finds drafts — they are deprioritized, not hidden.
+  *Rationale: reviewed knowledge should win the context window; drafts stay
+  discoverable but never masquerade as vetted. Approved 2026-09-28.*
+- **D31** — Every index sync records when it ran, what triggered it
+  (`session` / `request` / `cli` / `submit`) and its stats, in
+  `<appdata>/sync-state.json`; `sync-status` shows the last sync first.
+  *Rationale: "is my index fresh?" must be answerable without guessing —
+  especially across branch switches where the in-repo dir changes underneath.
+  Approved 2026-09-28.*
+- **D32** — The branch PR's GitHub state maps back onto each in-repo
+  memory's review_state via `pr-status` / `memory_pr_status`: merged PR →
+  published, PR approval → approved with `approved_by` = reviewer login,
+  changes-requested → suggestion only (never auto-rejects). Report by
+  default; `--apply` performs the mapped transitions locally (no push —
+  inside the D27 line). Each memory keeps its own state: a human `rejected`
+  is never overridden by a PR signal. *Rationale: the PR is where the team
+  actually reviews — the mapping closes the loop without inventing new
+  review UI. Approved 2026-09-28.*
+- **D34** — The MCP server sends session-start guidance in the handshake
+  `instructions`: call `memory_status` at session start (and at work
+  checkpoints); if the outbox has drafts, summarize and ask the user which to
+  sync; proactive `memory_add`; `memory_search` before asking about the past;
+  personal never leaves the machine. *Rationale: the init-written instruction
+  files only exist if the user ran `init --client` — the handshake reaches
+  every MCP client at connect time. Still advisory: no MCP consumer offers a
+  hard session-start hook, and we do not claim otherwise. Approved 2026-09-28.*
+- **D35** — "sync memory" (or "同步记忆") is a natural-language trigger for the
+  sync flow: the agent calls `memory_status`, summarizes the outbox drafts, and
+  asks the user which ones to sync — same flow as the session-start proposal,
+  but user-initiated. Taught in the MCP handshake instructions, the
+  init-written instruction files, and the `memory_status` tool description.
+  *Rationale: the user should not have to remember command names to sync;
+  saying it in words must work. Approved 2026-09-28.*
+- **D36** — `submit` never creates a branch on its own (revises D26/D27): it
+  copies the named drafts into `.ai/open-memex/`, commits locally on the
+  CURRENT branch, and prints next-step commands. Branch creation is the human's
+  call — or the agent's, only with explicit approval for the full chain, via
+  `submit --branch <name>` / `memory_submit(branch=...)`. *Rationale: an
+  auto-created branch strands the user on it — they forget to switch back.
+  After a submit the agent asks ONE follow-up ("want me to create a branch +
+  push + open the PR, or will you handle it yourself?") instead of branching
+  silently. Checkpoints that trigger `memory_status`: session start, end of a
+  work chunk, after the user commits, and after any memory_* action.
+  The "sync memory" trigger ALWAYS goes through the `memory_status` tool —
+  never by browsing the appdata directory directly. Approved 2026-09-28.*
+- **D33** — Every CLI command answers `open-memex <command> --help` (and `-h`)
+  with its own usage, flags, and examples; checked before config/DB load so
+  help works even in a broken environment. Unknown commands with `--help`
+  fall back to the global usage. *Rationale: AI assistants discover the CLI
+  through --help first — a command that silently swallows --help as a flag
+  teaches the agent nothing. Approved 2026-09-28.*
+- **D37** — Conversation distillation is the memory unit; transcript storage is
+  not the default. Capture should preserve the useful conclusion from a human/AI
+  session — what was learned, what resolved the issue, what should be avoided,
+  and where the authoritative doc lives — as a short reviewable memory. If the
+  knowledge already exists in docs, store a `reference` memory with
+  `canonical_ref` instead of duplicating the doc. Tags are retrieval hints, not
+  content kinds: `type` classifies the memory, tags describe topics/tools/paths.
+  *Rationale: full chat logs are noisy, harder to review, and riskier for
+  privacy; the value is remembering the right conclusion at the right scope,
+  with enough context for the next human or AI session. Approved 2026-09-28.*
+- **D38** — OpenMemex supports a Markdown second-brain use case while keeping
+  distillation as the default for implicit/model-suggested capture. If the user
+  explicitly asks to save a long note, meeting summary, troubleshooting record,
+  or write-up, preserve it as user-authored Markdown with tags and normal
+  scope/privacy rules. Git/GitHub sync is the default team-sharing provider, not
+  the product boundary: future export/import archives and API-backed providers
+  may move the same markdown memories to other computers, applications, or
+  enterprise systems. For generic "save/remember/note this" requests, the agent
+  routes project-specific knowledge to `project`, personal or repo-unrelated
+  knowledge to `personal`, and asks one clarification if ambiguous; `org` remains
+  curated/future, never a direct single-user chat write. *Rationale: users also
+  want a local AI-assisted second brain, but portability and ownership must stay
+  explicit; sharing mechanisms should be provider choices over the same memory
+  model, not the identity of the product. Approved 2026-09-28.*
+- **D39** — `type` and `tags` are complementary axes, not alternatives. `type` is
+  single-valued: what the memory IS — it drives behavior (lifecycle, review,
+  rendering, retrieval: a `todo` can be completed, a `reference` resolves
+  `canonical_ref`, a `decision` participates in supersede chains). `tags` are
+  multi-valued: what the memory is ABOUT — pure retrieval hints
+  (topics, tools, subsystems, paths, incidents). *Rationale: without type the
+  system cannot tell "a todo I must do" from "a fact I must know" even when both
+  are tagged `auth`; without tags, cross-cutting retrieval ("everything about
+  onboarding") would need a combinatorial type explosion. Type answers "how do I
+  handle this?", tags answer "how do I find this?". Approved 2026-09-28.*
+- **D40** — `open-memex export` excludes `visibility: private` memories by
+  default; `--all` / `-a` includes everything, for a full personal migration to
+  a new machine. *Rationale: the safe default protects privacy; the escape hatch
+  keeps the "no walled garden" promise — the user can always take everything
+  with them. Approved 2026-09-28.*
+- **D42** — §3.5 checkpoint distillation is taught in the MCP handshake
+  instructions (`src/mcp.ts` `SERVER_INSTRUCTIONS`) and the `init`-written
+  instruction files (`src/init.ts` `INSTRUCTIONS`): at checkpoints the agent
+  DISTILLs the session and proposes 1–3 short memories (conclusion, not
+  transcript); nothing is saved without user approval. Approved captures are
+  saved via `memory_add` with the new optional `source` param set to
+  `"inference"` (default `"tool"`). *Rationale: closes the 0.4.0 TODO from D41 —
+  the design's capture loop now reaches the agent. Implemented 2026-09-29.*
+- **D43** — `distill-agents` output gains a "Memory hygiene (open-memex)"
+  footer carrying the §3.5 checkpoint guidance (propose 1–3 distilled captures
+  at checkpoints; save nothing without approval; prefer `reference` over
+  copying). *Rationale: double insurance for opencode users, who never see the
+  MCP handshake instructions or the `init`-written instruction files — but
+  opencode reads AGENTS.md natively, so the distilled snippet teaches the
+  checkpoint habit wherever it lands. Approved 2026-09-29.*
+- **D41** — The type taxonomy is reconciled to 11 types with one-line definitions
+  (§3.1): `fact` `preference` `decision` `constraint` `todo` `knowledge` `howto`
+  `gotcha` `lesson` `observation` `reference`. Merged away: `warning`→`gotcha`,
+  `workflow`→`howto`, `incident`→`lesson` (incident id goes in `tags`),
+  `architecture`→`knowledge` (tag `architecture`). *Rationale: a type earns its
+  place only if the system treats it differently (lifecycle, retrieval,
+  rendering); otherwise it is a tag. Fifteen types blur classification and hurt
+  agent accuracy — eleven keeps each type's behavioral slot distinct. `lesson`
+  is deliberately broader than `incident`: a postmortem's shape (timeline, root
+  cause, actions) is a template concern, not a type. Code
+  `MEMORY_TYPE_TAXONOMY` updated to match. Approved 2026-09-28.*
 
 ## Open Questions
 

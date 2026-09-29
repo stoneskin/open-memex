@@ -1,14 +1,73 @@
 # open-memex
 
+[![npm version](https://img.shields.io/npm/v/open-memex.svg)](https://www.npmjs.com/package/open-memex)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+
 [English](./README.md)
 
 给 AI 编程助手的本地优先持久记忆：一个 [opencode](https://opencode.ai) 插件，
 加上一个通用 MCP server（VS Code Copilot、Cursor、Claude Code、Visual Studio 等）。
 
+## 为什么需要 open-memex？
+
+工程知识只存在于两个地方：代码里，和人的脑子里。
+每个新的 AI 编程会话都从零开始——同样的项目背景要反复讲，同样的坑要反复踩，
+同样的事故教训在聊天结束时就消失了。
+
+open-memex 把值得记住的部分——决策、约束、教训——存成可 review 的 Markdown，
+并在下一次会话开始时自动注入回去。
+
+> No capture, nothing to inherit.（不记录，就无从传承。）
+
+它也补齐了 agentic 开发工作流（spec 驱动开发、plan/implement/verify 循环）缺的那一块：
+plan 产出决策，verify 产出规则——open-memex 是让它们跨会话留存的记忆层，
+而不是每次从头重新推导。
+
+## 和其它方案的对比
+
+| | open-memex | 云端记忆服务 | Wiki / 文档平台 | 聊天记录 |
+|---|---|---|---|---|
+| 数据在哪 | 你的机器 + 你的仓库 | 服务商服务器 | 中心服务器 | 聊天结束就没了 |
+| 分享前 review | 有——outbox + PR | 不一定 | 有 | 没有 |
+| Agent 回忆 | 会话开始注入 + 搜索 | 调 API | 人工去查 | 没有 |
+| 人类可读 | 纯 Markdown 文件 | 后台 / API | 有 | 没有 |
+
 - **Markdown 文件**是 source of truth（人类可读、git 友好）
 - **SQLite FTS5** 做可重建索引（BM25 关键词检索，`better-sqlite3`）
 - **零云端**、零账号、零第三方 API
 - 直接跑在 opencode 内嵌的 Bun 运行时里；CLI 和 MCP server 跑在 Node 下——开发时无需构建（发布的 npm 包带预编译好的 JS）、无需安装 Bun
+
+## 架构
+
+```text
+                        ┌──────────────────┐
+                        │     AI agent     │
+                        │ Copilot / Cursor │
+                        │ Claude / opencode│
+                        └────────┬─────────┘
+                                 │ MCP (stdio) — 11 tools
+                                 │ session-start injection
+                        ┌────────▼─────────┐
+                        │    open-memex    │
+                        │    MCP server    │
+                        └──┬────────────┬──┘
+                           │            │
+              ┌────────────▼───┐  ┌─────▼──────────┐
+              │ Markdown files │  │ SQLite FTS5    │
+              │ source of truth│  │ rebuildable    │
+              │ local-first    │  │ index (BM25)   │
+              └─────────────┬──┘  └────────────────┘
+                            │ submit (explicit,
+                            │  local commit)
+                    ┌───────▼────────┐
+                    │    Git repo    │
+                    │ .ai/open-memex/│
+                    │  PR-reviewed   │
+                    │  team memory   │
+                    └────────────────┘
+
+personal scope：只属于这台机器——永不同步，永远进不了仓库。
+```
 
 ## 安装
 
@@ -18,18 +77,36 @@
 
 ### 第一步——安装 CLI
 
-**npm（推荐）：**
+#### 稳定版 vs Alpha 版
+
+**稳定版**（推荐大多数用户）——`latest` 标签：
 
 ```sh
 npm install -g open-memex
 ```
 
-安装的是 `0.3.0` 正式版。
+安装的是 `0.4.0` 正式版。
+
+**Alpha 版**（最新开发版，给测试者）——`alpha` 标签：
+
+```sh
+npm install -g open-memex@alpha
+```
+
+查看已发布版本：
+
+```sh
+npm view open-memex version         # 最新稳定版
+npm view open-memex@alpha version   # 最新 alpha 版
+```
+
+Alpha 版可能有毛边——欢迎报 bug。
 
 **免安装——用 npx 直接跑：**
 
 ```sh
-npx -y open-memex <命令>   # 例如 npx -y open-memex init --client vscode
+npx -y open-memex <命令>          # 例如 npx -y open-memex init --client vscode
+npx -y open-memex@alpha <命令>   # alpha 线，免安装
 ```
 
 **从源码安装**（最新开发版，`V2-dev-p2` 分支）：
@@ -149,7 +226,7 @@ open-memex doctor
 
 检查：Node 版本、配置来源、当前目录的 scope 解析、存储可写性，
 然后启动一个真实的 MCP server 做 `initialize` + `tools/list`——
-五个 tools 都必须出现。
+十一个 tools 都必须出现。
 
 ## Agent 可用的 tools
 
@@ -160,6 +237,12 @@ open-memex doctor
 | `memory_list`      | 按 scope 列出记忆，最新的在前 |
 | `memory_supersede` | 用新版本替换一条记忆（保留替换链） |
 | `memory_forget`    | 按 id 删除一条记忆 |
+| `memory_status`    | 显示同步队列：outbox 草稿、repo 评审状态、未提交文件 |
+| `memory_submit`    | 把点名的草稿移入 repo memory 目录（建本地分支 + commit） |
+| `memory_propose`   | 把 personal 记忆复制到 project scope 作为评审候选 |
+| `memory_promote`   | 推进 `proposed → approved → published`（或 reject / resubmit） |
+| `memory_resolve`   | 列出冲突的记忆文件 / 对单个做三路合并 |
+| `memory_pr_status` | 把分支 PR 的 GitHub 状态映射到每条记忆的评审状态 |
 
 ## 捕获（Capture）
 
@@ -173,6 +256,48 @@ open-memex doctor
 - **脱敏**：`<private>…</private>` 标签内的内容会被剥离；检测到的密钥
   （API key、token、高熵凭据）就地打码——保留前 4 个字符，其余替换为 `x`——
   然后照常保存。用 `open-memex capture --dry-run "…"` 预览一条消息会被如何捕获。
+
+## 记忆类型（Memory types）
+
+11 种类型——`type` 说明这条记忆是什么，`tags` 说明它和什么有关：
+
+| 类型 | 记录什么 |
+|---|---|
+| `fact` | 关于项目或世界的稳定事实 |
+| `preference` | 某人做事的偏好 |
+| `decision` | 做过的选择——为什么、权衡了什么 |
+| `constraint` | 不能违反的规则 |
+| `todo` | 以后要做的承诺 |
+| `knowledge` | 持久的领域或架构知识 |
+| `howto` | 验证过的做法 |
+| `gotcha` | 要避开的坑 |
+| `lesson` | 事故或错误教会我们的东西 |
+| `observation` | 注意到的现象，还不是结论 |
+| `reference` | 指向权威文档的指针（不复制内容） |
+
+## 团队记忆工作流
+
+个人笔记永远私有。项目知识走一条显式、可 review 的流水线——没有任何东西会自动分享：
+
+```
+capture → outbox（本地草稿）→ submit → 仓库（.ai/open-memex/）→ PR review → published → recall
+```
+
+1. **Capture**——正常工作中把决策、坑、教训存成草稿。
+2. **Review**——草稿在本地 outbox 里等着；`sync-status`（或在聊天里说"同步记忆"）查看待处理项。
+3. **Submit**——你点名要分享的记忆才会进 `<repo>/.ai/open-memex/`，并做本地 commit。open-memex 永远不会自动 push。
+4. **PR review**——记忆就是纯 Markdown；reviewer 走正常的分支/PR 流程批准、要求修改或拒绝（`promote`、`pr-status`、`resolve`）。
+5. **Recall**——已发布的记忆在会话开始时自动注入，也可随时搜索，人和 agent 都能用。
+
+Reviewer 守则：[docs/CURATOR.md](./docs/CURATOR.md)。
+
+## 安全与数据
+
+- **本地优先：** 所有东西都在你的机器上（`%APPDATA%\open-memex` / `~/.local/share/open-memex`），加上你选择的仓库。零云端调用、零账号、零第三方 API、零遥测。
+- **密钥进不来：** `<private>…</private>` 包裹的内容会被剥离；检测到的 API key / token 在保存前就地打码。先用 `open-memex capture --dry-run "…"` 预览。
+- **个人 scope 永不同步：** `personal` 只属于这台机器——export 默认排除，也永远进不了仓库。
+- **分享可审计：** 团队记忆只能靠显式的 `submit` 移动，走分支/PR review，每次 `promote` 状态流转都会追加到记忆的 `review_history`（谁/何时/为什么）。
+- **文件是你的：** Markdown 是 source of truth——随手看、随手改、随手删；SQLite 索引可以从文件重建。
 
 ## Scope
 
@@ -220,9 +345,15 @@ Markdown 是 source of truth，SQLite 索引是派生的、可重建的
   "maxProfileItems": 5,       // 首轮注入的个人偏好条数
   "injectOnFirstTurn": true,  // [OPEN-MEMEX] system-prompt 块
   "keywordCaptureEnabled": true,
-  "logLevel": "info"          // info | debug
+  "logLevel": "info",          // info | debug
+  "memoryDir": ".ai/open-memex" // 仓库内项目记忆目录，相对于仓库根目录
 }
 ```
+
+project scope 的记忆以"一个记忆一个 Markdown 文件"的形式存放在
+`<仓库>/<memoryDir>/`（默认 `.ai/open-memex/`）下，可经 git 共享；
+personal 记忆只存本地 appdata，永不离开本机。已有的 appdata 项目文件会在
+首次写入/同步时自动搬进仓库目录。
 
 `open-memex config` 打印生效配置（默认值 + 文件）。
 安装后改设置：
@@ -233,7 +364,7 @@ open-memex config set maxProjectMemories 12
 ```
 
 可设置的 key：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、
-`keywordCaptureEnabled`、`logLevel`。完整设计见
+`keywordCaptureEnabled`、`logLevel`、`memoryDir`。完整设计见
 [docs/V2-DESIGN.md](./docs/V2-DESIGN.md)。
 
 ## CLI 参考
@@ -248,6 +379,7 @@ open-memex doctor                                  # 环境健康检查
 open-memex capture --dry-run "记住我喜欢简洁的回答"  # 预览关键词捕获
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio
 open-memex --help      # 本帮助
+open-memex <command> --help  # 单个命令的帮助
 open-memex --version   # 已安装版本
 ```
 
@@ -261,6 +393,81 @@ open-memex supersede <id> "Updated content"
 open-memex status <id> deprecated
 open-memex forget <id>
 ```
+
+团队评审工作流（Phase 2B —— 两个家，各管一段）：
+
+project 草稿先住在 **appdata outbox**（git 看不见、跟分支无关）；只有你
+点名批准的草稿，才会被移入 `<repo>/.ai/open-memex/`，之后随分支和 PR 走。
+没经过你点名，什么都不会动。
+
+在接了 MCP 服务器的 AI 对话里，直接说 **"同步记忆"**（或 "sync memory"）——
+agent 会查状态、把 outbox 草稿逐条摘要、问你同步哪几条。agent 也会在新对话
+开始和任务检查点主动提这件事。
+
+```sh
+open-memex sync-status
+# 看索引上次同步的时间和触发方、outbox（待同步）、repo 里的评审状态
+# （draft / proposed / approved / published / rejected），
+# 以及 repo 里还没 commit 的记忆文件。
+
+open-memex submit <id...> [--branch <name>] [--base <branch>]
+# 把你点名的草稿移入 .ai/open-memex/，状态变为 proposed：
+# 复制、改 review_state、在当前分支本地 git commit。
+# 永不自动建分支——建分支是你说了算（或 Agent 拿到你明确批准走全链时）。
+# 全有或全无；冲突（同 id 不同内容）干净回滚。
+# 打印 push + gh pr 命令；Agent 拿到你的 Yes 后会自己走完 push/PR。
+# --branch <name> 先建分支再提交（Agent 全链路径）。
+# PR 默认 base 是当前分支；--base 可改到 main 或集成支。
+
+open-memex pr-status [--apply]
+# 读分支的 GitHub PR，把它的状态映射到每条 in-repo 记忆：
+# PR merged → published，PR approved → approved（approved_by = reviewer），
+# changes requested 只给建议。默认只报告；--apply 在本地执行映射的流转（不 push）。
+
+open-memex pull
+# 从 git 远端拉共享记忆：fetch + 只允许 fast-forward。
+# 分支 diverged 时直接报错退出——open-memex 永不强行 merge；
+# 手工解决（rebase 或 merge）后再 pull。成功后本地索引重新同步。
+# pull 默认只显式触发；`open-memex config set sync.autoPull true`
+# 可在 MCP session start 时尝试自动 pull（失败永不阻塞 session）。
+
+open-memex push
+# 把当前分支（含已 submit 的记忆）push 到 git 远端。
+# 只显式触发——open-memex 永不自动 push。
+
+open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
+# 把记忆打包成可携带的 .tar.gz（markdown 原件 + manifest.json），
+# 用于搬到另一台机器或导入别的工具。默认排除 visibility:private 的记忆；
+# --all / -a 全量包含（完整迁移）。
+
+open-memex import <bundle.tar.gz> [--dry-run]
+# 恢复 export 的包：personal 记忆进 personal 目录；project 记忆按当前
+# 项目重新编号 scope_key，进 outbox 当草稿。内容相同的 id 跳过；
+# 内容冲突的 id 只报告，永不覆盖。
+
+open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]
+# 把项目记忆（decision/constraint/lesson/gotcha/howto）提炼成
+# AGENTS.md 片段。默认打印到 stdout；-o 写文件。人工审阅后手工合并——
+# open-memex 永不自动改写你的 AGENTS.md。片段末尾带一段"记忆卫生"
+# （§3.5 检查点指引），让读 AGENTS.md 的 agent 学会在检查点提议蒸馏捕获。
+
+open-memex propose <id...> --to project [--local-approve]
+# 一次 propose 一条或多条（一个分支、一个 PR），每条独立新 id。
+# 全有或全无：id 有错整批回滚，不会留半截。
+# 把一条 personal 记忆复制到 project scope 进入评审（复制而非移动，
+# personal 原件保留）。结果落在 outbox；准备好进 repo 时再 sync-status / submit。
+open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
+# 晋升一步：proposed → approved → published（或用 --reject 驳回并附注原因）。
+# 每次流转都追加到记忆的 review_history（谁、何时、为什么）。
+# 驳回不删文件，由你决定：接受（关 PR 删分支）、改完 --resubmit 再审、
+# 或留着当 [rejected] 记录。
+open-memex resolve [id-or-path]
+# 列出冲突中的记忆文件，或对其中一个做字段级 3-way 合并。
+# 语义冲突只报告、不自动解决。
+```
+
+打理共享记忆的人遵循 curator 公约——`docs/CURATOR.md`：
+批什么、退回什么，以及防止共享记忆腐烂的卫生规则。
 
 维护：
 
@@ -280,7 +487,7 @@ CLI 跑在 Node 22 下。从源码 checkout 使用时走内置的实验性 TypeS
 
 ## MCP server
 
-同一个五个 memory tools，走 Model Context Protocol 的 stdio server——
+同一个十一个 memory tools，走 Model Context Protocol 的 stdio server——
 不需要宿主专属插件，任何 MCP 客户端都能用 open-memex。
 
 ```sh
@@ -293,28 +500,33 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 
 > **注意：** MCP 是请求/响应式的——它给 agent 提供 tools，但没有 opencode
 > 插件的关键词自动捕获和首轮上下文注入。想让 agent 主动用记忆，
-> 靠的是 agent 的 instructions（`init` 写的 Copilot instructions）。
+> 靠的是 agent 的 instructions：服务器在 MCP 握手的 `instructions` 里自带
+> session-start 指引（开场调 `memory_status`、检查点再调），`init` 则把更完整
+> 的版本写进编辑器的 instruction 文件。两者都是建议性的——MCP 客户端没有
+> 强制的 session-start hook。
 
 ## 路线图（Roadmap）
 
-**`0.3.0`（本版）：** 通用 MCP server、`open-memex` bin/CLI、
+**`0.3.0`（稳定版）：** 通用 MCP server、`open-memex` bin/CLI、
 一键 `init` 配置、中文关键词捕获（含 personal/project 路由）、
 `config` / `capture --dry-run` / `doctor` 助手命令、Visual Studio 支持。
 
-**Coming —— `0.4.0`：** 团队同步——用 git 做共享记忆
-（`propose` / `promote` / `resolve` 工作流、仓库内记忆目录），
-找 1–2 个同事做 pilot。
+**`0.4.0`（稳定版）：** 团队同步——用 git 做共享记忆：appdata 草稿箱 →
+`sync-status` → `submit`（本地分支+commit，push/PR 拿你的 Yes 才做）
+→ `promote` / `resolve` 评审工作流、仓库内 `.ai/open-memex/` 目录；
+`export` / `import` 归档做用户可携带（Markdown + manifest，不造围墙花园；
+private 默认不导出，`-a` / `--all` 全量迁移）；
+distill-to-AGENTS.md 辅助（`distill-agents`，只提议不改写——人工合并）；
+§3.5 检查点蒸馏写进 MCP 握手指令和 init 指令文件
+（agent 在检查点提议 1–3 条捕获，人来定）；找 1–2 个同事做 pilot。
 
-**Coming —— `0.3.0`（稳定版）：** 组织层——组织记忆仓库、
-curator 约定、distill-to-AGENTS.md 辅助。
-
-**未来（看信号再定，不承诺版本）：** 原生 agent 插件
-（Claude Code / Codex hooks，作为同一套 MCP tools 的增强路径）；
+**未来（看信号再定，不承诺版本）：** 组织层——组织记忆仓库、curator 约定；
+原生 agent 插件（Claude Code / Codex hooks，作为同一套 MCP tools 的增强路径）；
 本地 embedding 做基准测试门控的实验（**未经明确 opt-in 绝不下载
 embedding 模型**）；云端 `RemoteProvider` 定制只在多仓库共享、
 ACL 或合规需求出现时才做。
 
-设计细节：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（append-only 决策日志 D1–D20）。
+设计细节：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（append-only 决策日志）。
 
 ## 许可证
 

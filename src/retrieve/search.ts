@@ -11,6 +11,7 @@ export interface SearchHit {
   score: number;
   updated_at: number;
   status: string;
+  review_state: string;
 }
 
 interface RawRow {
@@ -24,6 +25,7 @@ interface RawRow {
   score: number;
   status: string;
   superseded_by: string | null;
+  review_state: string;
 }
 
 function toHit(r: RawRow): SearchHit {
@@ -37,13 +39,36 @@ function toHit(r: RawRow): SearchHit {
     score: r.score,
     updated_at: r.updated_at,
     status: r.status,
+    review_state: r.review_state ?? "draft",
   };
+}
+
+/**
+ * D30: review-state ranking tiers for shared (project) memories.
+ * Reviewed knowledge (approved/published) outranks unreviewed outbox drafts;
+ * personal memories are always `draft` by design and are NOT demoted.
+ * Stable: order within a tier keeps the incoming score/recency order.
+ */
+function reviewTier(r: RawRow): number {
+  if (r.scope_key === "personal") return 1;
+  if (r.review_state === "approved" || r.review_state === "published") return 0;
+  if (r.review_state === "draft" || r.review_state === "rejected") return 2;
+  return 1; // proposed and anything unexpected
+}
+
+/** D30: `[draft]` / `[proposed]` / … marker for project memories.
+ *  Personal memories stay unmarked (always draft — the marker would be noise). */
+export function hitStateLabel(h: Pick<SearchHit, "scope_key" | "review_state">): string {
+  if (h.scope_key === "personal") return "";
+  return ` [${h.review_state || "draft"}]`;
 }
 
 /**
  * Lifecycle-aware post-processing (§3.3):
  * - retracted / archived are excluded from retrieval (kept for audit);
  * - a superseded memory resolves to the newest of its chain (cycle-safe);
+ * - D30: approved/published project memories rank first, project
+ *   drafts/rejected rank after unreviewed content;
  * - deprecated stays visible as a warning but ranks after active.
  */
 function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
@@ -54,7 +79,7 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
     const r = db()
       .prepare(
         `SELECT id, scope_key, project_name, type, tags, updated_at, status,
-                superseded_by, substr(content, 1, 240) AS snippet
+                superseded_by, review_state, substr(content, 1, 240) AS snippet
          FROM memories WHERE id = ?`,
       )
       .get(id) as
@@ -67,7 +92,7 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
   };
 
   const seen = new Set<string>();
-  const active: SearchHit[] = [];
+  const tiers: SearchHit[][] = [[], [], [], []];
   const deprecated: SearchHit[] = [];
 
   for (const r of rows) {
@@ -90,9 +115,9 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
     seen.add(target.id);
     const hit = toHit(target);
     if (target.status === "deprecated") deprecated.push(hit);
-    else active.push(hit);
+    else tiers[reviewTier(target)].push(hit);
   }
-  return [...active, ...deprecated].slice(0, limit);
+  return [...tiers[0], ...tiers[1], ...tiers[2], ...deprecated].slice(0, limit);
 }
 
 /**
@@ -130,7 +155,7 @@ export function search(
 
   const sql = `
     SELECT m.id, m.scope_key, m.project_name, m.type, m.tags, m.updated_at,
-           m.status, m.superseded_by,
+           m.status, m.superseded_by, m.review_state,
            snippet(memories_fts, 0, '[', ']', ' ... ', 12) AS snippet,
            bm25(memories_fts) AS score
     FROM memories_fts
@@ -155,6 +180,7 @@ export function search(
     updated_at: number;
     status: string;
     superseded_by: string | null;
+    review_state: string;
     snippet: string;
     score: number;
   }>;
@@ -173,7 +199,7 @@ export function list(
   const typeFilter = opts.type ? ` AND type = ?` : "";
   const sql = `
     SELECT id, scope_key, project_name, type, tags, updated_at, status,
-           superseded_by, substr(content, 1, 240) AS snippet
+           superseded_by, review_state, substr(content, 1, 240) AS snippet
     FROM memories
     WHERE scope_key = ?${typeFilter}
     ORDER BY updated_at DESC
@@ -194,6 +220,7 @@ export function list(
     updated_at: number;
     status: string;
     superseded_by: string | null;
+    review_state: string;
     snippet: string;
   }>;
 

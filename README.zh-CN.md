@@ -1,9 +1,36 @@
 # open-memex
 
+[![npm version](https://img.shields.io/npm/v/open-memex.svg)](https://www.npmjs.com/package/open-memex)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+
 [English](./README.md)
 
 给 AI 编程助手的本地优先持久记忆：一个 [opencode](https://opencode.ai) 插件，
 加上一个通用 MCP server（VS Code Copilot、Cursor、Claude Code、Visual Studio 等）。
+
+## 为什么需要 open-memex？
+
+工程知识只存在于两个地方：代码里，和人的脑子里。
+每个新的 AI 编程会话都从零开始——同样的项目背景要反复讲，同样的坑要反复踩，
+同样的事故教训在聊天结束时就消失了。
+
+open-memex 把值得记住的部分——决策、约束、教训——存成可 review 的 Markdown，
+并在下一次会话开始时自动注入回去。
+
+> No capture, nothing to inherit.（不记录，就无从传承。）
+
+它也补齐了 agentic 开发工作流（spec 驱动开发、plan/implement/verify 循环）缺的那一块：
+plan 产出决策，verify 产出规则——open-memex 是让它们跨会话留存的记忆层，
+而不是每次从头重新推导。
+
+## 和其它方案的对比
+
+| | open-memex | 云端记忆服务 | Wiki / 文档平台 | 聊天记录 |
+|---|---|---|---|---|
+| 数据在哪 | 你的机器 + 你的仓库 | 服务商服务器 | 中心服务器 | 聊天结束就没了 |
+| 分享前 review | 有——outbox + PR | 不一定 | 有 | 没有 |
+| Agent 回忆 | 会话开始注入 + 搜索 | 调 API | 人工去查 | 没有 |
+| 人类可读 | 纯 Markdown 文件 | 后台 / API | 有 | 没有 |
 
 - **Markdown 文件**是 source of truth（人类可读、git 友好）
 - **SQLite FTS5** 做可重建索引（BM25 关键词检索，`better-sqlite3`）
@@ -179,6 +206,48 @@ open-memex doctor
 - **脱敏**：`<private>…</private>` 标签内的内容会被剥离；检测到的密钥
   （API key、token、高熵凭据）就地打码——保留前 4 个字符，其余替换为 `x`——
   然后照常保存。用 `open-memex capture --dry-run "…"` 预览一条消息会被如何捕获。
+
+## 记忆类型（Memory types）
+
+11 种类型——`type` 说明这条记忆是什么，`tags` 说明它和什么有关：
+
+| 类型 | 记录什么 |
+|---|---|
+| `fact` | 关于项目或世界的稳定事实 |
+| `preference` | 某人做事的偏好 |
+| `decision` | 做过的选择——为什么、权衡了什么 |
+| `constraint` | 不能违反的规则 |
+| `todo` | 以后要做的承诺 |
+| `knowledge` | 持久的领域或架构知识 |
+| `howto` | 验证过的做法 |
+| `gotcha` | 要避开的坑 |
+| `lesson` | 事故或错误教会我们的东西 |
+| `observation` | 注意到的现象，还不是结论 |
+| `reference` | 指向权威文档的指针（不复制内容） |
+
+## 团队记忆工作流
+
+个人笔记永远私有。项目知识走一条显式、可 review 的流水线——没有任何东西会自动分享：
+
+```
+capture → outbox（本地草稿）→ submit → 仓库（.ai/open-memex/）→ PR review → published → recall
+```
+
+1. **Capture**——正常工作中把决策、坑、教训存成草稿。
+2. **Review**——草稿在本地 outbox 里等着；`sync-status`（或在聊天里说"同步记忆"）查看待处理项。
+3. **Submit**——你点名要分享的记忆才会进 `<repo>/.ai/open-memex/`，并做本地 commit。open-memex 永远不会自动 push。
+4. **PR review**——记忆就是纯 Markdown；reviewer 走正常的分支/PR 流程批准、要求修改或拒绝（`promote`、`pr-status`、`resolve`）。
+5. **Recall**——已发布的记忆在会话开始时自动注入，也可随时搜索，人和 agent 都能用。
+
+Reviewer 守则：[docs/CURATOR.md](./docs/CURATOR.md)。
+
+## 安全与数据
+
+- **本地优先：** 所有东西都在你的机器上（`%APPDATA%\open-memex` / `~/.local/share/open-memex`），加上你选择的仓库。零云端调用、零账号、零第三方 API、零遥测。
+- **密钥进不来：** `<private>…</private>` 包裹的内容会被剥离；检测到的 API key / token 在保存前就地打码。先用 `open-memex capture --dry-run "…"` 预览。
+- **个人 scope 永不同步：** `personal` 只属于这台机器——export 默认排除，也永远进不了仓库。
+- **分享可审计：** 团队记忆只能靠显式的 `submit` 移动，走分支/PR review，每次 `promote` 状态流转都会追加到记忆的 `review_history`（谁/何时/为什么）。
+- **文件是你的：** Markdown 是 source of truth——随手看、随手改、随手删；SQLite 索引可以从文件重建。
 
 ## Scope
 
@@ -387,28 +456,26 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 
 ## 路线图（Roadmap）
 
-**`0.3.0`（本版）：** 通用 MCP server、`open-memex` bin/CLI、
+**`0.3.0`（稳定版）：** 通用 MCP server、`open-memex` bin/CLI、
 一键 `init` 配置、中文关键词捕获（含 personal/project 路由）、
 `config` / `capture --dry-run` / `doctor` 助手命令、Visual Studio 支持。
 
-**进行中 —— `0.4.0`：** 团队同步——用 git 做共享记忆：appdata 草稿箱 →
+**`0.4.0`（开发中）：** 团队同步——用 git 做共享记忆：appdata 草稿箱 →
 `sync-status` → `submit`（本地分支+commit，push/PR 拿你的 Yes 才做）
-→ `promote` / `resolve` 评审工作流、仓库内 `.ai/open-memex/` 目录，
-找 1–2 个同事做 pilot；捕获——§3.5 检查点蒸馏写进 MCP 握手指令和
-init 指令文件（agent 提议 1–3 条，人来定）。
+→ `promote` / `resolve` 评审工作流、仓库内 `.ai/open-memex/` 目录；
+`export` / `import` 归档做用户可携带（Markdown + manifest，不造围墙花园；
+private 默认不导出，`-a` / `--all` 全量迁移）；
+distill-to-AGENTS.md 辅助（`distill-agents`，只提议不改写——人工合并）；
+§3.5 检查点蒸馏写进 MCP 握手指令和 init 指令文件
+（agent 在检查点提议 1–3 条捕获，人来定）；找 1–2 个同事做 pilot。
 
-**Coming —— `0.3.0`（稳定版）：** 组织层——组织记忆仓库、
-curator 约定、distill-to-AGENTS.md 辅助、`export`/`import` 归档
-（Markdown + manifest，不造围墙花园，用户可带走；
-private 默认不导出，`-a`/`--all` 全量迁移）。
-
-**未来（看信号再定，不承诺版本）：** 原生 agent 插件
-（Claude Code / Codex hooks，作为同一套 MCP tools 的增强路径）；
+**未来（看信号再定，不承诺版本）：** 组织层——组织记忆仓库、curator 约定；
+原生 agent 插件（Claude Code / Codex hooks，作为同一套 MCP tools 的增强路径）；
 本地 embedding 做基准测试门控的实验（**未经明确 opt-in 绝不下载
 embedding 模型**）；云端 `RemoteProvider` 定制只在多仓库共享、
 ACL 或合规需求出现时才做。
 
-设计细节：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（append-only 决策日志 D1–D20）。
+设计细节：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（append-only 决策日志）。
 
 ## 许可证
 

@@ -1,9 +1,39 @@
 # open-memex
 
+[![npm version](https://img.shields.io/npm/v/open-memex.svg)](https://www.npmjs.com/package/open-memex)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+
 [中文文档](./README.zh-CN.md)
 
 Local-first persistent memory for AI coding agents: an [opencode](https://opencode.ai) plugin
 plus a generic MCP server (VS Code Copilot, Cursor, Claude Code, Visual Studio, …).
+
+## Why open-memex?
+
+Engineering knowledge lives in two places: the code, and people's heads.
+Every new AI coding session starts from zero — the same project context gets
+explained again, the same gotchas get rediscovered, the same incident lessons
+fade when the chat ends.
+
+open-memex captures the part worth remembering — the decision, the constraint,
+the lesson — as reviewable Markdown, and injects it back into the next session
+automatically.
+
+> No capture, nothing to inherit.
+
+It also complements agentic development workflows (spec-driven development,
+plan/implement/verify loops): plans produce decisions, verification produces
+rules — open-memex is the memory layer that keeps them across sessions instead
+of re-deriving them on every run.
+
+## How it compares
+
+| | open-memex | Cloud memory services | Wiki / docs portal | Chat history |
+|---|---|---|---|---|
+| Data location | Your machine + your repos | Vendor servers | Central server | Gone when the chat ends |
+| Review before sharing | Yes — outbox + PR | Varies | Yes | No |
+| Agent recall | Session-start injection + search | API calls | Manual lookup | No |
+| Human-readable | Plain Markdown files | Dashboard / API | Yes | No |
 
 - **Markdown files** as the source of truth (human-editable, git-friendly)
 - **SQLite FTS5** as a rebuildable index (BM25 keyword search, via `better-sqlite3`)
@@ -184,6 +214,62 @@ storage writability, then boots a real MCP server and runs `initialize` +
   secrets (API keys, tokens, high-entropy credentials) are masked in place — first
   4 characters kept, the rest replaced with `x` — and the memory is saved.
   Preview what a message would capture with `open-memex capture --dry-run "…"`.
+
+## Memory types
+
+Eleven types — `type` says what the memory is, `tags` say what it's about:
+
+| Type | Captures |
+|---|---|
+| `fact` | A stable true statement about the project or world |
+| `preference` | How someone likes things done |
+| `decision` | A choice that was made — the why and the trade-off |
+| `constraint` | A rule that must not be violated |
+| `todo` | A commitment to do something later |
+| `knowledge` | Durable domain or architecture knowledge |
+| `howto` | A procedure that worked |
+| `gotcha` | A trap to avoid |
+| `lesson` | What an incident or mistake taught us |
+| `observation` | Something noticed, not yet a conclusion |
+| `reference` | A pointer to the authoritative doc (no copying) |
+
+## Team memory workflow
+
+Personal notes stay private. Project knowledge follows an explicit, reviewable
+pipeline — nothing is shared automatically:
+
+```
+capture → outbox (draft, local) → submit → repo (.ai/open-memex/) → PR review → published → recall
+```
+
+1. **Capture** — save decisions, gotchas, lessons as drafts during normal work.
+2. **Review** — drafts wait in a local outbox; `sync-status` (or saying
+   "sync memory" in chat) shows what's pending.
+3. **Submit** — you name the memories; they move into `<repo>/.ai/open-memex/`
+   with a local commit. open-memex never auto-pushes.
+4. **PR review** — memories are plain Markdown; reviewers approve, request
+   changes, or reject through the normal branch/PR process (`promote`,
+   `pr-status`, `resolve`).
+5. **Recall** — published memories are injected at session start and searchable
+   on demand, for humans and agents alike.
+
+Reviewer convention: [docs/CURATOR.md](./docs/CURATOR.md).
+
+## Security & data
+
+- **Local-first:** everything lives on your machine (`%APPDATA%\open-memex` /
+  `~/.local/share/open-memex`) plus the repos you choose. Zero cloud calls,
+  zero accounts, zero third-party APIs, zero telemetry.
+- **Secrets stay out:** `<private>…</private>` spans are stripped; detected API
+  keys/tokens are masked in place before saving. Preview with
+  `open-memex capture --dry-run "…"`.
+- **Personal never syncs:** the `personal` scope is this machine only — excluded
+  from export by default and can never enter a repo.
+- **Auditable sharing:** team memories move only by explicit `submit`, travel
+  through branch/PR review, and every `promote` transition is appended to the
+  memory's `review_history` (who / when / why).
+- **You own the files:** Markdown is the source of truth — inspect, edit, or
+  delete anything by hand; the SQLite index rebuilds from the files.
 
 ## Scopes
 
@@ -401,28 +487,27 @@ server with cwd set to your project root (`init` handles this for you).
 
 ## Roadmap
 
-**`0.3.0` (this release):** generic MCP server, `open-memex` bin/CLI, one-command
+**`0.3.0` (stable):** generic MCP server, `open-memex` bin/CLI, one-command
 `init` setup, Chinese keyword capture with personal/project routing, `config` /
 `capture --dry-run` / `doctor` helpers, Visual Studio support.
 
-**In progress — `0.4.0`:** team sync — shared memory via git: appdata draft
+**`0.4.0` (in development):** team sync — shared memory via git: appdata draft
 outbox → `sync-status` → `submit` (local branch+commit, push/PR on your Yes)
-→ `promote` / `resolve` review workflow, in-repo `.ai/open-memex/` dir, 1–2
-colleague pilot; capture — §3.5 checkpoint distillation in MCP handshake +
-init instructions (agent proposes 1–3 captures, human decides).
+→ `promote` / `resolve` review workflow, in-repo `.ai/open-memex/` dir;
+`export` / `import` archive for user portability (Markdown + manifest, no walled
+garden; private excluded by default, `-a` / `--all` for full migration);
+distill-to-AGENTS.md assist (`distill-agents`, propose-only — you merge by hand);
+§3.5 checkpoint distillation in the MCP handshake + init instructions (the agent
+proposes 1–3 captures at checkpoints, the human decides); 1–2 colleague pilot.
 
-**Coming — `0.3.0` (stable):** org layer — org memory repo, curator convention,
-distill-to-AGENTS.md assist, `export`/`import` archive for user portability
-(Markdown + manifest, no walled garden; private excluded by default,
-`-a`/`--all` for full migration).
+**Future (signal-gated, no version committed):** org layer — org memory repo,
+curator convention; native agent plugins (Claude Code / Codex hooks as
+enhancement paths over the same MCP tools); local embeddings as a
+benchmark-gated experiment (no embedding model is ever downloaded without
+explicit opt-in); cloud `RemoteProvider` customization only if multi-repo
+sharing, ACL, or compliance needs demand it.
 
-**Future (signal-gated, no version committed):** native agent plugins (Claude Code /
-Codex hooks as enhancement paths over the same MCP tools); local embeddings as a
-benchmark-gated experiment (no embedding model is ever downloaded without explicit
-opt-in); cloud `RemoteProvider` customization only if multi-repo sharing, ACL, or
-compliance needs demand it.
-
-Design details: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md) (append-only decision log D1–D20).
+Design details: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md) (append-only decision log).
 
 ## License
 

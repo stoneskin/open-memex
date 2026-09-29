@@ -151,6 +151,17 @@ Windows 下被进程加载的 DLL 是锁死的：如果 open-memex MCP server �
 
 在**项目根目录**下运行（这样 project scope 会解析到这个仓库）：
 
+```sh
+open-memex init --yes
+# ……没装全局包的话：
+npx -y open-memex init --yes
+```
+
+不带 `--client` 时，`init` 会**自动检测本机装了哪些编辑器，一次全接上**——
+支持用户级的编辑器走用户级（VS Code / Cursor 的 MCP 配置、opencode 原生插件），
+一次 init，所有项目通用；项目里有 solution 文件时 Visual Studio 也会一起配。
+想只配某一个编辑器？加 `--client`：
+
 **VS Code**（Copilot）：
 
 ```sh
@@ -184,16 +195,25 @@ open-memex init --client vscode --global --yes
 如果某个项目自己定义了 `.vscode/mcp.json`，项目级的优先。
 （终端交互模式下，`init` 会问你配到项目级还是用户级。）
 
+**opencode**（原生插件——推荐）：
+
+```sh
+open-memex init --client opencode --global --yes
+```
+
+把 `"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]` 合并进用户级
+`~/.config/opencode/opencode.json`——一次配置，每个项目自动生效，不用逐个项目
+init。在 tools 之外还能获得关键词自动捕获和首轮上下文注入。（带注释的配置文件
+不会被改动——那种情况请手动加 `plugin` 这一行。）
+
 **opencode**（作为普通 MCP 客户端）：
 
 ```sh
 open-memex init --client opencode
 ```
 
-写项目级 `opencode.jsonc`（`type: "local"`）。想用原生插件？
-在 `~/.config/opencode/opencode.jsonc` 里加
-`"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]`——
-在 tools 之外还能获得关键词自动捕获和首轮上下文注入。
+写项目级 `opencode.jsonc`（`type: "local"`）。只有当你更想要纯 MCP 而不是原生
+插件时才需要。
 
 **Claude Code**（在项目根目录运行）：
 
@@ -224,15 +244,19 @@ Visual Studio 也会自动发现 `.vscode/mcp.json` 和 `.cursor/mcp.json`，
   到 repo，没装 open-memex 的同事看不到、也不会出错。团队人人都用
   open-memex 时可用 `--instructions project` 改写
   `.github/copilot-instructions.md`。
-- 在终端里会交互式询问：配哪个编辑器、是否开启关键词自动捕获、
-  是否在首轮注入记忆。`--yes` 全用默认值；脚本 / 非 TTY 环境不提问
-  （编辑器默认 VS Code）。
+- 不带 `--client` 时，`init` 自动检测已安装的编辑器（VS Code 看 `PATH` 有没有
+  `code` / 安装位置 / 已有的用户级配置；Cursor 看 `PATH` 有没有 `cursor` 或
+  `~/.cursor`；opencode 看 `PATH` 有没有 `opencode` 或其配置目录；项目里有
+  `.sln` 时算上 Visual Studio），一次全接上——支持用户级的走用户级，
+  一次 init，所有项目通用。
+- 在终端里会列出检测到的编辑器，请你确认是一次全配还是只配一个，
+  再问是否开启关键词自动捕获、是否在首轮注入记忆。`--yes` 全用默认值；
+  脚本 / 非 TTY 环境不提问，直接配所有检测到的编辑器。
 - 已有配置文件会被**合并，不会被覆盖**——重复运行是安全的。
   `--force` 强制覆盖。
 - `--global` 把 MCP server 条目写到编辑器的用户级配置（VS Code / Cursor）——
-  一次配置，所有项目通用。opencode 的 `--global` 对纯 MCP 模式是 no-op，
-  会提示你改用原生插件（本来就是全局的）；Visual Studio 按设计保持
-  solution 级。
+  一次配置，所有项目通用。opencode 的 `--global` 走用户级原生插件，
+  不用逐个项目 init；Visual Studio 按设计保持 solution 级。
 - 如果 `PATH` 上没有可用的 `open-memex`（比如一次性 npx），`init` 会把
   `npx -y open-memex mcp` 写进配置，配置照样能用。
   以后 `npm i -g open-memex` + `open-memex init --force` 可切换到更快

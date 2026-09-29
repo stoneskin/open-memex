@@ -51,16 +51,19 @@ PATH: `open-memex mcp` starts the MCP server, `open-memex mcp --print-config <cl
 prints a client config snippet (client: vscode|cursor|claude|opencode|visualstudio),
 `open-memex init [--client vscode|cursor|opencode|visualstudio] [--instructions personal|project] [--global] [--force] [--yes]`
 one-command project setup (editor MCP config + Copilot memory instructions;
+no --client → auto-detects installed editors and wires them all, user-level
+where supported — init once, every editor, every project (D46);
 instructions default to user-level ~/.copilot/copilot-instructions.md so the repo
 stays clean for teammates without open-memex — D22; `--global` writes the MCP
-server entry to the editor's user-level config instead — init once, all projects
-(VS Code / Cursor; D45); resolves the server command
+server entry to the editor's user-level config instead (VS Code / Cursor; D45)
+or the opencode native plugin entry into ~/.config/opencode/opencode.json (D46);
+resolves the server command
 at init time — npx fallback when no durable bin is on PATH, D17),
 `open-memex config` prints the effective config, `open-memex capture --dry-run "text"`
 previews keyword capture without writing, `open-memex doctor` runs health checks
 (node version, config, scope resolution, storage writability, MCP handshake).
-`open-memex init` asks editor + two settings on a TTY (`--yes` skips, scripts never
-prompt); `open-memex config set <key> <value>` edits settings after install.
+`open-memex init` with no --client auto-detects and wires every installed editor
+(`--yes` skips, scripts never prompt); `open-memex config set <key> <value>` edits settings after install.
 The published `open-memex` bin points at `dist/cli.js` (compiled at publish time).
 From a source checkout, `npm run cli` / `npm run mcp` still run `src/` directly
 with type-stripping — no build step needed for development.

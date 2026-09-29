@@ -119,14 +119,14 @@ function writeMcpJson(root: string, client: string, force: boolean): string | nu
 
 /**
  * D45: user-level MCP config path — `init --global` writes here so one init
- * covers all projects. `platform` is a parameter (default: current) so tests
- * can cover all OS layouts without mocking.
+ * covers all projects. `platform` and `home` are parameters (default: current)
+ * so tests can cover all OS layouts without mocking.
  */
 export function userMcpConfigPath(
   client: "vscode" | "cursor",
   platform: NodeJS.Platform = process.platform,
+  home: string = os.homedir(),
 ): string {
-  const home = os.homedir();
   if (client === "cursor") return path.join(home, ".cursor", "mcp.json");
   if (platform === "win32") {
     const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
@@ -222,8 +222,9 @@ function writeGlobalMcpJson(client: "vscode" | "cursor", force: boolean): string
   const written = writeServerEntryFile(file, sectionKey, entry, force, true);
   if (written) {
     warnNonDurable(durable);
+    const projFile = client === "cursor" ? ".cursor/mcp.json" : ".vscode/mcp.json";
     console.log(`  i user-level config — the open-memex MCP server now starts in every project.`);
-    console.log(`    (a per-project .vscode/mcp.json still wins if a project defines its own)`);
+    console.log(`    (a per-project ${projFile} still wins if a project defines its own)`);
   }
   return written;
 }
@@ -233,6 +234,69 @@ function opencodePluginUrl(): string {
   // init.ts sits in <pkg>/src — the plugin entry is <pkg>/src/index.ts.
   const pkgRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   return pathToFileURL(path.join(pkgRoot, "src", "index.ts")).href;
+}
+
+/**
+ * D46: opencode's user-level config. opencode reads `~/.config/opencode/`
+ * (`$XDG_CONFIG_HOME` when set) on every platform; a `plugin` entry there
+ * loads open-memex in every project with no per-project init.
+ */
+export function opencodeGlobalConfigPath(home: string = os.homedir()): string {
+  return path.join(opencodeConfigDir(home, process.env.XDG_CONFIG_HOME), "opencode.json");
+}
+
+/**
+ * Pure merge of the open-memex plugin URL into a parsed opencode config doc.
+ * Creates the `plugin` array when missing; never duplicates the URL.
+ * Returns "added" when the doc changed, "kept" when already present.
+ */
+export function mergePluginEntry(
+  doc: Record<string, unknown>,
+  url: string,
+  force: boolean,
+): "added" | "kept" {
+  let plugins = doc["plugin"];
+  if (!Array.isArray(plugins)) {
+    plugins = [] as unknown[];
+    doc["plugin"] = plugins;
+  }
+  const list = plugins as unknown[];
+  if (list.includes(url) && !force) return "kept";
+  if (!list.includes(url)) list.push(url);
+  return "added";
+}
+
+/**
+ * D46: wire the native plugin at the opencode user level — the one-time
+ * global setup. Merges into the existing config when it parses as JSON;
+ * a file with comments (JSONC) is left untouched with a manual hint instead
+ * of being clobbered.
+ */
+function writeOpencodeGlobalPlugin(force: boolean): string | null {
+  const dir = path.dirname(opencodeGlobalConfigPath());
+  const file =
+    ["opencode.jsonc", "opencode.json"]
+      .map((f) => path.join(dir, f))
+      .find((f) => fs.existsSync(f)) ?? path.join(dir, "opencode.json");
+  const url = opencodePluginUrl();
+  let doc: Record<string, unknown> = {};
+  if (fs.existsSync(file)) {
+    try {
+      doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch {
+      console.log(`  ! ${file} has comments or invalid JSON — left untouched, fix it manually.`);
+      console.log(`    To enable open-memex everywhere, add "plugin": ["${url}"] to it.`);
+      return null;
+    }
+  }
+  if (mergePluginEntry(doc, url, force) === "kept") {
+    console.log(`  = ${file} already loads the open-memex plugin — left as is (use --force to overwrite)`);
+    return file;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+  console.log(`  + ${file} (native plugin — works in every project, no per-project init needed)`);
+  return file;
 }
 
 /** opencode MCP config: project-level opencode.jsonc, `type: "local"` + command array (v1 format). */
@@ -339,6 +403,7 @@ function writeInstructions(
 }
 
 export const INIT_CLIENTS = ["vscode", "cursor", "opencode", "visualstudio"] as const;
+export type InitClient = (typeof INIT_CLIENTS)[number];
 
 /** Normalize --client values; accepts "visual-studio" as an alias. */
 export function normalizeClient(c: string): string {
@@ -417,6 +482,83 @@ async function promptConfigLevel(): Promise<boolean> {
   }
 }
 
+/** D46: injectable environment for editor detection (tests pass fakes). */
+export interface DetectEnv {
+  pathEnv?: string;
+  home?: string;
+  platform?: NodeJS.Platform;
+  root?: string;
+  /** Overrides $XDG_CONFIG_HOME for the opencode global config dir. */
+  xdgConfigHome?: string;
+}
+
+function exists(p: string): boolean {
+  try {
+    return fs.existsSync(p);
+  } catch {
+    return false;
+  }
+}
+
+/** True when `name` resolves on PATH (honors .cmd/.exe on Windows). */
+function binOnPath(name: string, pathEnv: string, platform: NodeJS.Platform): boolean {
+  const names = platform === "win32" ? [`${name}.cmd`, `${name}.exe`, name] : [name];
+  return pathEnv
+    .split(path.delimiter)
+    .filter((d) => d && !d.includes("_npx"))
+    .some((d) => names.some((n) => exists(path.join(d, n))));
+}
+
+function opencodeConfigDir(home: string, xdg: string | undefined): string {
+  return path.join(xdg || path.join(home, ".config"), "opencode");
+}
+
+/**
+ * D46: detect which supported editors are installed. Used when `init` runs
+ * without --client — one init wires every detected editor (user-level where
+ * the editor supports it). Visual Studio is included only when the project
+ * has a solution file, since VS config is solution-scoped by design.
+ */
+export function detectInstalledClients(env: DetectEnv = {}): InitClient[] {
+  const platform = env.platform ?? process.platform;
+  const pathEnv = env.pathEnv ?? process.env.PATH ?? "";
+  const home = env.home ?? os.homedir();
+  const found: InitClient[] = [];
+  // VS Code: bin on PATH, well-known install location, or an existing
+  // user-level MCP config (a previous init counts as installed).
+  const vscodeInstallPaths =
+    platform === "win32"
+      ? [path.join(home, "AppData", "Local", "Programs", "Microsoft VS Code", "Code.exe")]
+      : platform === "darwin"
+        ? ["/Applications/Visual Studio Code.app"]
+        : ["/usr/bin/code", "/usr/share/code/bin/code", "/snap/bin/code"];
+  if (
+    binOnPath("code", pathEnv, platform) ||
+    vscodeInstallPaths.some(exists) ||
+    exists(userMcpConfigPath("vscode", platform, home))
+  ) {
+    found.push("vscode");
+  }
+  // Cursor: bin on PATH or its user config dir exists.
+  if (binOnPath("cursor", pathEnv, platform) || exists(path.join(home, ".cursor"))) {
+    found.push("cursor");
+  }
+  // opencode: bin on PATH or its global config dir exists.
+  const xdg = env.xdgConfigHome ?? process.env.XDG_CONFIG_HOME;
+  if (binOnPath("opencode", pathEnv, platform) || exists(opencodeConfigDir(home, xdg))) {
+    found.push("opencode");
+  }
+  // Visual Studio: solution-scoped — only when the project has a .sln.
+  let hasSln = false;
+  try {
+    hasSln = fs.readdirSync(env.root ?? projectRoot()).some((f) => f.toLowerCase().endsWith(".sln"));
+  } catch {
+    hasSln = false;
+  }
+  if (hasSln) found.push("visualstudio");
+  return found;
+}
+
 export async function initProject(opts: {
   client?: string;
   force: boolean;
@@ -426,15 +568,50 @@ export async function initProject(opts: {
   global?: boolean;
 }): Promise<void> {
   const interactive = !opts.yes && !!process.stdin.isTTY && !!process.stdout.isTTY;
-  let client = normalizeClient(opts.client ?? "");
-  if (client && !(INIT_CLIENTS as readonly string[]).includes(client)) {
+  const explicit = normalizeClient(opts.client ?? "");
+  if (explicit && !(INIT_CLIENTS as readonly string[]).includes(explicit)) {
     console.error(`unknown client "${opts.client}" (${INIT_CLIENTS.join("|")})`);
     process.exit(1);
   }
-  if (!client && interactive) client = (await promptClient()) ?? "";
-  if (!client && !interactive) client = "vscode"; // historical default for scripts / one-shot npx
-  let global = !!opts.global;
-  if (!global && interactive && (client === "vscode" || client === "cursor")) {
+  // D46: no --client → auto-detect installed editors and wire them all
+  // (user-level where the editor supports it — init once). An explicit
+  // --client keeps the old single-editor behavior.
+  let clients: InitClient[];
+  let autoGlobal = false;
+  if (explicit) {
+    clients = [explicit as InitClient];
+  } else if (interactive) {
+    const detected = detectInstalledClients();
+    if (detected.length === 0) {
+      console.log("  - no supported editors detected — editor setup skipped");
+      clients = [];
+    } else {
+      console.log(`Detected editors: ${detected.join(", ")}`);
+      const all = await askBool(
+        "Wire up open-memex in all of them (one-time, user-level where supported)?",
+        true,
+      );
+      if (all) {
+        clients = detected;
+        autoGlobal = true;
+      } else {
+        const one = await promptClient();
+        clients = one ? [one as InitClient] : [];
+      }
+    }
+  } else {
+    clients = detectInstalledClients();
+    autoGlobal = true;
+    if (clients.length === 0) {
+      console.log("  - no supported editors detected — editor setup skipped");
+    } else {
+      console.log(`Detected editors: ${clients.join(", ")} — wiring all (use --client to pick one)`);
+    }
+  }
+  let global = !!opts.global || autoGlobal;
+  // The project-vs-user-level choice only applies to an explicit single
+  // client; auto mode is user-level by design (init once).
+  if (explicit && !global && interactive && (clients[0] === "vscode" || clients[0] === "cursor")) {
     global = await promptConfigLevel();
   }
   let scope: "personal" | "project" = "personal";
@@ -472,26 +649,31 @@ export async function initProject(opts: {
   }
   const root = projectRoot();
   console.log(`open-memex init — project root: ${root}`);
-  if (client) {
-    if (global && (client === "vscode" || client === "cursor")) {
-      writeGlobalMcpJson(client, opts.force);
-    } else if (global && client === "opencode") {
-      // The native plugin is already global — plain-MCP mode stays per project.
-      console.log(`  - opencode: --global is a no-op for plain-MCP mode (config stays per project).`);
-      console.log(`    For a one-time global setup, use the native plugin instead:`);
-      console.log(`    add "plugin": ["${opencodePluginUrl()}"] to ~/.config/opencode/opencode.jsonc`);
-    } else if (global && client === "visualstudio") {
-      console.log(`  - visualstudio: --global not supported — VS uses solution-level .mcp.json by design.`);
-    } else {
-      writeMcpJson(root, client, opts.force);
+  for (const client of clients) {
+    if (client === "vscode" || client === "cursor") {
+      if (global) writeGlobalMcpJson(client, opts.force);
+      else writeMcpJson(root, client, opts.force);
+    } else if (client === "opencode") {
+      // D46: the native plugin is the one-time global setup; without --global
+      // (explicit single-client mode) keep the per-project plain-MCP config.
+      if (global) writeOpencodeGlobalPlugin(opts.force);
+      else writeMcpJson(root, client, opts.force);
+    } else if (client === "visualstudio") {
+      if (explicit && global) {
+        console.log(`  - visualstudio: --global not supported — VS uses solution-level .mcp.json by design.`);
+      } else {
+        writeMcpJson(root, client, opts.force);
+      }
     }
+  }
+  if (clients.length === 0) {
+    console.log("  - editor setup skipped");
+  } else if (clients.some((c) => c !== "opencode")) {
     // copilot-instructions.md is VS Code/Cursor-shaped; opencode as a plain MCP
     // consumer already gets the guidance from the tool descriptions (D16).
     // D22: personal scope (default) writes to the Copilot user-level location
     // so the repo stays clean for teammates without open-memex.
-    if (client !== "opencode") writeInstructions(root, scope, client);
-  } else {
-    console.log("  - editor setup skipped");
+    writeInstructions(root, scope, clients.find((c) => c !== "opencode")!);
   }
   console.log(`\nDone. Reload your editor window to start the open-memex MCP server.`);
 }

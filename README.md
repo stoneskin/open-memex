@@ -156,6 +156,17 @@ folders under your global npm root and install again.
 
 Run from your **project root** (so the project scope resolves to this repo):
 
+```sh
+open-memex init --yes
+# …or without a global install:
+npx -y open-memex init --yes
+```
+
+With no `--client`, `init` **detects your installed editors and wires them all**
+— user-level where the editor supports it (VS Code / Cursor MCP config, opencode
+native plugin), so one init covers every project. Visual Studio joins in when the
+project has a solution file. Prefer to pick a single editor? Pass `--client`:
+
 **VS Code** (Copilot):
 
 ```sh
@@ -189,16 +200,26 @@ instead of the project — init once, the server starts in every project.
 A per-project `.vscode/mcp.json` still wins if a project defines its own.
 (On a TTY, `init` asks whether the config should be per-project or user-level.)
 
+**opencode** (native plugin — recommended):
+
+```sh
+open-memex init --client opencode --global --yes
+```
+
+Merges `"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]` into your
+user-level `~/.config/opencode/opencode.json` — one-time, every project picks it
+up, no per-project init. You get keyword auto-capture and first-turn context
+injection on top of the tools. (A config file with comments is left untouched —
+add the `plugin` line by hand in that case.)
+
 **opencode** (as a plain MCP consumer):
 
 ```sh
 open-memex init --client opencode
 ```
 
-Writes project-level `opencode.jsonc` (`type: "local"`). Prefer the native plugin
-instead? Add `"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]` to
-`~/.config/opencode/opencode.jsonc` — you get keyword auto-capture and first-turn
-context injection on top of the tools.
+Writes project-level `opencode.jsonc` (`type: "local"`). Needed only if you
+prefer plain MCP over the native plugin.
 
 **Claude Code** (from your project root):
 
@@ -224,20 +245,25 @@ above works too.
 
 `init` notes:
 
+- With no `--client`, `init` auto-detects installed editors (VS Code via `code`
+  on `PATH` / install location / existing user config; Cursor via `cursor` on
+  `PATH` or `~/.cursor`; opencode via `opencode` on `PATH` or its config dir;
+  Visual Studio when the project has a `.sln`) and wires them all — user-level
+  where supported, so one init covers every project.
 - `--global` writes the MCP server entry to the editor's user-level config
   (VS Code / Cursor) — one init for all projects. For opencode, `--global`
-  is a no-op for plain-MCP mode and points you at the native plugin instead
-  (already global); Visual Studio stays solution-level by design.
+  wires the native plugin at user level (no per-project init needed);
+  Visual Studio stays solution-level by design.
 - The Copilot memory instructions default to **user-level**
   (`~/.copilot/copilot-instructions.md`; `%USERPROFILE%\copilot-instructions.md`
   for Visual Studio) — they apply to all your projects and are never checked
   into a repo, so teammates without open-memex see nothing and nothing breaks
   for them. `--instructions project` writes `.github/copilot-instructions.md`
   instead, for teams where everyone uses open-memex.
-- On a terminal it interactively asks which editor to set up, whether to enable
-  keyword auto-capture, and whether to inject memories on the first turn.
-  `--yes` accepts the defaults; scripts / non-TTY never prompt (editor defaults to
-  VS Code).
+- On a terminal it shows the detected editors, asks you to confirm wiring them
+  all (or pick one), and asks whether to enable keyword auto-capture and
+  first-turn memory injection. `--yes` accepts the defaults; scripts /
+  non-TTY never prompt and wire every detected editor.
 - Existing config files are **merged, never clobbered** — re-running is safe.
   `--force` overwrites.
 - With no durable `open-memex` on `PATH` (e.g. one-shot npx), `init` writes an

@@ -8,7 +8,7 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
-import { userMcpConfigPath, mergeServerEntry } from "../src/init.ts";
+import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath } from "../src/init.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -396,6 +396,55 @@ ok("forced entry applied", ((doc1["servers"] as Record<string, unknown>)["open-m
 const doc2: Record<string, unknown> = { servers: { other: { command: "z" } } };
 ok("merge preserves sibling entries", mergeServerEntry(doc2, "servers", { command: "x" }, false) === "added"
   && (doc2["servers"] as Record<string, unknown>)["other"] !== undefined);
+
+console.log("== init D46: auto-detect + opencode global plugin ==");
+// opencodeGlobalConfigPath: user-level location, XDG-aware.
+const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "memex-smoke-"));
+ok("opencode global config under ~/.config/opencode",
+  opencodeGlobalConfigPath(fakeHome).endsWith(path.join(".config", "opencode", "opencode.json")));
+ok("opencode global config honors XDG_CONFIG_HOME", (() => {
+  const prev = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = path.join(fakeHome, "xdg");
+  try {
+    return opencodeGlobalConfigPath(fakeHome).startsWith(path.join(fakeHome, "xdg"));
+  } finally {
+    if (prev === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = prev;
+  }
+})());
+// mergePluginEntry: pure merge semantics.
+const pdoc: Record<string, unknown> = {};
+ok("plugin merge creates array", mergePluginEntry(pdoc, "file:///x", false) === "added"
+  && JSON.stringify(pdoc["plugin"]) === JSON.stringify(["file:///x"]));
+ok("plugin merge dup kept", mergePluginEntry(pdoc, "file:///x", false) === "kept");
+ok("plugin merge force on dup adds nothing twice", mergePluginEntry(pdoc, "file:///x", true) === "added"
+  && (pdoc["plugin"] as unknown[]).length === 1);
+const pdoc2: Record<string, unknown> = { plugin: ["file:///other"], theme: "dark" };
+ok("plugin merge preserves siblings", mergePluginEntry(pdoc2, "file:///x", false) === "added"
+  && (pdoc2["plugin"] as unknown[]).length === 2 && pdoc2["theme"] === "dark");
+// detectInstalledClients with a fully fake env.
+const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "memex-bin-"));
+fs.writeFileSync(path.join(binDir, "code"), "#!/bin/sh\n");
+const detHome = fs.mkdtempSync(path.join(os.tmpdir(), "memex-home-"));
+fs.mkdirSync(path.join(detHome, ".cursor"), { recursive: true });
+fs.mkdirSync(path.join(detHome, ".config", "opencode"), { recursive: true });
+const detRoot = fs.mkdtempSync(path.join(os.tmpdir(), "memex-root-"));
+const detEnv = { pathEnv: binDir, home: detHome, platform: "linux" as const, root: detRoot, xdgConfigHome: path.join(detHome, ".config") };
+const det = detectInstalledClients(detEnv);
+ok("detects vscode via PATH", det.includes("vscode"));
+ok("detects cursor via ~/.cursor", det.includes("cursor"));
+ok("detects opencode via config dir", det.includes("opencode"));
+ok("no visualstudio without .sln", !det.includes("visualstudio"));
+fs.writeFileSync(path.join(detRoot, "app.sln"), "");
+ok("visualstudio detected with .sln", detectInstalledClients(detEnv).includes("visualstudio"));
+const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), "memex-empty-"));
+const detEmpty = detectInstalledClients({ pathEnv: "", home: emptyHome, platform: "linux", root: emptyHome, xdgConfigHome: path.join(emptyHome, ".config") });
+ok("empty env detects nothing", detEmpty.length === 0);
+const winBin = fs.mkdtempSync(path.join(os.tmpdir(), "memex-winbin-"));
+fs.writeFileSync(path.join(winBin, "code.cmd"), "@echo off\n");
+ok("win32 detects vscode via code.cmd",
+  detectInstalledClients({ pathEnv: winBin, home: emptyHome, platform: "win32", root: emptyHome, xdgConfigHome: path.join(emptyHome, ".config") }).includes("vscode"));
+for (const d of [fakeHome, binDir, detHome, detRoot, emptyHome, winBin]) fs.rmSync(d, { recursive: true, force: true });
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

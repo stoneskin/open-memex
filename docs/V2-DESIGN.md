@@ -911,6 +911,25 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   is deliberately broader than `incident`: a postmortem's shape (timeline, root
   cause, actions) is a template concern, not a type. Code
   `MEMORY_TYPE_TAXONOMY` updated to match. Approved 2026-09-28.*
+- **D46** — `init` with no `--client` auto-detects installed editors and wires
+  them all (0.5.0-alpha.2). Detection: VS Code via `code` on `PATH`, well-known
+  install locations, or an existing user-level `mcp.json`; Cursor via `cursor`
+  on `PATH` or `~/.cursor`; opencode via `opencode` on `PATH` or its global
+  config dir; Visual Studio only when the project has a `.sln` (solution-scoped
+  by design). Auto mode always wires user-level where the editor supports it —
+  VS Code / Cursor MCP entry (D45), and for opencode the native plugin entry is
+  now *actually merged* into `~/.config/opencode/opencode.json` (replacing D45's
+  hint-only `--global`), so one init covers every editor and every project.
+  A config file with comments (JSONC) is never rewritten — init prints the
+  manual one-liner instead. Interactive `init` shows the detected editors and
+  confirms wiring all of them (declining falls back to the single-editor
+  prompt); non-interactive (`--yes`) wires all detected with no prompts.
+  An explicit `--client` keeps the old single-editor behavior, including the
+  per-project default for vscode/cursor. *Rationale: Stone's two hats — he
+  writes code in several editors himself, and new users / pilot colleagues
+  should not have to learn `--client` to get started. The help text already
+  promised "default: auto-detect"; D46 makes the code keep that promise.
+  Approved 2026-09-29.*
 
 ## Open Questions
 

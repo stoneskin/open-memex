@@ -33,6 +33,8 @@
 
 - [ ] Cursor：`open-memex mcp --print-config cursor` → 贴到 Cursor MCP 配置 → 能连上
 - [ ] opencode：`open-memex init --client opencode` → `opencode.jsonc` 生效
+- [ ] `open-memex init --yes`（不带 --client）→ 自动检测已装编辑器并一次全接上
+- [ ] opencode：`open-memex init --client opencode --global` → `~/.config/opencode/opencode.json` 的 `plugin` 数组合并（带注释的 jsonc 不动、只给手动提示）
 - [ ] Claude Code：`open-memex mcp --print-config claude` 给出的 `claude mcp add` 命令能跑通
 
 ## D. 跨机迁移（export/import 真实场景）

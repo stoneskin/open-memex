@@ -8,7 +8,7 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
-import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, removeServerEntry, removePluginEntry, removeInstructionsSection } from "../src/init.ts";
+import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection } from "../src/init.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -431,6 +431,15 @@ console.error = origErr;
 const hintText = hintLines.join("\n");
 ok("manual hint names the section", hintText.includes('"servers"'));
 ok("manual hint contains the entry", hintText.includes('"open-memex"') && hintText.includes("stdio"));
+// parseJsonConfig: empty/whitespace-only files are empty docs (safe to populate);
+// genuinely unparseable content (JSONC comments) or non-objects yield null.
+ok("empty file → {}", JSON.stringify(parseJsonConfig("")) === "{}");
+ok("whitespace-only file → {}", JSON.stringify(parseJsonConfig("  \n\t ")) === "{}");
+ok("valid JSON parses", (parseJsonConfig('{"servers":{}}') as Record<string, unknown>)["servers"] !== undefined);
+ok("JSONC comments → null", parseJsonConfig('{\n  // a comment\n}') === null);
+ok("trailing garbage → null", parseJsonConfig('{} trailing') === null);
+ok("array → null", parseJsonConfig("[1,2]") === null);
+ok("scalar → null", parseJsonConfig("42") === null);
 // removeServerEntry: pure removal semantics.
 const rdoc: Record<string, unknown> = { servers: { "open-memex": { command: "x" }, other: { command: "y" } }, untouched: 1 };
 ok("remove deletes the entry", removeServerEntry(rdoc, "servers") === "removed"

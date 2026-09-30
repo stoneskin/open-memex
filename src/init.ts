@@ -193,6 +193,27 @@ export function printManualEntryHint(sectionKey: string, entry: Record<string, u
 }
 
 /**
+ * Parse a JSON config file's raw text for merging. An empty or
+ * whitespace-only file counts as `{}` — there is nothing to preserve, so
+ * writers can safely populate it (an empty mcp.json is a normal first-run
+ * state, e.g. created by the editor, not a corrupt file). Returns null when
+ * the content is genuinely unparseable (e.g. JSONC comments) or not an
+ * object, in which case the caller leaves the file untouched and prints the
+ * manual step.
+ */
+export function parseJsonConfig(raw: string): Record<string, unknown> | null {
+  if (raw.trim() === "") return {};
+  let doc: unknown;
+  try {
+    doc = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) return null;
+  return doc as Record<string, unknown>;
+}
+
+/**
  * Read (or create) a JSON config file, merge the open-memex server entry, write
  * it back. Existing files are merged, never clobbered; invalid JSON is left
  * untouched. `mkdir` controls whether parent dirs are created (user-level
@@ -207,13 +228,13 @@ function writeServerEntryFile(
 ): string | null {
   let doc: Record<string, unknown> = {};
   if (fs.existsSync(file)) {
-    try {
-      doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-    } catch {
+    const parsed = parseJsonConfig(fs.readFileSync(file, "utf8"));
+    if (parsed === null) {
       console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
       printManualEntryHint(sectionKey, entry);
       return null;
     }
+    doc = parsed;
   }
   const merged = mergeServerEntry(doc, sectionKey, entry, force);
   if (merged === "kept") {
@@ -316,9 +337,8 @@ function writeOpencodeMcpJson(root: string, force: boolean): string | null {
   const file = path.join(root, "opencode.jsonc");
   let doc: Record<string, unknown> = {};
   if (fs.existsSync(file)) {
-    try {
-      doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-    } catch {
+    const parsed = parseJsonConfig(fs.readFileSync(file, "utf8"));
+    if (parsed === null) {
       console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
       const mc = resolveMcpCommand();
       printManualEntryHint("mcp", {
@@ -328,6 +348,7 @@ function writeOpencodeMcpJson(root: string, force: boolean): string | null {
       });
       return null;
     }
+    doc = parsed;
   }
   const section = ((doc["mcp"] ??= {}) as Record<string, unknown>);
   if (section["open-memex"] && !force) {
@@ -357,9 +378,8 @@ function writeVisualStudioMcpJson(root: string, force: boolean): string | null {
   const file = path.join(root, ".mcp.json");
   let doc: Record<string, unknown> = {};
   if (fs.existsSync(file)) {
-    try {
-      doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-    } catch {
+    const parsed = parseJsonConfig(fs.readFileSync(file, "utf8"));
+    if (parsed === null) {
       console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
       const mc = resolveMcpCommand();
       printManualEntryHint("servers", {
@@ -761,10 +781,8 @@ export function removeInstructionsSection(text: string): string {
  */
 function removeServerEntryFile(file: string, sectionKey: string): "removed" | "absent" | null {
   if (!fs.existsSync(file)) return "absent";
-  let doc: Record<string, unknown>;
-  try {
-    doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-  } catch {
+  const doc = parseJsonConfig(fs.readFileSync(file, "utf8"));
+  if (doc === null) {
     console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
     console.error(`    Delete the "open-memex" key under "${sectionKey}".`);
     return null;
@@ -780,10 +798,8 @@ function removeServerEntryFile(file: string, sectionKey: string): "removed" | "a
 /** Remove the open-memex plugin URL from one opencode user-level config file. */
 function removeOpencodePluginFile(file: string): "removed" | "absent" | null {
   if (!fs.existsSync(file)) return "absent";
-  let doc: Record<string, unknown>;
-  try {
-    doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-  } catch {
+  const doc = parseJsonConfig(fs.readFileSync(file, "utf8"));
+  if (doc === null) {
     console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
     console.error(`    Delete the open-memex URL from the "plugin" array.`);
     return null;

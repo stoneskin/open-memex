@@ -954,6 +954,19 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   with the manual step, same D47 treatment as the init write path.
   *Rationale: Stone asked "有 uninstall 吗" while testing init on Windows —
   every write deserves an undo. Approved 2026-09-29.*
+- **D49** — empty config files are no longer treated as corrupt (0.5.0-alpha.5).
+  Stone's real Windows run: his user-level `mcp.json` existed but was empty,
+  and `init` refused it with "not valid JSON — left untouched", because
+  `JSON.parse("")` throws. New `parseJsonConfig` helper: empty or
+  whitespace-only content parses as `{}` — there is nothing to preserve, so
+  writers safely populate it; genuinely unparseable content (JSONC comments)
+  or non-objects still return null and keep the D47 leave-untouched + manual
+  hint behavior. Applied to all five config file touch points: the three init
+  writers (vscode/cursor MCP, opencode `opencode.jsonc`, Visual Studio
+  `.mcp.json`) and the two uninstall removers (empty file = nothing to remove).
+  *Rationale: an empty file is the safest write target, not a corrupt file;
+  refusing it sent the user down a manual path for no reason. Triggered by
+  Stone's report 2026-09-29.*
 
 ## Open Questions
 

@@ -64,6 +64,13 @@ previews keyword capture without writing, `open-memex doctor` runs health checks
 (node version, config, scope resolution, storage writability, MCP handshake).
 `open-memex init` with no --client auto-detects and wires every installed editor
 (`--yes` skips, scripts never prompt); `open-memex config set <key> <value>` edits settings after install.
+`open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]`
+reverses init — removes the MCP server entry / opencode plugin line / Copilot
+instructions section; memory data never touched (D48); no --client → auto-detect
+with an interactive confirm, explicit --client never prompts; `--yes` only skips
+that confirm; `--global` limits cleanup to user-level. Empty/whitespace-only
+config files parse as `{}` and are safely populated (D49); non-JSON (JSONC)
+files are left untouched with a printed manual snippet (D47).
 The published `open-memex` bin points at `dist/cli.js` (compiled at publish time).
 From a source checkout, `npm run cli` / `npm run mcp` still run `src/` directly
 with type-stripping — no build step needed for development.

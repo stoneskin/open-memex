@@ -90,7 +90,7 @@ personal scope: this machine only — never synced, never enters a repo.
 npm install -g open-memex
 ```
 
-This installs the `0.4.0` stable release.
+This installs the `0.4.1` stable release.
 
 **Alpha** (bleeding edge, for testers) — the `alpha` tag:
 
@@ -114,10 +114,10 @@ npx -y open-memex <command>         # e.g. npx -y open-memex init --client vscod
 npx -y open-memex@alpha <command>  # alpha line, no install
 ```
 
-**From source** (bleeding edge, `V2-dev-p2` branch):
+**From source** (bleeding edge, `main` branch):
 
 ```sh
-git clone -b V2-dev-p2 https://github.com/stoneskin/open-memex.git
+git clone -b main https://github.com/stoneskin/open-memex.git
 cd open-memex
 npm install
 node --experimental-strip-types src/cli.ts <command>
@@ -158,7 +158,7 @@ Run from your **project root** (so the project scope resolves to this repo):
 
 ```sh
 open-memex init --yes
-# …or without a global install:
+# …or without installing the package first:
 npx -y open-memex init --yes
 ```
 
@@ -167,16 +167,25 @@ With no `--client`, `init` **detects your installed editors and wires them all**
 native plugin), so one init covers every project. Visual Studio joins in when the
 project has a solution file. Prefer to pick a single editor? Pass `--client`:
 
+> **Two different "globals" — don't mix them up.**
+> - `npm install -g open-memex` installs the *package* globally: it puts the
+>   `open-memex` command on your PATH.
+> - `init --global` writes the *editor config* at user level instead of the
+>   project: init once, the wiring works in every project. It works the same
+>   whether the package was installed globally or run via npx.
+
 **VS Code** (Copilot):
 
 ```sh
 open-memex init --client vscode
-# …or without a global install:
+# …or without installing the package first:
 npx -y open-memex init --client vscode
 ```
 
-Writes `.vscode/mcp.json` and user-level Copilot instructions, then reload the
-window and confirm the `open-memex` server is started in Copilot Chat's MCP panel.
+Wires the project-level `.vscode/mcp.json` and user-level Copilot instructions,
+then reload the window and confirm the `open-memex` server is started in Copilot
+Chat's MCP panel. On a TTY, `init` asks whether the MCP config should be
+per-project or user-level instead of guessing; `--global` forces user-level.
 
 **Cursor:**
 
@@ -184,7 +193,9 @@ window and confirm the `open-memex` server is started in Copilot Chat's MCP pane
 open-memex init --client cursor
 ```
 
-Writes `.cursor/mcp.json` and user-level Copilot instructions.
+Same shape as VS Code: project-level `.cursor/mcp.json` by default, user-level
+with `--global` (or when `init` asks on a TTY), plus user-level Copilot
+instructions.
 
 **One-time setup for all projects (VS Code / Cursor):**
 
@@ -198,7 +209,8 @@ Writes the server entry to the editor's *user-level* MCP config
 `~/.config/Code/User/mcp.json` on Linux; `~/.cursor/mcp.json` for Cursor)
 instead of the project — init once, the server starts in every project.
 A per-project `.vscode/mcp.json` still wins if a project defines its own.
-(On a TTY, `init` asks whether the config should be per-project or user-level.)
+If the user-level file has comments in it (VS Code accepts JSONC), `init` leaves
+the file untouched and prints the exact snippet to paste in by hand.
 
 **opencode** (native plugin — recommended):
 
@@ -242,6 +254,17 @@ above works too.
 **Codex:** no `init` client yet — add the server manually via
 `open-memex mcp --print-config` as a starting point (`[mcp_servers]` in
 `config.toml`, or `codex mcp add`).
+
+**Remove the wiring:**
+
+```sh
+open-memex uninstall --yes
+```
+
+Reverses `init` — removes the MCP server entry, the opencode plugin line, and
+the open-memex section of the Copilot instructions. With no `--client` it cleans
+up every detected editor (project-level and user-level wiring); `--global`
+limits the cleanup to user-level. Your memories are never touched.
 
 `init` notes:
 
@@ -437,7 +460,8 @@ Settable keys: `maxProjectMemories`, `maxProfileItems`, `injectOnFirstTurn`,
 Setup & health:
 
 ```sh
-open-memex init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
+open-memex init [--client vscode|cursor|opencode|visualstudio]
+              [--instructions personal|project] [--global] [--force] [--yes]
 open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]
 open-memex config                                  # print effective config
 open-memex config set <key> <value>                # change a setting
@@ -607,6 +631,52 @@ explicit opt-in); cloud `RemoteProvider` customization only if multi-repo
 sharing, ACL, or compliance needs demand it.
 
 Design details: [docs/V2-DESIGN.md](./docs/V2-DESIGN.md) (append-only decision log).
+
+## FAQ
+
+**Do I need to initialize open-memex for each project after installing?**
+Two layers. The data layer needs nothing — there is no per-project init:
+the data dir is created on demand and the project scope is derived
+automatically from your cwd's git remote or path, so memories are
+namespaced per project with zero setup. The editor wiring takes one step:
+run `open-memex init` with no arguments and it auto-detects every editor
+you have installed (VS Code, Cursor, opencode — plus Visual Studio when the
+project has a `.sln`) and wires them all, user-level wherever the editor
+supports it, so one init covers every project. Prefer a single editor?
+`open-memex init --client <vscode|cursor|opencode|visualstudio>`. Prefer to
+force user-level for VS Code / Cursor? Add `--global`. The Copilot memory
+instructions default to user-level (`~/.copilot/`), which is global.
+
+**Does opencode need `init`?**
+Two paths. Recommended: `open-memex init --client opencode --global` —
+it merges the native open-memex plugin into
+`~/.config/opencode/opencode.json` for you. One-time setup, applies to all
+projects, and additionally enables keyword auto-capture and first-turn
+memory injection. Prefer to do it by hand? Add
+`"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]`
+(the installed package's path) to that file instead. As a plain MCP
+consumer: `open-memex init --client opencode` writes a project-level
+`opencode.jsonc` (no hooks). If your user-level config has comments, `init`
+leaves it untouched and prints the manual step.
+
+**VS Code — run `init` once, or per project?**
+Once. Plain `open-memex init` auto-detects VS Code and writes the MCP server
+entry to VS Code's user-level `mcp.json`
+(`%APPDATA%/Code/User/mcp.json` on Windows,
+`~/Library/Application Support/Code/User/mcp.json` on macOS,
+`~/.config/Code/User/mcp.json` on Linux), so the server starts in every
+project. A per-project `.vscode/mcp.json` still wins when present, and the
+entry keeps `cwd=${workspaceFolder}` so project-scope resolution keeps
+working per window. If your user-level `mcp.json` has comments (VS Code
+accepts JSONC), `init` leaves it alone and prints the exact snippet to add
+by hand.
+
+**How do I remove the editor wiring?**
+`open-memex uninstall` reverses `init`: it removes the MCP server entry,
+the opencode plugin line, and the open-memex section of the Copilot
+instructions. With no `--client` it cleans up every detected editor;
+`--global` limits the cleanup to user-level wiring. Your memories are
+never touched.
 
 ## License
 

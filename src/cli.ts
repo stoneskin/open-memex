@@ -279,17 +279,39 @@ Examples:
 agent memory instructions. Existing files are merged, never clobbered.
 
 Usage: open-memex init [--client vscode|cursor|opencode|visualstudio]
-              [--instructions personal|project] [--force] [--yes]
+              [--instructions personal|project] [--global] [--force] [--yes]
 
 Flags:
-  --client        editor to configure (default: auto-detect)
+  --client        editor to configure (default: auto-detect all installed editors)
   --instructions  personal (default, ~/.copilot/copilot-instructions.md) or project
+  --global        write the MCP server entry to the editor's user-level config
+                  (VS Code / Cursor) — init once, works in every project.
+                  For opencode, --global wires the native plugin at user level
+                  (~/.config/opencode/opencode.json) — no per-project init needed.
   --force         overwrite existing config
   --yes           accept all defaults, never prompt
 
 Examples:
   open-memex init
+  open-memex init --client vscode --global --yes
   open-memex init --client cursor --yes`,
+
+  uninstall: `Remove the editor wiring that \`init\` wrote: the MCP server entry,
+the opencode native plugin line, and the Copilot instructions section.
+Your memories are never touched.
+
+Usage: open-memex uninstall [--client vscode|cursor|opencode|visualstudio]
+              [--global] [--yes]
+
+Flags:
+  --client   editor to unwire (default: auto-detect all installed editors)
+  --global   only the user-level config; without it, both project-level and
+             user-level wiring are removed (init may have written either)
+  --yes      accept all defaults, never prompt
+
+Examples:
+  open-memex uninstall
+  open-memex uninstall --client vscode --yes`,
 
   config: `Show config, or set a key.
 
@@ -346,6 +368,8 @@ Usage:
   open-memex mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
   open-memex init [--client vscode|cursor|opencode|visualstudio]
               [--instructions personal|project] [--force] [--yes]
+  open-memex uninstall [--client vscode|cursor|opencode|visualstudio]
+              [--global] [--yes]
   open-memex config [set <key> <value>]
   open-memex capture --dry-run "text"
   open-memex doctor
@@ -353,16 +377,19 @@ Usage:
 Every command has its own help with description and examples:
   open-memex <command> --help   (or -h)
 
-One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) writes
-the MCP config for your editor (\`.vscode/mcp.json\`, \`.cursor/mcp.json\`,
-\`opencode.jsonc\`, or Visual Studio's solution-level \`.mcp.json\`) — no copy-paste
-needed. The Copilot memory instructions default to your user-level
+One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) detects
+your installed editors and wires them all — user-level where the editor supports it
+(VS Code / Cursor MCP config, opencode native plugin), so one init covers every project;
+Visual Studio is included when the project has a solution file (its \`.mcp.json\`
+stays solution-level by design). \`--client\` picks a single editor instead, and a
+single-editor opencode init writes the per-project plain-MCP \`opencode.jsonc\`.
+The Copilot memory instructions default to your user-level
 \`~/.copilot/copilot-instructions.md\` (all projects, never checked into a repo);
 \`--instructions project\` writes \`.github/copilot-instructions.md\` instead for
 teams where everyone uses open-memex.
 Existing files are merged, never clobbered; re-running is safe. On a terminal it
-asks which editor to set up and a couple of settings (keyword capture, first-turn
-injection); \`--yes\` accepts all defaults, and non-terminal runs never prompt.
+confirms the detected editors and asks a couple of settings (keyword capture,
+first-turn injection); \`--yes\` accepts all defaults, and non-terminal runs never prompt.
 \`open-memex config set <key> <value>\` changes those settings after install.
 
 Once installed globally (\`npm i -g open-memex@alpha\`) the \`open-memex\` command is
@@ -595,7 +622,7 @@ async function main() {
   }
 
   // `init` is a pure file operation (§17 adoption path) — no DB needed.
-  // Interactive when on a TTY (asks editor + settings); --yes skips prompts.
+  // Interactive when on a TTY (confirms detected editors + settings); --yes skips prompts.
   if (cmd === "init") {
     const flags = parseFlags(rest);
     const { initProject } = await import("./init.ts");
@@ -604,6 +631,20 @@ async function main() {
       force: flags["force"] === "true",
       yes: flags["yes"] === "true",
       instructions: flags["instructions"],
+      global: flags["global"] === "true",
+    });
+    return;
+  }
+
+  // `uninstall` reverses `init` — removes the editor wiring; never touches data.
+  // No DB needed (pure file operation, like init).
+  if (cmd === "uninstall") {
+    const flags = parseFlags(rest);
+    const { uninstallProject } = await import("./init.ts");
+    await uninstallProject({
+      client: flags["client"],
+      global: flags["global"] === "true",
+      yes: flags["yes"] === "true",
     });
     return;
   }

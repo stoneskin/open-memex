@@ -87,7 +87,7 @@ personal scope：只属于这台机器——永不同步，永远进不了仓库
 npm install -g open-memex
 ```
 
-安装的是 `0.4.0` 正式版。
+安装的是 `0.4.1` 正式版。
 
 **Alpha 版**（最新开发版，给测试者）——`alpha` 标签：
 
@@ -111,10 +111,10 @@ npx -y open-memex <命令>          # 例如 npx -y open-memex init --client vsc
 npx -y open-memex@alpha <命令>   # alpha 线，免安装
 ```
 
-**从源码安装**（最新开发版，`V2-dev-p2` 分支）：
+**从源码安装**（最新开发版，`main` 分支）：
 
 ```sh
-git clone -b V2-dev-p2 https://github.com/stoneskin/open-memex.git
+git clone -b main https://github.com/stoneskin/open-memex.git
 cd open-memex
 npm install
 node --experimental-strip-types src/cli.ts <命令>
@@ -151,16 +151,35 @@ Windows 下被进程加载的 DLL 是锁死的：如果 open-memex MCP server �
 
 在**项目根目录**下运行（这样 project scope 会解析到这个仓库）：
 
+```sh
+open-memex init --yes
+# ……没先装包的话：
+npx -y open-memex init --yes
+```
+
+不带 `--client` 时，`init` 会**自动检测本机装了哪些编辑器，一次全接上**——
+支持用户级的编辑器走用户级（VS Code / Cursor 的 MCP 配置、opencode 原生插件），
+一次 init，所有项目通用；项目里有 solution 文件时 Visual Studio 也会一起配。
+想只配某一个编辑器？加 `--client`：
+
+> **两个"全局"不是一回事，别搞混。**
+> - `npm install -g open-memex` 是把*包*装到全局：让 `open-memex` 命令出现在
+>   你的 PATH 里。
+> - `init --global` 是把*编辑器配置*写到用户级而不是项目里：init 一次，
+>   每个项目都生效。不管包是全局安装的还是用 npx 临时跑的，效果一样。
+
 **VS Code**（Copilot）：
 
 ```sh
 open-memex init --client vscode
-# ……没装全局包的话：
+# ……没先装包的话：
 npx -y open-memex init --client vscode
 ```
 
-自动写 `.vscode/mcp.json` 和用户级 Copilot instructions，然后重新加载窗口，
-在 Copilot Chat 的 MCP 面板里确认 `open-memex` server 已启动。
+配项目级 `.vscode/mcp.json` 和用户级 Copilot instructions，然后重新加载窗口，
+在 Copilot Chat 的 MCP 面板里确认 `open-memex` server 已启动。终端交互模式下
+`init` 会问你要配到项目级还是用户级，而不是替你猜；`--global` 直接强制
+用户级。
 
 **Cursor：**
 
@@ -168,7 +187,35 @@ npx -y open-memex init --client vscode
 open-memex init --client cursor
 ```
 
-自动写 `.cursor/mcp.json` 和用户级 Copilot instructions。
+和 VS Code 一个套路：默认写项目级 `.cursor/mcp.json`，`--global`
+（或终端里 `init` 问你时选用户级）就写用户级，外加用户级 Copilot
+instructions。
+
+**一次配置、所有项目通用（VS Code / Cursor）：**
+
+```sh
+open-memex init --client vscode --global --yes
+```
+
+把 server 条目写到编辑器的*用户级* MCP 配置（Windows 下是
+`%APPDATA%\Code\User\mcp.json`，macOS 是
+`~/Library/Application Support/Code/User/mcp.json`，Linux 是
+`~/.config/Code/User/mcp.json`；Cursor 是 `~/.cursor/mcp.json`），
+而不是写到项目里——init 一次，每个项目打开自动启动 server。
+如果某个项目自己定义了 `.vscode/mcp.json`，项目级的优先。
+如果用户级文件里带注释（VS Code 接受 JSONC），`init` 不会碰这个文件，
+只打印可直接手贴的配置片段。
+
+**opencode**（原生插件——推荐）：
+
+```sh
+open-memex init --client opencode --global --yes
+```
+
+把 `"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]` 合并进用户级
+`~/.config/opencode/opencode.json`——一次配置，每个项目自动生效，不用逐个项目
+init。在 tools 之外还能获得关键词自动捕获和首轮上下文注入。（带注释的配置文件
+不会被改动——那种情况请手动加 `plugin` 这一行。）
 
 **opencode**（作为普通 MCP 客户端）：
 
@@ -176,10 +223,8 @@ open-memex init --client cursor
 open-memex init --client opencode
 ```
 
-写项目级 `opencode.jsonc`（`type: "local"`）。想用原生插件？
-在 `~/.config/opencode/opencode.jsonc` 里加
-`"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]`——
-在 tools 之外还能获得关键词自动捕获和首轮上下文注入。
+写项目级 `opencode.jsonc`（`type: "local"`）。只有当你更想要纯 MCP 而不是原生
+插件时才需要。
 
 **Claude Code**（在项目根目录运行）：
 
@@ -202,6 +247,16 @@ Visual Studio 也会自动发现 `.vscode/mcp.json` 和 `.cursor/mcp.json`，
 **Codex：** 暂无 `init` 客户端——以 `open-memex mcp --print-config` 为起点手动添加
 （`config.toml` 的 `[mcp_servers]`，或 `codex mcp add`）。
 
+**拆掉接线：**
+
+```sh
+open-memex uninstall --yes
+```
+
+`init` 的逆操作——删掉 MCP server 条目、opencode 插件行和 Copilot
+instructions 里的 open-memex 段。不带 `--client` 时把检测到的编辑器全清掉
+（项目级和用户级都清）；`--global` 只清用户级。你的记忆数据永远不会被碰。
+
 `init` 说明：
 
 - Copilot 记忆 instructions 默认写到**用户级**
@@ -210,11 +265,19 @@ Visual Studio 也会自动发现 `.vscode/mcp.json` 和 `.cursor/mcp.json`，
   到 repo，没装 open-memex 的同事看不到、也不会出错。团队人人都用
   open-memex 时可用 `--instructions project` 改写
   `.github/copilot-instructions.md`。
-- 在终端里会交互式询问：配哪个编辑器、是否开启关键词自动捕获、
-  是否在首轮注入记忆。`--yes` 全用默认值；脚本 / 非 TTY 环境不提问
-  （编辑器默认 VS Code）。
+- 不带 `--client` 时，`init` 自动检测已安装的编辑器（VS Code 看 `PATH` 有没有
+  `code` / 安装位置 / 已有的用户级配置；Cursor 看 `PATH` 有没有 `cursor` 或
+  `~/.cursor`；opencode 看 `PATH` 有没有 `opencode` 或其配置目录；项目里有
+  `.sln` 时算上 Visual Studio），一次全接上——支持用户级的走用户级，
+  一次 init，所有项目通用。
+- 在终端里会列出检测到的编辑器，请你确认是一次全配还是只配一个，
+  再问是否开启关键词自动捕获、是否在首轮注入记忆。`--yes` 全用默认值；
+  脚本 / 非 TTY 环境不提问，直接配所有检测到的编辑器。
 - 已有配置文件会被**合并，不会被覆盖**——重复运行是安全的。
   `--force` 强制覆盖。
+- `--global` 把 MCP server 条目写到编辑器的用户级配置（VS Code / Cursor）——
+  一次配置，所有项目通用。opencode 的 `--global` 走用户级原生插件，
+  不用逐个项目 init；Visual Studio 按设计保持 solution 级。
 - 如果 `PATH` 上没有可用的 `open-memex`（比如一次性 npx），`init` 会把
   `npx -y open-memex mcp` 写进配置，配置照样能用。
   以后 `npm i -g open-memex` + `open-memex init --force` 可切换到更快
@@ -374,7 +437,9 @@ open-memex config set maxProjectMemories 12
 安装与健康检查：
 
 ```sh
-open-memex init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
+open-memex init [--client vscode|cursor|opencode|visualstudio]
+              [--instructions personal|project] [--global] [--force] [--yes]
+open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]
 open-memex config                                  # 打印生效配置
 open-memex config set <key> <value>                # 改设置
 open-memex doctor                                  # 环境健康检查
@@ -529,6 +594,43 @@ embedding 模型**）；云端 `RemoteProvider` 定制只在多仓库共享、
 ACL 或合规需求出现时才做。
 
 设计细节：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（append-only 决策日志）。
+
+## 常见问题（FAQ）
+
+**装完之后，每个项目都要初始化 open-memex 吗（像其他 app 那样）？**
+分两层。数据层不需要——没有 per-project 初始化的概念：数据目录按需自动创建，
+project scope 从当前目录的 git remote 或路径自动推导，记忆天然按项目隔离，
+零配置。编辑器接线只需要一步：直接跑 `open-memex init`（不带参数），它会自动
+检测你装好的编辑器（VS Code、Cursor、opencode；项目里有 `.sln` 时还有 Visual
+Studio）并一次全接上——支持用户级配置的编辑器就写用户级，一次 init 所有项目
+通用。只想接某一个编辑器？用
+`open-memex init --client <vscode|cursor|opencode|visualstudio>`。
+想给 VS Code / Cursor 强制写用户级？加 `--global`。
+Copilot 记忆指令默认写用户级（`~/.copilot/`），那个是全局的。
+
+**opencode 需要跑 `init` 吗？**
+两条路。推荐：`open-memex init --client opencode --global`——自动把原生插件
+合并进 `~/.config/opencode/opencode.json`。一次配置，所有项目生效，还多拿
+关键词自动捕获和首轮记忆注入。想手写？往那个文件里加
+`"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]`
+（填 open-memex 的实际安装路径）就行。当纯 MCP 用：
+`open-memex init --client opencode` 写项目级 `opencode.jsonc`（无 hooks）。
+如果你的用户级配置里带注释，`init` 不会碰它，只打印手动步骤。
+
+**VS Code 呢——跑一次就行，还是每个项目都要跑？**
+跑一次就行。直接 `open-memex init` 会自动检测到 VS Code，把 MCP server 写进
+VS Code 的用户级 `mcp.json`（Windows：`%APPDATA%/Code/User/mcp.json`；
+macOS：`~/Library/Application Support/Code/User/mcp.json`；
+Linux：`~/.config/Code/User/mcp.json`），每个项目打开 server 都在。
+项目里如果有 `.vscode/mcp.json` 仍然优先；entry 里保留了
+`cwd=${workspaceFolder}`，project scope 按窗口照常工作。
+如果你的用户级 `mcp.json` 带注释（VS Code 接受 JSONC），`init` 不会碰它，
+只打印可直接手贴的配置片段。
+
+**怎么拆掉编辑器接线？**
+`open-memex uninstall` 就是 `init` 的逆操作：删掉 MCP server 条目、opencode
+插件行和 Copilot instructions 里的 open-memex 段。不带 `--client` 时把检测
+到的编辑器全清掉；`--global` 只清用户级。你的记忆数据永远不会被碰。
 
 ## 许可证
 

@@ -882,6 +882,24 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   cannot confirm what the real run will do; and a destructive-path failure must
   speak in user terms. Shipped as 0.4.1 hotfix on the stable line. Approved
   2026-09-29.*
+- **D45** — `init --global` (0.5.0-alpha.1): one-time user-level MCP wiring for
+  VS Code / Cursor. Writes the open-memex server entry to the editor's
+  user-level `mcp.json` (`%APPDATA%\Code\User\mcp.json` on Windows,
+  `~/Library/Application Support/Code/User/mcp.json` on macOS,
+  `~/.config/Code/User/mcp.json` on Linux; `~/.cursor/mcp.json` for Cursor)
+  instead of the project's `.vscode/mcp.json` — init once, the server starts
+  in every project. The entry keeps `cwd: "${workspaceFolder}"` so VS Code
+  substitutes it per window and project-scope resolution keeps working;
+  a per-project config still wins when present. Merge semantics are shared
+  with project-level init (merge, never clobber; `--force` overwrites).
+  Interactive `init` now asks per-project vs user-level for vscode/cursor
+  (default: per-project, preserving old behavior); `--global` skips the
+  question. For opencode, `--global` is a no-op that prints the native-plugin
+  one-liner (already global, and strictly more capable than plain-MCP mode);
+  Visual Studio stays solution-level by design. *Rationale: per-project init
+  is a paper cut that compounds — the data layer already needs zero per-project
+  setup (scope is derived from cwd), so the editor wiring should be able to
+  match. Approved 2026-09-29.*
 - **D41** — The type taxonomy is reconciled to 11 types with one-line definitions
   (§3.1): `fact` `preference` `decision` `constraint` `todo` `knowledge` `howto`
   `gotcha` `lesson` `observation` `reference`. Merged away: `warning`→`gotcha`,
@@ -893,6 +911,62 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   is deliberately broader than `incident`: a postmortem's shape (timeline, root
   cause, actions) is a template concern, not a type. Code
   `MEMORY_TYPE_TAXONOMY` updated to match. Approved 2026-09-28.*
+- **D46** — `init` with no `--client` auto-detects installed editors and wires
+  them all (0.5.0-alpha.2). Detection: VS Code via `code` on `PATH`, well-known
+  install locations, or an existing user-level `mcp.json`; Cursor via `cursor`
+  on `PATH` or `~/.cursor`; opencode via `opencode` on `PATH` or its global
+  config dir; Visual Studio only when the project has a `.sln` (solution-scoped
+  by design). Auto mode always wires user-level where the editor supports it —
+  VS Code / Cursor MCP entry (D45), and for opencode the native plugin entry is
+  now *actually merged* into `~/.config/opencode/opencode.json` (replacing D45's
+  hint-only `--global`), so one init covers every editor and every project.
+  A config file with comments (JSONC) is never rewritten — init prints the
+  manual one-liner instead. Interactive `init` shows the detected editors and
+  confirms wiring all of them (declining falls back to the single-editor
+  prompt); non-interactive (`--yes`) wires all detected with no prompts.
+  An explicit `--client` keeps the old single-editor behavior, including the
+  per-project default for vscode/cursor. *Rationale: Stone's two hats — he
+  writes code in several editors himself, and new users / pilot colleagues
+  should not have to learn `--client` to get started. The help text already
+  promised "default: auto-detect"; D46 makes the code keep that promise.
+  Approved 2026-09-29.*
+- **D47** — when `init` refuses to touch a config file that isn't valid JSON
+  (usually JSONC with comments — VS Code / Cursor / opencode all accept them),
+  it now prints the exact snippet to add by hand: the section key plus the
+  `"open-memex"` entry, pretty-printed. Covers all three MCP-writing paths —
+  vscode/cursor (user + project level), opencode project-level `opencode.jsonc`,
+  and Visual Studio `.mcp.json` — matching the manual hint the opencode
+  `--global` plugin path already printed (D46). The file is still never
+  rewritten; the hint just makes "fix it manually" actionable. Triggered by
+  Stone's real Windows run: his user-level `mcp.json` had comments, init
+  correctly left it alone, but the old message gave him nothing to paste.
+  *Rationale: a refusal without a remedy is a dead end; the entry shape is
+  already computed, so printing it costs nothing. Approved 2026-09-29.*
+- **D48** — new `open-memex uninstall` command, the reverse of `init`
+  (0.5.0-alpha.4). Removes the MCP server entry / opencode native plugin line /
+  Copilot instructions section that `init` wrote; memory data is never touched.
+  Client resolution mirrors `init` (explicit `--client`, else auto-detect with
+  an interactive confirm). Without `--global` it cleans both project-level and
+  user-level files — init may have written either, and a leftover entry at the
+  other level would be a surprise; `--global` restricts to user-level. Empty
+  sections/arrays are pruned; an instructions file that only held the
+  open-memex section is deleted. Non-JSON (JSONC) configs are left untouched
+  with the manual step, same D47 treatment as the init write path.
+  *Rationale: Stone asked "有 uninstall 吗" while testing init on Windows —
+  every write deserves an undo. Approved 2026-09-29.*
+- **D49** — empty config files are no longer treated as corrupt (0.5.0-alpha.5).
+  Stone's real Windows run: his user-level `mcp.json` existed but was empty,
+  and `init` refused it with "not valid JSON — left untouched", because
+  `JSON.parse("")` throws. New `parseJsonConfig` helper: empty or
+  whitespace-only content parses as `{}` — there is nothing to preserve, so
+  writers safely populate it; genuinely unparseable content (JSONC comments)
+  or non-objects still return null and keep the D47 leave-untouched + manual
+  hint behavior. Applied to all five config file touch points: the three init
+  writers (vscode/cursor MCP, opencode `opencode.jsonc`, Visual Studio
+  `.mcp.json`) and the two uninstall removers (empty file = nothing to remove).
+  *Rationale: an empty file is the safest write target, not a corrupt file;
+  refusing it sent the user down a manual path for no reason. Triggered by
+  Stone's report 2026-09-29.*
 
 ## Open Questions
 

@@ -49,16 +49,28 @@ node --experimental-strip-types scripts\smoke-mcp.ts    # MCP handshake + tool r
 After `npm i -g open-memex` (or `npm link` from source), the `open-memex` bin is on
 PATH: `open-memex mcp` starts the MCP server, `open-memex mcp --print-config <client>`
 prints a client config snippet (client: vscode|cursor|claude|opencode|visualstudio),
-`open-memex init [--client vscode|cursor|opencode|visualstudio] [--instructions personal|project] [--force] [--yes]`
+`open-memex init [--client vscode|cursor|opencode|visualstudio] [--instructions personal|project] [--global] [--force] [--yes]`
 one-command project setup (editor MCP config + Copilot memory instructions;
+no --client → auto-detects installed editors and wires them all, user-level
+where supported — init once, every editor, every project (D46);
 instructions default to user-level ~/.copilot/copilot-instructions.md so the repo
-stays clean for teammates without open-memex — D22; resolves the server command
+stays clean for teammates without open-memex — D22; `--global` writes the MCP
+server entry to the editor's user-level config instead (VS Code / Cursor; D45)
+or the opencode native plugin entry into ~/.config/opencode/opencode.json (D46);
+resolves the server command
 at init time — npx fallback when no durable bin is on PATH, D17),
 `open-memex config` prints the effective config, `open-memex capture --dry-run "text"`
 previews keyword capture without writing, `open-memex doctor` runs health checks
 (node version, config, scope resolution, storage writability, MCP handshake).
-`open-memex init` asks editor + two settings on a TTY (`--yes` skips, scripts never
-prompt); `open-memex config set <key> <value>` edits settings after install.
+`open-memex init` with no --client auto-detects and wires every installed editor
+(`--yes` skips, scripts never prompt); `open-memex config set <key> <value>` edits settings after install.
+`open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]`
+reverses init — removes the MCP server entry / opencode plugin line / Copilot
+instructions section; memory data never touched (D48); no --client → auto-detect
+with an interactive confirm, explicit --client never prompts; `--yes` only skips
+that confirm; `--global` limits cleanup to user-level. Empty/whitespace-only
+config files parse as `{}` and are safely populated (D49); non-JSON (JSONC)
+files are left untouched with a printed manual snippet (D47).
 The published `open-memex` bin points at `dist/cli.js` (compiled at publish time).
 From a source checkout, `npm run cli` / `npm run mcp` still run `src/` directly
 with type-stripping — no build step needed for development.
@@ -126,9 +138,10 @@ build roadmap; the design doc tracks the *why*.
 
 ## Branch workflow
 
-`main` (stable, mirrors npm) ← `V2` (v2 integration) ← `V2-dev-p<n>`
-(phase work; draft PRs into `V2`). Never create `V2/<anything>` — git can't
-hold `V2` and `V2/…` simultaneously. Full rules: `CONTRIBUTING.md`.
+`dev/<topic>` → PR → `main` (the v2 line; alpha versions published with
+`npm publish --tag alpha`, npm `latest` moves only on stable releases).
+The `V2` integration branch was retired 2026-09-29 — its job (isolating the
+breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.
 
 ## Style notes
 

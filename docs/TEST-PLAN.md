@@ -1,4 +1,4 @@
-# OpenMemex 测试计划（v0.4.0-alpha.10）
+# OpenMemex 测试计划（v0.5.0）
 
 > 自动化部分：`node --experimental-strip-types scripts/test-full.ts`
 > 62 项全过（26 个 CLI 命令 + 11 个 MCP tool），隔离环境运行，不碰真实数据。
@@ -6,7 +6,7 @@
 
 ## A. Windows 真机 + VS Code Copilot
 
-- [ ] `npm i -g open-memex@alpha` 全局安装，`open-memex --version` 显示正确版本
+- [ ] `npm i -g open-memex` 全局安装（稳定版），`open-memex --version` 显示正确版本
 - [ ] 在一个真实项目目录跑 `open-memex init`（不加 `--yes`，走一遍交互）
   - 确认 `.vscode/mcp.json` 生成，`~/.copilot/copilot-instructions.md` 合并写入（不覆盖已有内容）
 - [ ] 重启 VS Code，Copilot Chat 里问 "what do you remember about this project?"
@@ -60,9 +60,16 @@
 
 ## G. 同事 pilot（1–2 人，Stone 私下选）
 
-- [ ] 对方 `npx open-memex@alpha init` 走通
+- [ ] 对方 `npx -y open-memex init` 走通
 - [ ] 对方能 propose → 你这边能看到 PR → promote 流程走通
 - [ ] 收集反馈：哪里卡、哪里不符合直觉
+
+## I. init/uninstall 行为（D47–D49）
+
+- [ ] 空的 `mcp.json`：`open-memex init --client vscode` 直接写入，不再报 "not valid JSON"（D49）
+- [ ] 带注释的 `mcp.json`：`init` 不动文件，只打印手贴片段（D47）
+- [ ] `open-memex uninstall --client vscode` 移除接线条目，记忆数据不动；再跑 `init` 可恢复（D48）
+- [ ] 裸 `open-memex uninstall`（交互终端）会先确认再清所有编辑器；`--yes` 跳过确认
 
 ## H. 已知问题观察
 

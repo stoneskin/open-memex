@@ -2,10 +2,13 @@
 
 ## Branch workflow
 
-- `main` — the v2 line. Never commit directly; land work via pull request
-  from a dev branch. Alpha versions (e.g. `0.5.0-alpha.x`) live on `main`;
-  publish them with `npm publish --tag alpha` so the npm `latest` tag only
-  moves on stable releases.
+- `main` — the only line (the `V2` integration branch was retired 2026-09-29).
+  Land work via pull request from a `dev/<topic>` branch. Exception: tiny
+  text-only doc tweaks may go directly to `main`, but only after the owner
+  has previewed and approved the exact change. Alpha versions
+  (e.g. `0.5.0-alpha.x`) live on `main`; publish them with
+  `npm publish --tag alpha` so the npm `latest` tag only moves on stable
+  releases.
 - `dev/<topic>` — feature/fix branches (e.g. `dev/init-ux`). Open as **draft**
   PRs against `main`; mark ready and merge after local testing passes.
 
@@ -25,7 +28,7 @@ branches are cheap.)
 ## Design authority
 
 Protocol decisions live in `docs/V2-DESIGN.md` (frozen v0.2, decision log
-D1–D13). Changing architecture, scope semantics, lifecycle, or the protocol
+D1–D49). Changing architecture, scope semantics, lifecycle, or the protocol
 surface (frontmatter schema, MCP tools, CLI contract) requires updating the
 design doc first. `AGENTS.md` has the working notes for AI agents; this file
 has the contributor workflow.

@@ -12,7 +12,7 @@ via `prepublishOnly` — Node refuses `--experimental-strip-types` for files und
 
 - **opencode host** loads `src/index.ts` under embedded **Bun**. SQLite here is `bun:sqlite` (built-in).
 - **CLI** (`src/cli.ts`) and smoke tests run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
-- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same ten memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
+- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same eleven memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
 
 `src/store/db.ts` picks the backend at runtime by sniffing `globalThis.Bun`. Both backends share the same surface (`new Database(path)`, `.exec`, `.prepare().run/all/get`, `.close`). Any DB code you write must stay on that common subset — do not import `better-sqlite3` or `bun:sqlite` directly outside `db.ts`.
 
@@ -125,7 +125,7 @@ Context injection happens exactly once per session in `experimental.chat.system.
 
 `docs/V2-DESIGN.md` is the frozen protocol v0.2 (zero open questions). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
-built this way" (principles, iron rules, D1–D13 decision log). Before changing
+built this way" (principles, iron rules, D1–D49 decision log). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
 schema, MCP tools, CLI contract), read the relevant design section — the decision
 log records what was already considered and rejected.
@@ -138,7 +138,7 @@ build roadmap; the design doc tracks the *why*.
 
 ## Branch workflow
 
-`dev/<topic>` → PR → `main` (the v2 line; alpha versions published with
+`dev/<topic>` → PR → `main` (alpha versions published with
 `npm publish --tag alpha`, npm `latest` moves only on stable releases).
 The `V2` integration branch was retired 2026-09-29 — its job (isolating the
 breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.

@@ -105,7 +105,7 @@ personal scope: this machine only — never synced, never enters a repo.
 npm install -g open-memex
 ```
 
-This installs the `0.4.1` stable release.
+This installs the `0.5.0` stable release.
 
 **Alpha** (bleeding edge, for testers) — the `alpha` tag:
 
@@ -234,7 +234,8 @@ open-memex init --client opencode --global --yes
 ```
 
 Merges `"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]` into your
-user-level `~/.config/opencode/opencode.json` — one-time, every project picks it
+user-level `~/.config/opencode/opencode.json` (or `opencode.jsonc` if that is
+the file you already have) — one-time, every project picks it
 up, no per-project init. You get keyword auto-capture and first-turn context
 injection on top of the tools. (A config file with comments is left untouched —
 add the `plugin` line by hand in that case.)
@@ -638,6 +639,14 @@ distill-to-AGENTS.md assist (`distill-agents`, propose-only — you merge by han
 §3.5 checkpoint distillation in the MCP handshake + init instructions (the agent
 proposes 1–3 captures at checkpoints, the human decides); 1–2 colleague pilot.
 
+**`0.5.0` (stable):** init UX pass — `init --global` writes the editor wiring
+once at user level (D45); bare `init` auto-detects installed editors and wires
+them all (D46); non-JSON configs are left untouched with a paste-ready snippet
+instead of an error (D47); `uninstall` reverses `init` without touching memory
+data (D48); empty config files are treated as blank, not corrupt (D49).
+"One memory, every agent": every editor on the same machine reads and writes
+the same memory through one MCP interface.
+
 **Future (signal-gated, no version committed):** org layer — org memory repo,
 curator convention; native agent plugins (Claude Code / Codex hooks as
 enhancement paths over the same MCP tools); local embeddings as a
@@ -684,7 +693,7 @@ project. A per-project `.vscode/mcp.json` still wins when present, and the
 entry keeps `cwd=${workspaceFolder}` so project-scope resolution keeps
 working per window. If your user-level `mcp.json` has comments (VS Code
 accepts JSONC), `init` leaves it alone and prints the exact snippet to add
-by hand.
+by hand. An empty file is treated as blank and written to directly.
 
 **How do I remove the editor wiring?**
 `open-memex uninstall` reverses `init`: it removes the MCP server entry,

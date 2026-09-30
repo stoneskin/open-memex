@@ -494,7 +494,7 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
 - **Phase 1 — Local hardening (1–2 wks).** CJK default (bigram+FTS5) · v1→v2 migration · dedup +
   lifecycle · redaction hardening · scope docs. No external dependencies.
 - **Phase 2A — MCP server (shipped 2026-09-27, D15).** Core/adapters split
-  (`src/tools/ops.ts`) · MCP server (`src/mcp.ts`, stdio) exposing all five memory tools —
+  (`src/tools/ops.ts`) · MCP server (`src/mcp.ts`, stdio) exposing all eleven memory tools —
   read-only-first phasing dropped per D15 · query-aware injection stays host-side.
   Ships in **`0.3.0-alpha`** (with bin/npx user-friendliness polish per §17 adoption path).
 - **Phase 2B — Team sync.** GitProvider · `propose/promote/resolve` · in-repo dir · 1–2 colleague pilot
@@ -538,6 +538,11 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   curator convention ✅ `docs/CURATOR.md` (2026-09-29, pulled forward) ·
   distill-to-AGENTS.md assist ✅ `open-memex distill-agents` (2026-09-29, pulled forward) ·
   export/import archive command ✅ `open-memex export` / `import` (2026-09-29, pulled forward, D40).
+- **0.5.0 (stable, 2026-09-29).** Init UX pass: `init --global` user-level editor
+  wiring (D45) · bare-init auto-detect wires all installed editors (D46) · JSONC
+  configs left untouched with a paste-ready snippet (D47) · `uninstall` reverses
+  `init` without touching memory data (D48) · empty config files treated as
+  blank, not corrupt (D49).
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.

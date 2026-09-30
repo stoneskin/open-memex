@@ -942,6 +942,18 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   correctly left it alone, but the old message gave him nothing to paste.
   *Rationale: a refusal without a remedy is a dead end; the entry shape is
   already computed, so printing it costs nothing. Approved 2026-09-29.*
+- **D48** — new `open-memex uninstall` command, the reverse of `init`
+  (0.5.0-alpha.4). Removes the MCP server entry / opencode native plugin line /
+  Copilot instructions section that `init` wrote; memory data is never touched.
+  Client resolution mirrors `init` (explicit `--client`, else auto-detect with
+  an interactive confirm). Without `--global` it cleans both project-level and
+  user-level files — init may have written either, and a leftover entry at the
+  other level would be a surprise; `--global` restricts to user-level. Empty
+  sections/arrays are pruned; an instructions file that only held the
+  open-memex section is deleted. Non-JSON (JSONC) configs are left untouched
+  with the manual step, same D47 treatment as the init write path.
+  *Rationale: Stone asked "有 uninstall 吗" while testing init on Windows —
+  every write deserves an undo. Approved 2026-09-29.*
 
 ## Open Questions
 

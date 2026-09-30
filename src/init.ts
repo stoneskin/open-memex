@@ -701,3 +701,196 @@ export async function initProject(opts: {
   }
   console.log(`\nDone. Reload your editor window to start the open-memex MCP server.`);
 }
+
+// ---------------------------------------------------------------------------
+// uninstall — the reverse of init (D48). Removes the editor wiring init wrote:
+// the MCP server entry, the opencode native plugin line, and the Copilot
+// instructions section. Memory data is never touched.
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure removal of the open-memex server entry from a parsed config doc.
+ * Prunes the section when it becomes empty. Mutates `doc`.
+ */
+export function removeServerEntry(
+  doc: Record<string, unknown>,
+  sectionKey: string,
+): "removed" | "absent" {
+  const section = doc[sectionKey];
+  if (!section || typeof section !== "object" || !("open-memex" in section)) return "absent";
+  delete (section as Record<string, unknown>)["open-memex"];
+  if (Object.keys(section as Record<string, unknown>).length === 0) delete doc[sectionKey];
+  return "removed";
+}
+
+/**
+ * Pure removal of open-memex plugin entries from a parsed opencode config doc.
+ * Matches any plugin URL containing `match` (robust against the package moving
+ * between installs). Prunes the `plugin` array when it becomes empty.
+ * Mutates `doc`.
+ */
+export function removePluginEntry(doc: Record<string, unknown>, match: string): "removed" | "absent" {
+  const plugins = doc["plugin"];
+  if (!Array.isArray(plugins)) return "absent";
+  const kept = (plugins as unknown[]).filter(
+    (p) => !(typeof p === "string" && p.includes(match)),
+  );
+  if (kept.length === plugins.length) return "absent";
+  if (kept.length === 0) delete doc["plugin"];
+  else doc["plugin"] = kept;
+  return "removed";
+}
+
+/**
+ * Pure removal of the open-memex instructions section from a
+ * copilot-instructions.md body. init always appends it last (MARKER..end),
+ * so cutting from the marker to the end is exact; returns "" when nothing
+ * but the section remains so the caller can delete the file.
+ */
+export function removeInstructionsSection(text: string): string {
+  const idx = text.lastIndexOf(MARKER);
+  if (idx < 0) return text;
+  const rest = text.slice(0, idx).replace(/\s+$/, "");
+  return rest ? rest + "\n" : "";
+}
+
+/**
+ * Remove the server entry from one JSON config file. Existing files are
+ * merged, never clobbered; invalid JSON is left untouched with the manual
+ * step (same D47 treatment as the init write path).
+ */
+function removeServerEntryFile(file: string, sectionKey: string): "removed" | "absent" | null {
+  if (!fs.existsSync(file)) return "absent";
+  let doc: Record<string, unknown>;
+  try {
+    doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  } catch {
+    console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
+    console.error(`    Delete the "open-memex" key under "${sectionKey}".`);
+    return null;
+  }
+  const res = removeServerEntry(doc, sectionKey);
+  if (res === "removed") {
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+    console.log(`  - ${file} (open-memex entry removed)`);
+  }
+  return res;
+}
+
+/** Remove the open-memex plugin URL from one opencode user-level config file. */
+function removeOpencodePluginFile(file: string): "removed" | "absent" | null {
+  if (!fs.existsSync(file)) return "absent";
+  let doc: Record<string, unknown>;
+  try {
+    doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  } catch {
+    console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
+    console.error(`    Delete the open-memex URL from the "plugin" array.`);
+    return null;
+  }
+  const res = removePluginEntry(doc, "open-memex");
+  if (res === "removed") {
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+    console.log(`  - ${file} (open-memex plugin removed)`);
+  }
+  return res;
+}
+
+/** Remove the open-memex section from one copilot-instructions.md file. */
+function removeInstructionsFile(file: string): "removed" | "absent" {
+  if (!fs.existsSync(file)) return "absent";
+  const cur = fs.readFileSync(file, "utf8");
+  if (!cur.includes(MARKER)) return "absent";
+  const next = removeInstructionsSection(cur);
+  if (next === "") {
+    fs.unlinkSync(file);
+    console.log(`  - ${file} (deleted — it only held open-memex instructions)`);
+  } else {
+    fs.writeFileSync(file, next);
+    console.log(`  - ${file} (open-memex instructions removed)`);
+  }
+  return "removed";
+}
+
+export async function uninstallProject(opts: {
+  client?: string;
+  /** D48: only the user-level config; without it, both levels are cleaned. */
+  global?: boolean;
+  yes: boolean;
+}): Promise<void> {
+  const interactive = !opts.yes && !!process.stdin.isTTY && !!process.stdout.isTTY;
+  const explicit = normalizeClient(opts.client ?? "");
+  if (explicit && !(INIT_CLIENTS as readonly string[]).includes(explicit)) {
+    console.error(`unknown client "${opts.client}" (${INIT_CLIENTS.join("|")})`);
+    process.exit(1);
+  }
+  // Mirror init's client resolution: explicit --client, else auto-detect.
+  let clients: InitClient[];
+  if (explicit) {
+    clients = [explicit as InitClient];
+  } else if (interactive) {
+    const detected = detectInstalledClients();
+    if (detected.length === 0) {
+      console.log("  - no supported editors detected — nothing to remove");
+      return;
+    }
+    console.log(`Detected editors: ${detected.join(", ")}`);
+    const all = await askBool("Remove open-memex wiring from all of them?", true);
+    if (all) {
+      clients = detected;
+    } else {
+      const one = await promptClient();
+      clients = one ? [one as InitClient] : [];
+    }
+  } else {
+    clients = detectInstalledClients();
+    if (clients.length > 0) {
+      console.log(`Detected editors: ${clients.join(", ")} — removing from all (use --client to pick one)`);
+    }
+  }
+  if (clients.length === 0) {
+    console.log("  - nothing to remove");
+    return;
+  }
+  // Without --global, clean both levels: init may have written either one,
+  // and a leftover entry at the other level would be a surprise.
+  const levels = opts.global ? ["user"] : ["project", "user"];
+  const root = projectRoot();
+  console.log(`open-memex uninstall — project root: ${root}`);
+  let changed = 0;
+  const bump = (r: "removed" | "absent" | null) => {
+    if (r === "removed") changed++;
+  };
+  for (const client of clients) {
+    if (client === "vscode" || client === "cursor") {
+      const sectionKey = client === "cursor" ? "mcpServers" : "servers";
+      for (const level of levels) {
+        const file =
+          level === "user"
+            ? userMcpConfigPath(client)
+            : path.join(root, client === "cursor" ? ".cursor/mcp.json" : ".vscode/mcp.json");
+        bump(removeServerEntryFile(file, sectionKey));
+      }
+    } else if (client === "opencode") {
+      for (const level of levels) {
+        if (level === "user") bump(removeOpencodePluginFile(opencodeGlobalConfigPath()));
+        else bump(removeServerEntryFile(path.join(root, "opencode.jsonc"), "mcp"));
+      }
+    } else if (client === "visualstudio") {
+      // Solution-level only — --global is meaningless, same as init.
+      bump(removeServerEntryFile(path.join(root, ".mcp.json"), "servers"));
+    }
+  }
+  // Copilot instructions: init may have written personal (default) or project.
+  if (clients.some((c) => c !== "opencode")) {
+    bump(removeInstructionsFile(path.join(os.homedir(), ".copilot", "copilot-instructions.md")));
+    bump(removeInstructionsFile(path.join(os.homedir(), "copilot-instructions.md")));
+    bump(removeInstructionsFile(path.join(root, ".github", "copilot-instructions.md")));
+  }
+  console.log(
+    changed > 0
+      ? `\nDone. Removed open-memex wiring from ${changed} file(s).`
+      : "\nDone. Nothing to remove — no open-memex wiring found.",
+  );
+  console.log("Your memories are untouched (uninstall never deletes data).");
+}

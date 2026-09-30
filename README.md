@@ -438,6 +438,7 @@ Setup & health:
 
 ```sh
 open-memex init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
+open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]
 open-memex config                                  # print effective config
 open-memex config set <key> <value>                # change a setting
 open-memex doctor                                  # environment health check

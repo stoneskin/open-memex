@@ -296,6 +296,23 @@ Examples:
   open-memex init --client vscode --global --yes
   open-memex init --client cursor --yes`,
 
+  uninstall: `Remove the editor wiring that \`init\` wrote: the MCP server entry,
+the opencode native plugin line, and the Copilot instructions section.
+Your memories are never touched.
+
+Usage: open-memex uninstall [--client vscode|cursor|opencode|visualstudio]
+              [--global] [--yes]
+
+Flags:
+  --client   editor to unwire (default: auto-detect all installed editors)
+  --global   only the user-level config; without it, both project-level and
+             user-level wiring are removed (init may have written either)
+  --yes      accept all defaults, never prompt
+
+Examples:
+  open-memex uninstall
+  open-memex uninstall --client vscode --yes`,
+
   config: `Show config, or set a key.
 
 Usage: open-memex config [set <key> <value>]
@@ -351,6 +368,8 @@ Usage:
   open-memex mcp [--print-config vscode|cursor|claude|opencode|visualstudio]
   open-memex init [--client vscode|cursor|opencode|visualstudio]
               [--instructions personal|project] [--force] [--yes]
+  open-memex uninstall [--client vscode|cursor|opencode|visualstudio]
+              [--global] [--yes]
   open-memex config [set <key> <value>]
   open-memex capture --dry-run "text"
   open-memex doctor
@@ -613,6 +632,19 @@ async function main() {
       yes: flags["yes"] === "true",
       instructions: flags["instructions"],
       global: flags["global"] === "true",
+    });
+    return;
+  }
+
+  // `uninstall` reverses `init` — removes the editor wiring; never touches data.
+  // No DB needed (pure file operation, like init).
+  if (cmd === "uninstall") {
+    const flags = parseFlags(rest);
+    const { uninstallProject } = await import("./init.ts");
+    await uninstallProject({
+      client: flags["client"],
+      global: flags["global"] === "true",
+      yes: flags["yes"] === "true",
     });
     return;
   }

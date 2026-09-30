@@ -417,6 +417,7 @@ open-memex config set maxProjectMemories 12
 
 ```sh
 open-memex init [--client vscode|cursor|opencode|visualstudio] [--force] [--yes]
+open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]
 open-memex config                                  # 打印生效配置
 open-memex config set <key> <value>                # 改设置
 open-memex doctor                                  # 环境健康检查

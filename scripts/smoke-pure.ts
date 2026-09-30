@@ -8,7 +8,7 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
-import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint } from "../src/init.ts";
+import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, removeServerEntry, removePluginEntry, removeInstructionsSection } from "../src/init.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -431,6 +431,31 @@ console.error = origErr;
 const hintText = hintLines.join("\n");
 ok("manual hint names the section", hintText.includes('"servers"'));
 ok("manual hint contains the entry", hintText.includes('"open-memex"') && hintText.includes("stdio"));
+// removeServerEntry: pure removal semantics.
+const rdoc: Record<string, unknown> = { servers: { "open-memex": { command: "x" }, other: { command: "y" } }, untouched: 1 };
+ok("remove deletes the entry", removeServerEntry(rdoc, "servers") === "removed"
+  && !("open-memex" in (rdoc["servers"] as Record<string, unknown>))
+  && "other" in (rdoc["servers"] as Record<string, unknown>));
+ok("remove absent when entry already gone", removeServerEntry(rdoc, "servers") === "absent"
+  && "servers" in rdoc); // sibling kept, section kept
+const rdoc2: Record<string, unknown> = { servers: { "open-memex": { command: "x" } } };
+ok("remove prunes empty section", removeServerEntry(rdoc2, "servers") === "removed" && !("servers" in rdoc2));
+ok("remove absent when no entry", removeServerEntry({ servers: {} }, "servers") === "absent");
+ok("remove absent when no section", removeServerEntry({}, "servers") === "absent");
+// removePluginEntry: removes any open-memex URL, prunes empty array.
+const rpdoc: Record<string, unknown> = { plugin: ["file:///x/open-memex/src/index.ts", "other-plugin"], theme: "dark" };
+ok("plugin remove by substring", removePluginEntry(rpdoc, "open-memex") === "removed"
+  && JSON.stringify(rpdoc["plugin"]) === JSON.stringify(["other-plugin"]));
+const rpdoc3: Record<string, unknown> = { plugin: ["file:///open-memex/y"] };
+ok("plugin remove prunes empty array", removePluginEntry(rpdoc3, "open-memex") === "removed" && !("plugin" in rpdoc3));
+ok("plugin remove absent", removePluginEntry({ plugin: ["other"] }, "open-memex") === "absent");
+// removeInstructionsSection: cuts MARKER..end, "" when nothing remains.
+ok("instructions remove keeps prior content",
+  removeInstructionsSection("# mine\n\n<!-- open-memex -->\n# OpenMemex memory\n") === "# mine\n");
+ok("instructions remove returns empty when wholesale",
+  removeInstructionsSection("<!-- open-memex -->\n# OpenMemex memory\n") === "");
+ok("instructions remove no-op without marker",
+  removeInstructionsSection("# mine\n") === "# mine\n");
 // detectInstalledClients with a fully fake env.
 const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "memex-bin-"));
 fs.writeFileSync(path.join(binDir, "code"), "#!/bin/sh\n");

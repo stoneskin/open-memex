@@ -543,6 +543,9 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   configs left untouched with a paste-ready snippet (D47) · `uninstall` reverses
   `init` without touching memory data (D48) · empty config files treated as
   blank, not corrupt (D49).
+- **0.5.1 (stable).** `--help` accuracy: `mcp` help states the server exposes 11
+  tools (a superset of the opencode plugin's five memory tools); install hints point
+  at the stable line instead of `@alpha` (F27).
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.

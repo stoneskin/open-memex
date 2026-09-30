@@ -1,4 +1,4 @@
-# OpenMemex 测试计划（v0.5.0）
+# OpenMemex 测试计划（v0.5.1）
 
 > 自动化部分：`node --experimental-strip-types scripts/test-full.ts`
 > 62 项全过（26 个 CLI 命令 + 11 个 MCP tool），隔离环境运行，不碰真实数据。

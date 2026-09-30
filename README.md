@@ -105,7 +105,7 @@ personal scope: this machine only — never synced, never enters a repo.
 npm install -g open-memex
 ```
 
-This installs the `0.5.0` stable release.
+This installs the `0.5.1` stable release.
 
 **Alpha** (bleeding edge, for testers) — the `alpha` tag:
 
@@ -646,6 +646,10 @@ instead of an error (D47); `uninstall` reverses `init` without touching memory
 data (D48); empty config files are treated as blank, not corrupt (D49).
 "One memory, every agent": every editor on the same machine reads and writes
 the same memory through one MCP interface.
+
+**`0.5.1` (stable):** `--help` accuracy fixes — the `mcp` help text now states the
+server exposes 11 tools (a superset of the opencode plugin's five memory tools),
+and install hints point at the stable line instead of `@alpha` (F27).
 
 **Future (signal-gated, no version committed):** org layer — org memory repo,
 curator convention; native agent plugins (Claude Code / Codex hooks as

@@ -100,7 +100,7 @@ personal scope：只属于这台机器——永不同步，永远进不了仓库
 npm install -g open-memex
 ```
 
-安装的是 `0.5.0` 正式版。
+安装的是 `0.5.1` 正式版。
 
 **Alpha 版**（最新开发版，给测试者）——`alpha` 标签：
 
@@ -602,6 +602,8 @@ distill-to-AGENTS.md 辅助（`distill-agents`，只提议不改写——人工�
 （agent 在检查点提议 1–3 条捕获，人来定）；找 1–2 个同事做 pilot。
 
 **`0.5.0`（稳定版）：** init 体验整修——`init --global` 一次写好用户级编辑器接线（D45）；裸 `init` 自动检测已装编辑器并一次全接上（D46）；非标准 JSON 配置不再报错，而是原样保留并打印手贴片段（D47）；`uninstall` 逆转 `init` 且永不碰记忆数据（D48）；空配置文件按空白处理、不再误判为损坏（D49）。"一份记忆，所有 Agent 通用"：同一台机器上的每个编辑器，经由同一个 MCP 接口读写同一份记忆。
+
+**`0.5.1`（稳定版）：** `--help` 文案准确性修正——`mcp` 帮助写明 server 暴露 11 个工具（含 opencode 插件的 5 个 memory 工具），安装提示改指稳定版而非 `@alpha`（F27）。
 
 **未来（看信号再定，不承诺版本）：** 组织层——组织记忆仓库、curator 约定；
 原生 agent 插件（Claude Code / Codex hooks，作为同一套 MCP tools 的增强路径）；

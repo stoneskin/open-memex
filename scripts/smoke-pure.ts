@@ -8,7 +8,7 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
-import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath } from "../src/init.ts";
+import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint } from "../src/init.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -422,6 +422,15 @@ ok("plugin merge force on dup adds nothing twice", mergePluginEntry(pdoc, "file:
 const pdoc2: Record<string, unknown> = { plugin: ["file:///other"], theme: "dark" };
 ok("plugin merge preserves siblings", mergePluginEntry(pdoc2, "file:///x", false) === "added"
   && (pdoc2["plugin"] as unknown[]).length === 2 && pdoc2["theme"] === "dark");
+// printManualEntryHint: the invalid-JSON bail-out must show the exact snippet to add by hand.
+const hintLines: string[] = [];
+const origErr = console.error;
+console.error = (msg?: unknown) => { hintLines.push(String(msg)); };
+printManualEntryHint("servers", { type: "stdio", command: "open-memex", args: ["mcp"] });
+console.error = origErr;
+const hintText = hintLines.join("\n");
+ok("manual hint names the section", hintText.includes('"servers"'));
+ok("manual hint contains the entry", hintText.includes('"open-memex"') && hintText.includes("stdio"));
 // detectInstalledClients with a fully fake env.
 const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "memex-bin-"));
 fs.writeFileSync(path.join(binDir, "code"), "#!/bin/sh\n");

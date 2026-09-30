@@ -182,6 +182,17 @@ export function mergeServerEntry(
 }
 
 /**
+ * D46-followup: when a config file isn't valid JSON we leave it untouched —
+ * but "fix it manually" alone isn't helpful. Print the exact snippet the
+ * user needs to add by hand (same idea as the opencode --global hint).
+ */
+export function printManualEntryHint(sectionKey: string, entry: Record<string, unknown>): void {
+  console.error(`    Add this under "${sectionKey}":`);
+  const pretty = JSON.stringify({ "open-memex": entry }, null, 2).replace(/\n/g, "\n    ");
+  console.error(`    ${pretty}`);
+}
+
+/**
  * Read (or create) a JSON config file, merge the open-memex server entry, write
  * it back. Existing files are merged, never clobbered; invalid JSON is left
  * untouched. `mkdir` controls whether parent dirs are created (user-level
@@ -200,6 +211,7 @@ function writeServerEntryFile(
       doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     } catch {
       console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
+      printManualEntryHint(sectionKey, entry);
       return null;
     }
   }
@@ -308,6 +320,12 @@ function writeOpencodeMcpJson(root: string, force: boolean): string | null {
       doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     } catch {
       console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
+      const mc = resolveMcpCommand();
+      printManualEntryHint("mcp", {
+        type: "local",
+        command: [mc.command, ...mc.args],
+        enabled: true,
+      });
       return null;
     }
   }
@@ -343,6 +361,12 @@ function writeVisualStudioMcpJson(root: string, force: boolean): string | null {
       doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     } catch {
       console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
+      const mc = resolveMcpCommand();
+      printManualEntryHint("servers", {
+        type: "stdio",
+        command: mc.command,
+        args: mc.args,
+      });
       return null;
     }
   }

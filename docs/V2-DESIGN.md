@@ -930,6 +930,18 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   should not have to learn `--client` to get started. The help text already
   promised "default: auto-detect"; D46 makes the code keep that promise.
   Approved 2026-09-29.*
+- **D47** — when `init` refuses to touch a config file that isn't valid JSON
+  (usually JSONC with comments — VS Code / Cursor / opencode all accept them),
+  it now prints the exact snippet to add by hand: the section key plus the
+  `"open-memex"` entry, pretty-printed. Covers all three MCP-writing paths —
+  vscode/cursor (user + project level), opencode project-level `opencode.jsonc`,
+  and Visual Studio `.mcp.json` — matching the manual hint the opencode
+  `--global` plugin path already printed (D46). The file is still never
+  rewritten; the hint just makes "fix it manually" actionable. Triggered by
+  Stone's real Windows run: his user-level `mcp.json` had comments, init
+  correctly left it alone, but the old message gave him nothing to paste.
+  *Rationale: a refusal without a remedy is a dead end; the entry shape is
+  already computed, so printing it costs nothing. Approved 2026-09-29.*
 
 ## Open Questions
 

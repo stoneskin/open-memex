@@ -329,8 +329,9 @@ Example:
   open-memex capture --dry-run "remember: we deploy on Fridays"`,
 
   doctor: `Environment health check: Node version, config source, scope resolution,
-storage writability, then boots a real MCP server and runs initialize +
-tools/list against it — all eleven tools must show up.
+storage writability, VS Code MCP enablement (settings.json + system policy),
+then boots a real MCP server and runs initialize + tools/list against it —
+all eleven tools must show up.
 
 Usage: open-memex doctor
 

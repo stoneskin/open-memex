@@ -3,8 +3,9 @@
 // Read-only except that paths() and the MCP handshake may create the (empty)
 // data directories, exactly like a normal `open-memex mcp` start would.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadConfig, configSource, DEFAULT_CONFIG } from "./config.ts";
 import { paths } from "./paths.ts";
@@ -158,9 +159,145 @@ function mcpCheck(): Promise<Check> {
   });
 }
 
+/** Parse JSON tolerating line/block comments plus trailing commas
+ * (VS Code's settings.json is JSONC). Health-check grade, not a full parser. */
+function parseLenientJson(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    /* fall through to comment stripping */
+  }
+  let out = "";
+  let i = 0;
+  let inStr = false;
+  let esc = false;
+  while (i < raw.length) {
+    const c = raw[i];
+    const n = raw[i + 1];
+    if (inStr) {
+      out += c;
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inStr = true;
+      out += c;
+      i++;
+      continue;
+    }
+    if (c === "/" && n === "/") {
+      while (i < raw.length && raw[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && n === "*") {
+      i += 2;
+      while (i < raw.length && !(raw[i] === "*" && raw[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  out = out.replace(/,\s*([}\]])/g, "$1");
+  return JSON.parse(out) as Record<string, unknown>;
+}
+
+function vscodeSettingsPath(): string | null {
+  const home = os.homedir();
+  if (process.platform === "win32") {
+    const appdata = process.env.APPDATA;
+    return appdata ? path.join(appdata, "Code", "User", "settings.json") : null;
+  }
+  if (process.platform === "darwin") {
+    return path.join(home, "Library", "Application Support", "Code", "User", "settings.json");
+  }
+  return path.join(home, ".config", "Code", "User", "settings.json");
+}
+
+/** True when a Windows system policy disables MCP (value name contains "mcp",
+ * data is 0/0x0/false). Checks HKLM and HKCU policy keys. */
+function windowsMcpPolicyDisabled(): string | null {
+  if (process.platform !== "win32") return null;
+  for (const hive of ["HKLM", "HKCU"]) {
+    try {
+      const stdout = execFileSync(
+        "reg",
+        ["query", `${hive}\\SOFTWARE\\Policies\\Microsoft\\VSCode`],
+        { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] },
+      ) as string;
+      for (const line of stdout.split("\n")) {
+        const m = line.match(/^\s{2,}(\S+)\s+REG_\w+\s+(\S+)/);
+        if (m && /mcp/i.test(m[1]) && /^(0x0|0|false)$/i.test(m[2])) {
+          return `${hive}\\SOFTWARE\\Policies\\Microsoft\\VSCode!${m[1]}`;
+        }
+      }
+    } catch {
+      /* policy key absent — no policy */
+    }
+  }
+  return null;
+}
+
+function settingsMcpDisabled(file: string): boolean {
+  try {
+    const parsed = parseLenientJson(fs.readFileSync(file, "utf8"));
+    return parsed["chat.mcp.enabled"] === false;
+  } catch {
+    return false; // unreadable file: don't claim anything
+  }
+}
+
+/** VS Code ignores MCP server entries entirely when MCP is switched off —
+ * either in settings.json or, on managed machines, by system policy. */
+function vscodeMcpCheck(): Check {
+  const name = "vscode-mcp";
+  const policyHit = windowsMcpPolicyDisabled();
+  if (policyHit) {
+    return {
+      name,
+      ok: false,
+      detail:
+        `MCP is disabled by system policy (${policyHit}) — managed by your organization. ` +
+        `VS Code will ignore open-memex's MCP entry on this machine.`,
+    };
+  }
+  const files: string[] = [];
+  const user = vscodeSettingsPath();
+  if (user) files.push(user);
+  const ws = path.join(process.cwd(), ".vscode", "settings.json");
+  if (!files.includes(ws)) files.push(ws);
+  const found: string[] = [];
+  const disabled: string[] = [];
+  for (const f of files) {
+    if (!fs.existsSync(f)) continue;
+    found.push(f);
+    if (settingsMcpDisabled(f)) disabled.push(f);
+  }
+  if (disabled.length > 0) {
+    return {
+      name,
+      ok: false,
+      detail:
+        `chat.mcp.enabled is false in ${disabled.join(", ")} — VS Code will not load ` +
+        `MCP servers. Set it to true (or ask IT if the setting shows as managed).`,
+    };
+  }
+  return {
+    name,
+    ok: true,
+    detail:
+      found.length > 0
+        ? `MCP enabled (checked ${found.join(", ")})`
+        : "VS Code settings not found on this machine — nothing to check",
+  };
+}
+
 export async function runDoctor(): Promise<boolean> {
   console.log("open-memex doctor");
-  const checks: Check[] = [nodeCheck(), configCheck(), scopeCheck(), storageCheck()];
+  const checks: Check[] = [nodeCheck(), configCheck(), scopeCheck(), storageCheck(), vscodeMcpCheck()];
   checks.push(await mcpCheck());
   let allOk = true;
   for (const c of checks) {

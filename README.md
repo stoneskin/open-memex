@@ -25,14 +25,14 @@ automatically.
 
 ### One memory, every agent
 
-Most developers don't use one AI tool — they use several: Copilot at work,
-Cursor or opencode at home, Claude Code somewhere in between. Each tool keeps
+Most developers don't use one AI tool — they use several on the same machine:
+Copilot in VS Code, Cursor, opencode, Claude Code. Each tool keeps
 its own silo: a decision made in one is invisible to the others.
 
 open-memex is tool-agnostic by design. Memory lives as Markdown + SQLite next
 to your project, and every editor talks to it through the same MCP interface.
 Wire up two, three, five clients with `open-memex init` — they all read and
-write the same memory. A constraint captured in VS Code is respected in
+write the same memory on that machine. A constraint captured in VS Code is respected in
 opencode; a lesson learned in Cursor shows up in Claude Code.
 
 > Your memory belongs to you — not to your tools.
@@ -50,7 +50,7 @@ of re-deriving them on every run.
 | Review before sharing | Yes — outbox + PR | Varies | Yes | No |
 | Agent recall | Session-start injection + search | API calls | Manual lookup | No |
 | Human-readable | Plain Markdown files | Dashboard / API | Yes | No |
-| Works across AI tools | Yes — any MCP client | Per-integration | No | No |
+| Works across AI tools | Yes — any MCP client (same machine) | Per-integration | No | No |
 
 - **Markdown files** as the source of truth (human-editable, git-friendly)
 - **SQLite FTS5** as a rebuildable index (BM25 keyword search, via `better-sqlite3`)

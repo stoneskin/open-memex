@@ -23,12 +23,12 @@ open-memex 把值得记住的部分——决策、约束、教训——存成可
 
 ### 一份记忆，所有 Agent 通用
 
-大多数开发者并不是只用一个 AI 工具——公司里用 Copilot，家里用 Cursor 或 opencode，
-每个工具的记忆都是孤岛：在 A 里定好的决策，B 一无所知。
+大多数开发者并不是只用一个 AI 工具——同一台电脑上可能装着 VS Code Copilot、
+Cursor、opencode、Claude Code。但每个工具的记忆都是孤岛：在 A 里定好的决策，B 一无所知。
 
 open-memex 天生与工具无关。记忆以 Markdown + SQLite 的形式存在项目旁边，
 所有编辑器都通过同一个 MCP 接口读写。用 `open-memex init` 接上两三个客户端，
-它们读写的是同一份记忆：在 VS Code 里记下的约束，opencode 会遵守；
+它们读写的是这台机器上的同一份记忆：在 VS Code 里记下的约束，opencode 会遵守；
 在 Cursor 里学到的教训，Claude Code 也看得到。
 
 > 记忆属于你，不属于工具。
@@ -45,7 +45,7 @@ plan 产出决策，verify 产出规则——open-memex 是让它们跨会话留
 | 分享前 review | 有——outbox + PR | 不一定 | 有 | 没有 |
 | Agent 回忆 | 会话开始注入 + 搜索 | 调 API | 人工去查 | 没有 |
 | 人类可读 | 纯 Markdown 文件 | 后台 / API | 有 | 没有 |
-| 跨 AI 工具通用 | 可以——任何 MCP 客户端 | 按集成逐个对接 | 不可以 | 不可以 |
+| 跨 AI 工具通用 | 可以——同一台机器上的任何 MCP 客户端 | 按集成逐个对接 | 不可以 | 不可以 |
 
 - **Markdown 文件**是 source of truth（人类可读、git 友好）
 - **SQLite FTS5** 做可重建索引（BM25 关键词检索，`better-sqlite3`）

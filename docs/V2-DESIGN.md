@@ -1103,6 +1103,23 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   configuration; the skill is the CLI-shaped complement to the MCP server.
   Requested by Stone 2026-10-01 after the Agent Skills ecosystem suggestion.*
 
+- **F30** — Sweep pre-rename `my-o-memory` leftovers (0.6.0-alpha.9). The
+  my-o-memory → open-memex rename left editor configs behind that still load
+  the OLD plugin/server, which writes to the OLD data dir — silently splitting
+  the user's memories in two (found live on Stone's work machine 2026-10-01:
+  the old opencode plugin sat above the new one in `opencode.json`, so
+  opencode and the CLI wrote to different data roots). `init` now drops stale
+  `my-o-memory` plugin entries and `my-o-memory` MCP server keys wherever it
+  touches a config (opencode global plugin list, per-project `opencode.jsonc`,
+  `.mcp.json`, VS Code/Cursor `mcp.json` incl. `--global`), even on the
+  "kept" path; JSONC files it can't parse get a manual-removal hint.
+  `uninstall` sweeps the same leftovers. `doctor` gains a read-only
+  `legacy my-o-memory` check: fails when a legacy data dir exists next to the
+  data root, when a user-level config still references `my-o-memory`, or when
+  `MY_O_MEMORY_HOME` points at a pre-rename dir. *Lesson: a package rename
+  must clean up its own old wiring — the old entry and the new entry are never
+  both valid. Reported 2026-10-01.*
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

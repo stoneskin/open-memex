@@ -87,7 +87,9 @@ instructions section / Agent Skill directory; memory data never touched (D48); n
 with an interactive confirm, explicit --client never prompts; `--yes` only skips
 that confirm; `--global` limits cleanup to user-level. Empty/whitespace-only
 config files parse as `{}` and are safely populated (D49); non-JSON (JSONC)
-files are left untouched with a printed manual snippet (D47).
+files are left untouched with a printed manual snippet (D47). init/uninstall also sweep
+pre-rename `my-o-memory` plugin entries and MCP server keys wherever they touch a
+config, and `open-memex doctor` reports any remaining pre-rename leftovers (F30).
 The published `open-memex` bin points at `dist/cli.js` (compiled at publish time).
 From a source checkout, `npm run cli` / `npm run mcp` still run `src/` directly
 with type-stripping — no build step needed for development.

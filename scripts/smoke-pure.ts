@@ -8,7 +8,7 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
-import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection } from "../src/init.ts";
+import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME } from "../src/init.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -451,6 +451,12 @@ const rdoc2: Record<string, unknown> = { servers: { "open-memex": { command: "x"
 ok("remove prunes empty section", removeServerEntry(rdoc2, "servers") === "removed" && !("servers" in rdoc2));
 ok("remove absent when no entry", removeServerEntry({ servers: {} }, "servers") === "absent");
 ok("remove absent when no section", removeServerEntry({}, "servers") === "absent");
+// F30: pre-rename leftovers are swept by key.
+const ldoc: Record<string, unknown> = { servers: { "my-o-memory": { command: "x" }, "open-memex": { command: "y" } } };
+ok("remove drops legacy my-o-memory key, keeps open-memex", removeServerEntry(ldoc, "servers", LEGACY_PACKAGE_NAME) === "removed"
+  && !("my-o-memory" in (ldoc["servers"] as Record<string, unknown>))
+  && "open-memex" in (ldoc["servers"] as Record<string, unknown>));
+ok("legacy package name is my-o-memory", LEGACY_PACKAGE_NAME === "my-o-memory");
 // removePluginEntry: removes any open-memex URL, prunes empty array.
 const rpdoc: Record<string, unknown> = { plugin: ["file:///x/open-memex/src/index.ts", "other-plugin"], theme: "dark" };
 ok("plugin remove by substring", removePluginEntry(rpdoc, "open-memex") === "removed"
@@ -458,6 +464,10 @@ ok("plugin remove by substring", removePluginEntry(rpdoc, "open-memex") === "rem
 const rpdoc3: Record<string, unknown> = { plugin: ["file:///open-memex/y"] };
 ok("plugin remove prunes empty array", removePluginEntry(rpdoc3, "open-memex") === "removed" && !("plugin" in rpdoc3));
 ok("plugin remove absent", removePluginEntry({ plugin: ["other"] }, "open-memex") === "absent");
+// F30: the rename left the OLD plugin loading next to the new one — init must drop it.
+const lpdoc: Record<string, unknown> = { plugin: ["file:///g/my-o-memory/src/index.ts", "file:///g/open-memex/src/index.ts"] };
+ok("plugin remove drops legacy my-o-memory entry", removePluginEntry(lpdoc, LEGACY_PACKAGE_NAME) === "removed"
+  && JSON.stringify(lpdoc["plugin"]) === JSON.stringify(["file:///g/open-memex/src/index.ts"]));
 // removeInstructionsSection: cuts MARKER..end, "" when nothing remains.
 ok("instructions remove keeps prior content",
   removeInstructionsSection("# mine\n\n<!-- open-memex -->\n# OpenMemex memory\n") === "# mine\n");

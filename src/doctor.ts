@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, configSource, DEFAULT_CONFIG } from "./config.ts";
 import { paths } from "./paths.ts";
 import { resolveCwdScope } from "./scope.ts";
+import { LEGACY_PACKAGE_NAME, opencodeGlobalConfigPath, userMcpConfigPath } from "./init.ts";
 
 interface Check {
   name: string;
@@ -299,6 +300,7 @@ export async function runDoctor(): Promise<boolean> {
   console.log("open-memex doctor");
   const checks: Check[] = [nodeCheck(), configCheck(), scopeCheck(), storageCheck(), vscodeMcpCheck()];
   checks.push(await mcpCheck());
+  checks.push(legacyCheck());
   let allOk = true;
   for (const c of checks) {
     console.log(`  ${c.ok ? "ok  " : "FAIL"} ${c.name}: ${c.detail}`);
@@ -306,4 +308,34 @@ export async function runDoctor(): Promise<boolean> {
   }
   console.log(allOk ? "All checks passed." : "Some checks failed — see above.");
   return allOk;
+}
+
+/**
+ * F30: the my-o-memory → open-memex rename left configs and data behind that
+ * silently split memories across two data dirs (the exact trap: the old
+ * opencode plugin kept loading and writing to the OLD dir). Read-only.
+ */
+function legacyCheck(): Check {
+  const name = "legacy my-o-memory";
+  const found: string[] = [];
+  const envHome = process.env.MY_O_MEMORY_HOME;
+  if (envHome && envHome.includes(LEGACY_PACKAGE_NAME))
+    found.push(
+      `MY_O_MEMORY_HOME points at a pre-rename dir (${envHome}) — unset it, then merge old data with \`open-memex migrate --to-v2\``,
+    );
+  const root = paths().root;
+  const legacyDir = path.join(path.dirname(root), LEGACY_PACKAGE_NAME);
+  if (fs.existsSync(legacyDir) && fs.statSync(legacyDir).isDirectory())
+    found.push(`legacy data dir ${legacyDir} — merge it with \`open-memex migrate --to-v2\``);
+  for (const f of [opencodeGlobalConfigPath(), userMcpConfigPath("vscode"), userMcpConfigPath("cursor")]) {
+    try {
+      if (fs.existsSync(f) && fs.readFileSync(f, "utf8").includes(LEGACY_PACKAGE_NAME))
+        found.push(`stale "${LEGACY_PACKAGE_NAME}" reference in ${f} — re-run \`open-memex init --force --yes\``);
+    } catch {
+      /* unreadable — not this check's problem */
+    }
+  }
+  return found.length === 0
+    ? { name, ok: true, detail: "no pre-rename leftovers found" }
+    : { name, ok: false, detail: found.join("; ") };
 }

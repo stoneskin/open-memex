@@ -113,6 +113,12 @@ This installs the `0.5.1` stable release.
 npm install -g open-memex@alpha
 ```
 
+```sh
+open-memex init
+```
+
+The install isn't complete until you run `open-memex init` — it wires up your editors (VS Code, Cursor, opencode).
+
 See what's published:
 
 ```sh

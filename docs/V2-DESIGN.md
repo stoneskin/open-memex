@@ -546,6 +546,17 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 - **0.5.1 (stable).** `--help` accuracy: `mcp` help states the server exposes 11
   tools (a superset of the opencode plugin's five memory tools); install hints point
   at the stable line instead of `@alpha` (F27).
+- **0.6.0 (in development).** Close the install→init gap (D50): postinstall
+  prints the `open-memex init` pointer (never prompts — CI-safe); bare
+  `open-memex` on a fresh machine offers to run init on a TTY. Close the
+  init→first-use gap (D51): init ends with a one-line next-step hint
+  (`open-memex add` + ask the agent to recall it). Agent-prompt clarity pass
+  (D52): rewrite both agent-facing prompts (MCP handshake + init template) so
+  agents execute them correctly. Push-not-poll outbox (D53): the checkpoint
+  mechanism is retired — the server reports the outbox draft count at session
+  start and appends it to mutating tool results when non-zero. Install→init
+  reminder fix (F28): one-line stderr nudge on every CLI entry point until
+  init runs (npm swallows postinstall stdout).
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.
@@ -975,6 +986,122 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   *Rationale: an empty file is the safest write target, not a corrupt file;
   refusing it sent the user down a manual path for no reason. Triggered by
   Stone's report 2026-09-29.*
+- **D50** — close the install→init gap (0.6.0-alpha.1). `npm install -g`
+  only puts the CLI on PATH; the editor wiring is `init`'s job, and a clean
+  reinstall wipes it — Stone hit exactly this on 2026-09-30 (fresh opencode
+  reinstall + `npm i -g open-memex`, then no open-memex in `opencode.jsonc`).
+  Two changes, both CI-safe: (1) a `postinstall` script that **prints**
+  `Run \`open-memex init\`…` — postinstall must never prompt, it runs in CI /
+  Docker / `npm ci` where stdin isn't a terminal; (2) bare `open-memex` on a
+  machine where init never completed **offers** to run it (default yes) when
+  stdin+stdout are TTYs, otherwise prints usage exactly as before. Asked-state
+  is a `.init.json` marker at the data root — init writes it on success, a
+  declined offer writes it too, so the question is asked once; `uninstall`
+  removes it (unwiring is the reverse of init, so the next bare run offers to
+  wire again). The marker is a dotfile and export builds from DB rows, so it
+  can't leak into bundles. The offer re-execs `open-memex init` as a child
+  with inherited stdio rather than calling init in-process — the offer's own
+  readline already consumed stdin's buffer, and a second readline on the same
+  stream would see EOF on burst input (verified with a pty test).
+  *Rationale: install ≠ setup, and the gap only shows up on a fresh machine —
+  exactly when the user has the least context. A printed hint covers the
+  install moment; the interactive offer covers the first-run moment; neither
+  can hang a pipeline. Approved 2026-09-30.*
+- **D51** — close the init→first-use gap (0.6.0-alpha.2). D50 gets the user to
+  a wired editor; a first-time user then stops at "it's wired" with no idea
+  what to do next. `init` now ends with one concrete next step:
+  ``Next step: `open-memex add "standup is at 9:30"` — then ask your agent what
+  it remembers.`` One line, printed unconditionally — the cheapest possible
+  onboarding after wiring. *Rationale: the CLI is editor-independent, so the
+  hint works no matter which client was wired; `add` + recall is the smallest
+  loop that proves the whole system works. Approved 2026-09-30.*
+
+- **D52** — agent-prompt clarity rewrite (0.6.0-alpha.3). Both agent-facing
+  prompts (MCP `initialize` instructions in `src/mcp.ts`, init instruction
+  template in `src/init.ts`) are rewritten to fix ambiguities found on review:
+  (1) the proactive-save vs approval-gate contradiction is resolved by naming
+  the two cases — facts the user *states* are saved proactively, conclusions
+  the agent *infers* are proposed first and saved only on approval;
+  (2) `memory_status`/`memory_search` are excluded from the "after any
+  memory_* action" checkpoint trigger (self-trigger loop);
+  (3) tool names use the full `memory_*` form in both prompts;
+  (4) the four checkpoints are defined once as "Checkpoints" and referenced,
+  with an operational heuristic ("a task the user would describe in one
+  sentence") replacing "meaningful chunk of work";
+  (5) empty outbox → do nothing; "the user commits" → "any git commit in this
+  session"; `type "reference"` named explicitly; PR-base mechanics spelled out
+  per D28. *Rationale: these prompts are the product's UI for agents — a
+  literal-minded agent must execute them correctly without guessing.
+  Approved 2026-10-01.*
+
+- **D53** — push-not-poll outbox: the checkpoint mechanism is retired; code
+  pushes state to the agent instead (0.6.0-alpha.4). `src/submit.ts` gains
+  `outboxDraftCount()` (one indexed SQLite COUNT on the current scope's outbox,
+  no git I/O); `src/tools/ops.ts` gains `withOutboxNote()`, which appends
+  `[open-memex: N draft(s) waiting in the project outbox — call memory_status
+  to review]` to mutating tool results, only when N > 0. It is wired into the
+  five MCP mutating tools (`memory_add`, `memory_supersede`, `memory_forget`,
+  `memory_submit`, `memory_propose`) and the three opencode-plugin mutating
+  tools (`memory_add`, `memory_supersede`, `memory_forget` — there the note
+  stays generic because the plugin has no `memory_status`). The MCP server
+  also appends the live draft count to the `initialize` instructions when N >
+  0 (stdio servers start fresh per session, so construction-time state is
+  session-start state). Both agent-facing prompts drop the Checkpoints section
+  and the post-`memory_submit`/`memory_propose` status checks; the sync rule
+  becomes one line ("when the server reports drafts waiting, call
+  `memory_status`") plus the existing "sync memory" trigger. The static init
+  template keeps one explicit session-start `memory_status` call, since a
+  static file cannot carry live state. An anti-nag clause is added: if the
+  agent already asked about these drafts this session, it does not ask again.
+  *Rationale: the server knows the outbox state; making the agent poll for it
+  on a timer wastes tool calls and teaches a habit that scales badly. The note
+  is silent when the outbox is empty, so the common case costs nothing.
+  `memory_submit` drains the outbox, so its own note is naturally silent.
+  Approved 2026-10-01.*
+
+- **F28** — install→init reminder was invisible (0.6.0-alpha.5). The D50
+  postinstall pointer never reaches the user: npm runs lifecycle scripts in
+  the background and swallows their stdout unless `--foreground-scripts` is
+  passed (reproduced on npm 10.9.4 — the script ran with code 0, its output
+  never displayed). The install-time channel is therefore best-effort only.
+  Fix: every CLI entry point now prints a one-line nudge on stderr until init
+  has run or been declined (`open-memex init` wires editors), gated by the
+  existing `.init.json` first-run marker — stderr keeps the MCP stdio protocol
+  (stdout) intact, so even `open-memex mcp` spawned by an editor carries it
+  safely. `init`/`uninstall` are excluded. The bare-`open-memex` interactive
+  offer on a TTY (D50) is unchanged. *Rationale: the reminder must live in a
+  channel the project controls — the CLI — not in npm script output.
+  Reported 2026-10-01.*
+
+- **F29** — Copilot review fixes on PR #11 (0.6.0-alpha.7). (a) The lockfile
+  carried a stray `"version": "0.6.0-alpha.1"` key as a direct child of
+  `packages` (left by the D50 version bump; hand-edited bumps preserved it) —
+  `npm ls --package-lock-only` failed on it. Removed; version bumps now go
+  through `npm pkg set` so npm owns the lockfile format. (b) D53 missed the
+  shared `TOOL_DESCRIPTIONS.memory_status`: it still told agents to call the
+  tool "at session start and at task checkpoints" — the polling this change
+  retires. Now: session start, server-reported drafts, or explicit "sync
+  memory". Same staleness removed from the `source` field hint. (c) Onboarding
+  strings (postinstall note, first-run nudge, bare-CLI offer) now mention
+  Visual Studio auto-detection for solution projects instead of listing only
+  three editors. *Lesson: never hand-edit version fields in package-lock.json.
+  Reported 2026-10-01.*
+
+- **D54** — Agent Skills support (0.6.0-alpha.8). Ship a bundled
+  `open-memex` skill (`skills/open-memex/SKILL.md`: frontmatter + CLI guide —
+  proactive save, search, scope routing, outbox→submit flow) inside the npm
+  package. `init` copies it (not symlinks — Windows needs no Developer Mode)
+  into each wired editor's user-level skills dir: VS Code →
+  `~/.copilot/skills/open-memex/`, Cursor → `~/.cursor/skills/open-memex/`,
+  opencode → `~/.config/opencode/skills/open-memex/`; Visual Studio has no
+  skills concept and is skipped. User-level by design (D46: init once). An
+  existing skill is never clobbered silently — kept unless `--force`.
+  `uninstall` removes only the `open-memex` skill directory. The skill tells
+  agents to prefer MCP tools (`memory_add` etc.) when available and fall back
+  to the CLI otherwise (with the `npx -y open-memex@latest` prefix when the
+  CLI isn't on PATH). *Rationale: skill-aware agents get memory with zero MCP
+  configuration; the skill is the CLI-shaped complement to the MCP server.
+  Requested by Stone 2026-10-01 after the Agent Skills ecosystem suggestion.*
 
 ## Open Questions
 

@@ -24,7 +24,7 @@ import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
 import { findDuplicates, supersede } from "../store/lifecycle.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
-import { getSyncStatus, formatSyncStatus, submitMemories } from "../submit.ts";
+import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "../github.ts";
 import {
   proposeMemories,
@@ -39,6 +39,26 @@ export interface ToolResult {
   output: string;
 }
 
+/**
+ * D53: push, don't poll. Append the project-outbox pending count to mutating
+ * tool results so agents learn about drafts waiting for review without a
+ * checkpoint poll. Silent when the outbox is empty. `reviewHint` names the
+ * tool to call (MCP); transports without that tool leave it generic.
+ */
+export async function withOutboxNote(
+  scopeKey: string,
+  p: Promise<ToolResult>,
+  reviewHint?: string,
+): Promise<ToolResult> {
+  const r = await p;
+  const n = outboxDraftCount(scopeKey);
+  if (n > 0) {
+    const tail = reviewHint ? ` — ${reviewHint}` : " for review";
+    r.output += `\n[open-memex: ${n} draft${n === 1 ? "" : "s"} waiting in the project outbox${tail}]`;
+  }
+  return r;
+}
+
 /** LLM-facing tool descriptions, shared by the opencode plugin and the MCP server. */
 export const TOOL_DESCRIPTIONS = {
   memory_add:
@@ -51,7 +71,7 @@ export const TOOL_DESCRIPTIONS = {
     "Replace an existing memory with a newer version. The old memory is kept as history (status: superseded) and retrieval returns the new one. Use when a saved fact becomes outdated and should be replaced rather than duplicated.",
   memory_forget: "Delete a memory by id. Use when the user asks to forget something.",
   memory_status:
-    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start and at task checkpoints, then ask the user which drafts to sync. The user may also trigger this flow by saying 'sync memory' (or '同步记忆').",
+    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start, when the server reports drafts waiting for review, or when the user says 'sync memory' (or '同步记忆'); then ask the user which drafts to sync.",
   memory_submit:
     "Move outbox drafts into the repo memory dir for review: copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically.",
   memory_propose:
@@ -84,7 +104,7 @@ export const memoryAddArgs = {
     .string()
     .optional()
     .describe(
-      "Where this memory came from. Default: tool. Pass 'inference' for agent-proposed captures at checkpoints (V2-DESIGN §3.5).",
+      "Where this memory came from. Default: tool. Pass 'inference' for agent-proposed captures (V2-DESIGN §3.5).",
     ),
 };
 export type MemoryAddArgs = z.infer<z.ZodObject<typeof memoryAddArgs>>;

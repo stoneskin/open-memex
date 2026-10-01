@@ -108,6 +108,12 @@ npm install -g open-memex
 npm install -g open-memex@alpha
 ```
 
+```sh
+open-memex init
+```
+
+不跑 `open-memex init` 把编辑器接上，安装就不算完成（支持 VS Code、Cursor、opencode，有 .sln 的项目还支持 Visual Studio）。
+
 查看已发布版本：
 
 ```sh
@@ -173,6 +179,8 @@ npx -y open-memex init --yes
 不带 `--client` 时，`init` 会**自动检测本机装了哪些编辑器，一次全接上**——
 支持用户级的编辑器走用户级（VS Code / Cursor 的 MCP 配置、opencode 原生插件），
 一次 init，所有项目通用；项目里有 solution 文件时 Visual Studio 也会一起配。
+同时会给每个编辑器装一个 **Agent Skill**（`open-memex`），懂 skill 的 agent
+不用配 MCP 也能通过 CLI 用你的记忆。
 想只配某一个编辑器？加 `--client`：
 
 > **两个"全局"不是一回事，别搞混。**
@@ -180,6 +188,12 @@ npx -y open-memex init --yes
 >   你的 PATH 里。
 > - `init --global` 是把*编辑器配置*写到用户级而不是项目里：init 一次，
 >   每个项目都生效。不管包是全局安装的还是用 npx 临时跑的，效果一样。
+
+装完包还会打印一句提醒，让你跑 `open-memex init`——接线是独立的一步。
+如果你在从没跑过 init 的机器上直接敲 `open-memex`，它会问你要不要现在
+init（只在交互终端里问；脚本和 CI 里看到的还是原来的 usage）。
+init 跑完会打印一个具体的下一步——用 `open-memex add` 存一条记忆，再让
+agent 回忆它——让第一次用的用户一眼看到"跑起来了"是什么样子。
 
 **VS Code**（Copilot）：
 
@@ -482,8 +496,8 @@ project 草稿先住在 **appdata outbox**（git 看不见、跟分支无关）�
 没经过你点名，什么都不会动。
 
 在接了 MCP 服务器的 AI 对话里，直接说 **"同步记忆"**（或 "sync memory"）——
-agent 会查状态、把 outbox 草稿逐条摘要、问你同步哪几条。agent 也会在新对话
-开始和任务检查点主动提这件事。
+agent 会查状态、把 outbox 草稿逐条摘要、问你同步哪几条。服务器也会主动告诉
+agent：新对话开始时握手里带待审草稿数，每次改记忆的 tool 返回里也带当前数（为零时不带）。
 
 ```sh
 open-memex sync-status
@@ -530,7 +544,7 @@ open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] 
 # 把项目记忆（decision/constraint/lesson/gotcha/howto）提炼成
 # AGENTS.md 片段。默认打印到 stdout；-o 写文件。人工审阅后手工合并——
 # open-memex 永不自动改写你的 AGENTS.md。片段末尾带一段"记忆卫生"
-# （§3.5 检查点指引），让读 AGENTS.md 的 agent 学会在检查点提议蒸馏捕获。
+# （§3.5 蒸馏指引），让读 AGENTS.md 的 agent 学会在任务结束时提议蒸馏捕获。
 
 open-memex propose <id...> --to project [--local-approve]
 # 一次 propose 一条或多条（一个分支、一个 PR），每条独立新 id。
@@ -582,9 +596,9 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 > **注意：** MCP 是请求/响应式的——它给 agent 提供 tools，但没有 opencode
 > 插件的关键词自动捕获和首轮上下文注入。想让 agent 主动用记忆，
 > 靠的是 agent 的 instructions：服务器在 MCP 握手的 `instructions` 里自带
-> session-start 指引（开场调 `memory_status`、检查点再调），`init` 则把更完整
-> 的版本写进编辑器的 instruction 文件。两者都是建议性的——MCP 客户端没有
-> 强制的 session-start hook。
+> session-start 指引（含开场时的 outbox 待审草稿数；改记忆的 tool 返回里也会
+> 带当前数，为零时不带），`init` 则把更完整的版本写进编辑器的 instruction
+> 文件。两者都是建议性的——MCP 客户端没有强制的 session-start hook。
 
 ## 路线图（Roadmap）
 
@@ -598,8 +612,8 @@ project scope 从进程工作目录解析，所以配置 server 时 cwd 要指�
 `export` / `import` 归档做用户可携带（Markdown + manifest，不造围墙花园；
 private 默认不导出，`-a` / `--all` 全量迁移）；
 distill-to-AGENTS.md 辅助（`distill-agents`，只提议不改写——人工合并）；
-§3.5 检查点蒸馏写进 MCP 握手指令和 init 指令文件
-（agent 在检查点提议 1–3 条捕获，人来定）；找 1–2 个同事做 pilot。
+§3.5 蒸馏写进 MCP 握手指令和 init 指令文件
+（agent 在任务结束时提议 1–3 条捕获，人来定）；找 1–2 个同事做 pilot。
 
 **`0.5.0`（稳定版）：** init 体验整修——`init --global` 一次写好用户级编辑器接线（D45）；裸 `init` 自动检测已装编辑器并一次全接上（D46）；非标准 JSON 配置不再报错，而是原样保留并打印手贴片段（D47）；`uninstall` 逆转 `init` 且永不碰记忆数据（D48）；空配置文件按空白处理、不再误判为损坏（D49）。"一份记忆，所有 Agent 通用"：同一台机器上的每个编辑器，经由同一个 MCP 接口读写同一份记忆。
 

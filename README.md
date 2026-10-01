@@ -113,6 +113,12 @@ This installs the `0.5.1` stable release.
 npm install -g open-memex@alpha
 ```
 
+```sh
+open-memex init
+```
+
+The install isn't complete until you run `open-memex init` — it wires up your editors (VS Code, Cursor, opencode, and Visual Studio for solution projects).
+
 See what's published:
 
 ```sh
@@ -180,7 +186,9 @@ npx -y open-memex init --yes
 With no `--client`, `init` **detects your installed editors and wires them all**
 — user-level where the editor supports it (VS Code / Cursor MCP config, opencode
 native plugin), so one init covers every project. Visual Studio joins in when the
-project has a solution file. Prefer to pick a single editor? Pass `--client`:
+project has a solution file. It also installs an **Agent Skill** (`open-memex`)
+into each editor's skills folder, so skill-aware agents can use your memory via
+the CLI with no MCP configuration. Prefer to pick a single editor? Pass `--client`:
 
 > **Two different "globals" — don't mix them up.**
 > - `npm install -g open-memex` installs the *package* globally: it puts the
@@ -188,6 +196,14 @@ project has a solution file. Prefer to pick a single editor? Pass `--client`:
 > - `init --global` writes the *editor config* at user level instead of the
 >   project: init once, the wiring works in every project. It works the same
 >   whether the package was installed globally or run via npx.
+
+Installing the package also prints a reminder to run `open-memex init` — the
+wiring is a separate step. And if you run bare `open-memex` on a machine where
+init never completed, it offers to run it for you (only on an interactive
+terminal; scripts and CI just see the usual usage text). When init finishes,
+it prints one concrete next step — save a memory with `open-memex add`, then
+ask your agent to recall it — so a first-time user sees what "it works" looks
+like.
 
 **VS Code** (Copilot):
 
@@ -508,8 +524,9 @@ branches and PRs. Nothing moves without you naming it.
 
 In an AI chat with the MCP server connected, just say **"sync memory"**
 (or "同步记忆") — the agent runs the status check, summarizes the outbox drafts,
-and asks which ones to sync. The agent also proposes this on its own at session
-start and at work checkpoints.
+and asks which ones to sync. The server also tells the agent on its own: at
+session start the handshake reports how many drafts are waiting, and every
+memory-changing tool result carries the current count when it is non-zero.
 
 ```sh
 open-memex sync-status
@@ -563,8 +580,8 @@ open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] 
 # (decisions, constraints, lessons, gotchas, howtos). Prints markdown;
 # -o writes it to a file. You review and merge by hand — open-memex
 # never rewrites your AGENTS.md on its own. The snippet ends with a
-# "memory hygiene" section (§3.5 checkpoint guidance) so agents reading
-# AGENTS.md learn to propose distilled captures at checkpoints.
+# "memory hygiene" section (§3.5 distillation guidance) so agents reading
+# AGENTS.md learn to propose distilled captures when a task ends.
 
 open-memex propose <id...> --to project [--local-approve]
 # propose one or several personal memories at once (one branch, one PR);
@@ -619,8 +636,9 @@ server with cwd set to your project root (`init` handles this for you).
 > **Note:** MCP is request/response — it gives the agent tools, not the opencode
 > plugin's automatic keyword capture or first-turn context injection. Proactive
 > memory use depends on the agent's instructions: the server sends session-start
-> guidance (call `memory_status` at session start and at checkpoints) in the MCP
-> handshake `instructions`, and `init` writes the fuller version into the
+> guidance in the MCP handshake `instructions` (including the live outbox draft
+> count at session start, plus the pending count appended to memory-changing
+> tool results when non-zero), and `init` writes the fuller version into the
 > editor's instruction files. Both are advisory — no MCP consumer offers a hard
 > session-start hook.
 
@@ -636,8 +654,8 @@ outbox → `sync-status` → `submit` (local branch+commit, push/PR on your Yes)
 `export` / `import` archive for user portability (Markdown + manifest, no walled
 garden; private excluded by default, `-a` / `--all` for full migration);
 distill-to-AGENTS.md assist (`distill-agents`, propose-only — you merge by hand);
-§3.5 checkpoint distillation in the MCP handshake + init instructions (the agent
-proposes 1–3 captures at checkpoints, the human decides); 1–2 colleague pilot.
+§3.5 distillation in the MCP handshake + init instructions (the agent proposes
+1–3 captures when a task ends, the human decides); 1–2 colleague pilot.
 
 **`0.5.0` (stable):** init UX pass — `init --global` writes the editor wiring
 once at user level (D45); bare `init` auto-detects installed editors and wires

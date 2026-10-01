@@ -7,6 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { DEFAULT_CONFIG, saveConfig } from "./config.ts";
 import { projectRoot } from "./paths.ts";
+import { markFirstRunDone, clearFirstRunMarker } from "./first-run.ts";
 
 const MARKER = "<!-- open-memex -->";
 
@@ -51,54 +52,70 @@ const INSTRUCTIONS = `${MARKER}
 > Applies only when the \`open-memex\` MCP server is available in this session
 > (the \`memory_*\` tools exist). Otherwise ignore this section.
 
-You have a local memory MCP server (\`open-memex\`) with eleven tools:
-\`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`, \`memory_forget\`,
-\`memory_status\`, \`memory_submit\`, \`memory_propose\`, \`memory_promote\`, \`memory_resolve\`,
-\`memory_pr_status\`.
+You have a local memory MCP server (\`open-memex\`). Its tools are
+\`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`,
+\`memory_forget\`, \`memory_status\`, \`memory_submit\`, \`memory_propose\`,
+\`memory_promote\`, \`memory_resolve\`, \`memory_pr_status\` — always call them by
+these full names.
 
-- BE PROACTIVE. When the user shares something worth remembering across sessions
-  (a decision, a preference, a project convention, a fix and its cause), call
-  \`memory_add\` without being asked. Keep each memory to one self-contained statement.
-- At checkpoints (session start, end of a work chunk, after the user commits, after
-  any memory_* action), DISTILL the session: propose 1–3 short memories capturing the
-  useful conclusion — what was learned or decided, how an issue was resolved, what to
-  avoid, where the authoritative doc lives — not the raw transcript. Save NOTHING the
-  user did not approve; on approval call \`memory_add\` with source "inference" at the
-  confirmed scope. If the knowledge already lives in project docs, save a \`reference\`
-  memory pointing at the doc instead of copying it. Long-form notes are fine ONLY when
-  the user explicitly asks to save one.
-- Before asking the user about past decisions, conventions, or preferences they may
-  have told you before, call \`memory_search\` first — try a few keyword variants
-  (including the user's own language) when the first search comes up empty.
-- Memories default to this project's scope; use the \`personal\` scope for facts about
-  the user that hold across all projects. When a saved fact becomes outdated, call
-  \`memory_supersede\` instead of adding a duplicate.
+- The server tells you when project outbox drafts are waiting for review — in
+  tool results. At session start, call \`memory_status\` once to check. When
+  drafts are waiting, summarize them (one line each) and ask the user which
+  ones to sync into the repo; sync NOTHING the user did not name. If you
+  already asked about these drafts this session, don't ask again. When the
+  server reports none waiting, do nothing.
+- BE PROACTIVE about facts the user states directly: when the user shares a
+  decision, preference, project convention, or fix-and-cause worth remembering
+  across sessions, call \`memory_add\` without being asked. Keep each memory to
+  one self-contained statement, and add a brief "(noted in memory)" so the
+  user sees it worked.
+- For conclusions YOU infer (the user never stated them): when you finish a
+  task the user would describe in one sentence, consider distilling the
+  session — if there is something worth keeping,
+  propose 1–3 short memories capturing the useful conclusion (what was learned
+  or decided, how an issue was resolved, what to avoid, where the authoritative
+  doc lives — not the raw transcript), each with its proposed scope. Save
+  NOTHING the user did not approve; on approval call \`memory_add\` with source
+  "inference" at the approved scope. If the knowledge already lives in project
+  docs, save it as type "reference" pointing at the doc instead of copying it.
+  Long-form notes are fine ONLY when the user explicitly asks to save one.
+- Before asking the user about past decisions, conventions, or preferences
+  they may have told you before, call \`memory_search\` first — try a few
+  keyword variants (including the user's own language) when the first search
+  comes up empty.
+- Memories default to this project's scope; use the \`personal\` scope for facts
+  about the user that hold across all projects. When a saved fact becomes
+  outdated, call \`memory_supersede\` (find the old memory's id with
+  \`memory_search\` first) instead of adding a duplicate.
 
 ## Syncing project memories for review (D26)
 
-Project memories you save land in a local outbox first — they are NOT in git yet.
-Syncing them into the repo for review is an explicit, user-approved step:
+Project memories you save land in a local outbox first — they are NOT in git
+yet. Syncing them into the repo for review is an explicit, user-approved step:
 
-- At session start, when you finish a meaningful chunk of work, after the user
-  commits (git commit), and after any memory_* action completes, call
-  \`memory_status\`. If the outbox has drafts, summarize them (one line each) and ask
-  the user which ones to sync. Sync NOTHING the user did not name.
-- When the user says "sync memory" (or "同步记忆"), treat it as a request to run
-  the sync flow above: call \`memory_status\`, summarize the outbox drafts, and ask
-  which ones to sync.
-- When the user approves, call \`memory_submit\` with the approved ids. It copies
-  the drafts into the repo as \`proposed\`, commits locally on the CURRENT branch,
-  and prints the push + PR commands. It NEVER creates a branch on its own.
+- When the server reports drafts waiting for review, call \`memory_status\` to
+  see them. Summarize the drafts (one line each) and ask the user which ones
+  to sync. Sync NOTHING the user did not name.
+- When the user says "sync memory" (or "同步记忆"), run the sync
+  flow above: call \`memory_status\`, summarize the outbox drafts, and ask which
+  ones to sync. ALWAYS use the \`memory_status\` tool for this — never browse
+  the memory data directory directly.
+- When the user approves, call \`memory_submit\` with the approved ids. It
+  copies the drafts into the current project's \`.ai/open-memex/\` directory as
+  \`proposed\` and commits locally on the CURRENT branch. It NEVER creates a
+  branch on its own.
 - After the submit, ask ONE follow-up: "want me to create a branch + push +
-  open the PR, or will you handle it yourself?" A "yes, you do it" answer covers
-  the whole chain — branch creation, push, PR creation — do NOT re-ask at each
-  step. If the user says they will do it themselves, hand them the printed
-  push/PR commands and do nothing. NEVER create branches, push, or open PRs
-  without their explicit approval.
-- Base branch for the memory PR defaults to the branch you are on; the user may
-  redirect it to the integration branch (main) for branch-independent knowledge.
-- If anything conflicts (same id with different content, push rejected), STOP and
-  let the user judge — never overwrite.
+  open the PR, or will you handle it yourself?" A "yes, you do it" answer
+  covers the whole chain — branch creation, push, PR creation — do NOT re-ask
+  at each step. If the user says they will do it themselves, hand them the
+  printed push/PR commands and do nothing. NEVER create branches, push, or open
+  PRs without their explicit approval.
+- If the user wants the memories reviewed on a separate branch, create the
+  branch first (the commit comes along), then push and open the PR. The PR base
+  defaults to the branch submit ran on; \`--base\` overrides it (e.g. \`main\` for
+  branch-independent knowledge).
+- If anything conflicts (same id with different content, push rejected), STOP
+  and let the user judge — never overwrite.
 - After the PR merges, call \`memory_pr_status\` (with \`apply\` when the user
   approves) to map the PR's review state back onto each memory — merged means
   \`published\`, an approval means \`approved\` (credited to the reviewer).
@@ -536,6 +553,77 @@ export interface DetectEnv {
   xdgConfigHome?: string;
 }
 
+// ---------------------------------------------------------------------------
+// D54: Agent Skills. The bundled open-memex skill (skills/open-memex/SKILL.md)
+// teaches skill-aware agents to use open-memex via the CLI. init copies it
+// (not symlinks — Windows needs no Developer Mode) into each wired editor's
+// user-level skills dir; uninstall removes only our directory.
+// ---------------------------------------------------------------------------
+
+/** Package root, two levels above this module (src/init.ts or dist/init.js). */
+export function packageRoot(): string {
+  return path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+}
+
+/** Where the bundled skill lives inside the installed package. */
+export function skillSourceDir(pkgRoot: string = packageRoot()): string {
+  return path.join(pkgRoot, "skills", "open-memex");
+}
+
+/**
+ * D54: user-level Agent Skills directory for the open-memex skill, per client.
+ * null = the client has no skills concept (Visual Studio).
+ */
+export function skillTargetDir(
+  client: InitClient,
+  env: DetectEnv = {},
+): string | null {
+  const home = env.home ?? os.homedir();
+  switch (client) {
+    case "vscode":
+      return path.join(home, ".copilot", "skills", "open-memex");
+    case "cursor":
+      return path.join(home, ".cursor", "skills", "open-memex");
+    case "opencode":
+      return path.join(
+        opencodeConfigDir(home, env.xdgConfigHome ?? process.env.XDG_CONFIG_HOME),
+        "skills",
+        "open-memex",
+      );
+    case "visualstudio":
+      return null;
+  }
+}
+
+/**
+ * Install the bundled skill for one client. Skips when already present unless
+ * force (a customized skill is never clobbered silently).
+ */
+export function writeSkill(
+  client: InitClient,
+  opts: { force?: boolean; pkgRoot?: string } & DetectEnv = {},
+): "installed" | "skipped" | "unsupported" | "missing-source" {
+  const target = skillTargetDir(client, opts);
+  if (!target) return "unsupported";
+  const source = skillSourceDir(opts.pkgRoot ?? packageRoot());
+  if (!exists(path.join(source, "SKILL.md"))) return "missing-source";
+  if (exists(target) && !opts.force) return "skipped";
+  fs.rmSync(target, { recursive: true, force: true });
+  fs.cpSync(source, target, { recursive: true });
+  return "installed";
+}
+
+/** Remove the open-memex skill installed by init for one client. */
+export function removeSkill(
+  client: InitClient,
+  env: DetectEnv = {},
+): "removed" | "absent" {
+  const target = skillTargetDir(client, env);
+  if (!target || !exists(target)) return "absent";
+  fs.rmSync(target, { recursive: true, force: true });
+  return "removed";
+}
+
 function exists(p: string): boolean {
   try {
     return fs.existsSync(p);
@@ -709,6 +797,11 @@ export async function initProject(opts: {
         writeMcpJson(root, client, opts.force);
       }
     }
+    // D54: Agent Skills — user-level by design (init once), alongside the MCP wiring.
+    const skill = writeSkill(client, { force: opts.force });
+    if (skill === "installed") console.log(`  + Agent Skill installed (${skillTargetDir(client)})`);
+    else if (skill === "skipped")
+      console.log(`  - Agent Skill already present for ${client} (use --force to refresh)`);
   }
   if (clients.length === 0) {
     console.log("  - editor setup skipped");
@@ -720,6 +813,11 @@ export async function initProject(opts: {
     writeInstructions(root, scope, clients.find((c) => c !== "opencode")!);
   }
   console.log(`\nDone. Reload your editor window to start the open-memex MCP server.`);
+  // D51: close the init→first-use gap — one concrete next step so a new user
+  // sees what "it works" looks like instead of stopping at "it's wired".
+  console.log(`  Next step: \`open-memex add "standup is at 9:30"\` — then ask your agent what it remembers.`);
+  // D50: init completed — the bare-`open-memex` first-run offer won't ask again.
+  markFirstRunDone("initialized");
 }
 
 // ---------------------------------------------------------------------------
@@ -896,6 +994,8 @@ export async function uninstallProject(opts: {
       // Solution-level only — --global is meaningless, same as init.
       bump(removeServerEntryFile(path.join(root, ".mcp.json"), "servers"));
     }
+    // D54: remove the Agent Skill installed by init.
+    bump(removeSkill(client));
   }
   // Copilot instructions: init may have written personal (default) or project.
   if (clients.some((c) => c !== "opencode")) {
@@ -909,4 +1009,7 @@ export async function uninstallProject(opts: {
       : "\nDone. Nothing to remove — no open-memex wiring found.",
   );
   console.log("Your memories are untouched (uninstall never deletes data).");
+  // D50: unwiring is the reverse of init — drop the first-run marker so the
+  // next bare `open-memex` offers to wire again.
+  if (changed > 0) clearFirstRunMarker();
 }

@@ -13,6 +13,7 @@ import {
   memorySupersedeArgs,
   memoryForgetArgs,
   TOOL_DESCRIPTIONS,
+  withOutboxNote,
 } from "./ops.ts";
 
 export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
@@ -20,7 +21,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     description: TOOL_DESCRIPTIONS.memory_add,
     args: memoryAddArgs,
     async execute(args) {
-      return addMemory(getScope, cfg, args);
+      return withOutboxNote(getScope().key, addMemory(getScope, cfg, args));
     },
   });
 
@@ -44,7 +45,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     description: TOOL_DESCRIPTIONS.memory_supersede,
     args: memorySupersedeArgs,
     async execute(args) {
-      return supersedeMemory(cfg, args);
+      return withOutboxNote(getScope().key, supersedeMemory(cfg, args));
     },
   });
 
@@ -52,7 +53,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     description: TOOL_DESCRIPTIONS.memory_forget,
     args: memoryForgetArgs,
     async execute(args) {
-      return forgetMemory(args);
+      return withOutboxNote(getScope().key, forgetMemory(args));
     },
   });
 

@@ -153,6 +153,22 @@ export function getSyncStatus(): SyncStatus {
   };
 }
 
+/**
+ * D53: cheap outbox draft count — one indexed query, no git I/O — for the
+ * push-not-poll note appended to mutating tool results and to the MCP
+ * session-start instructions. Same outbox definition as getSyncStatus
+ * (file under the scope's outbox dir), without the expensive parts.
+ */
+export function outboxDraftCount(scopeKey: string): number {
+  const outboxDir = memoriesDirPath(scopeKey);
+  const row = db()
+    .prepare(
+      `SELECT COUNT(*) AS n FROM memories WHERE scope_key = ? AND instr(file_path, ?) = 1`,
+    )
+    .get(scopeKey, outboxDir + path.sep) as { n: number } | undefined;
+  return row?.n ?? 0;
+}
+
 export function formatSyncStatus(st: SyncStatus): string {
   const lines: string[] = [];
   lines.push(`project: ${st.projectName} (${st.scopeKey})`);

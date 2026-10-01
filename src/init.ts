@@ -52,54 +52,72 @@ const INSTRUCTIONS = `${MARKER}
 > Applies only when the \`open-memex\` MCP server is available in this session
 > (the \`memory_*\` tools exist). Otherwise ignore this section.
 
-You have a local memory MCP server (\`open-memex\`) with eleven tools:
-\`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`, \`memory_forget\`,
-\`memory_status\`, \`memory_submit\`, \`memory_propose\`, \`memory_promote\`, \`memory_resolve\`,
-\`memory_pr_status\`.
+You have a local memory MCP server (\`open-memex\`). Its tools are
+\`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`,
+\`memory_forget\`, \`memory_status\`, \`memory_submit\`, \`memory_propose\`,
+\`memory_promote\`, \`memory_resolve\`, \`memory_pr_status\` — always call them by
+these full names.
 
-- BE PROACTIVE. When the user shares something worth remembering across sessions
-  (a decision, a preference, a project convention, a fix and its cause), call
-  \`memory_add\` without being asked. Keep each memory to one self-contained statement.
-- At checkpoints (session start, end of a work chunk, after the user commits, after
-  any memory_* action), DISTILL the session: propose 1–3 short memories capturing the
-  useful conclusion — what was learned or decided, how an issue was resolved, what to
-  avoid, where the authoritative doc lives — not the raw transcript. Save NOTHING the
-  user did not approve; on approval call \`memory_add\` with source "inference" at the
-  confirmed scope. If the knowledge already lives in project docs, save a \`reference\`
-  memory pointing at the doc instead of copying it. Long-form notes are fine ONLY when
-  the user explicitly asks to save one.
-- Before asking the user about past decisions, conventions, or preferences they may
-  have told you before, call \`memory_search\` first — try a few keyword variants
-  (including the user's own language) when the first search comes up empty.
-- Memories default to this project's scope; use the \`personal\` scope for facts about
-  the user that hold across all projects. When a saved fact becomes outdated, call
-  \`memory_supersede\` instead of adding a duplicate.
+Checkpoints — run the memory checks below at each of these moments: when you
+receive these instructions (session start); when you finish a task the user
+would describe in one sentence; after any git commit in this session; after
+any \`memory_*\` tool call EXCEPT \`memory_status\` and \`memory_search\` completes.
+
+- At each checkpoint, call \`memory_status\`. If the project outbox has drafts
+  waiting for review, summarize them (one line each) and ask the user which
+  ones to sync into the repo; sync NOTHING the user did not name. If the
+  outbox is empty, do nothing.
+- BE PROACTIVE about facts the user states directly: when the user shares a
+  decision, preference, project convention, or fix-and-cause worth remembering
+  across sessions, call \`memory_add\` without being asked. Keep each memory to
+  one self-contained statement, and add a brief "(noted in memory)" so the
+  user sees it worked.
+- For conclusions YOU infer (the user never stated them): at each checkpoint,
+  consider distilling the session — if there is something worth keeping,
+  propose 1–3 short memories capturing the useful conclusion (what was learned
+  or decided, how an issue was resolved, what to avoid, where the authoritative
+  doc lives — not the raw transcript), each with its proposed scope. Save
+  NOTHING the user did not approve; on approval call \`memory_add\` with source
+  "inference" at the approved scope. If the knowledge already lives in project
+  docs, save it as type "reference" pointing at the doc instead of copying it.
+  Long-form notes are fine ONLY when the user explicitly asks to save one.
+- Before asking the user about past decisions, conventions, or preferences
+  they may have told you before, call \`memory_search\` first — try a few
+  keyword variants (including the user's own language) when the first search
+  comes up empty.
+- Memories default to this project's scope; use the \`personal\` scope for facts
+  about the user that hold across all projects. When a saved fact becomes
+  outdated, call \`memory_supersede\` (find the old memory's id with
+  \`memory_search\` first) instead of adding a duplicate.
 
 ## Syncing project memories for review (D26)
 
-Project memories you save land in a local outbox first — they are NOT in git yet.
-Syncing them into the repo for review is an explicit, user-approved step:
+Project memories you save land in a local outbox first — they are NOT in git
+yet. Syncing them into the repo for review is an explicit, user-approved step:
 
-- At session start, when you finish a meaningful chunk of work, after the user
-  commits (git commit), and after any memory_* action completes, call
-  \`memory_status\`. If the outbox has drafts, summarize them (one line each) and ask
-  the user which ones to sync. Sync NOTHING the user did not name.
-- When the user says "sync memory" (or "同步记忆"), treat it as a request to run
-  the sync flow above: call \`memory_status\`, summarize the outbox drafts, and ask
-  which ones to sync.
-- When the user approves, call \`memory_submit\` with the approved ids. It copies
-  the drafts into the repo as \`proposed\`, commits locally on the CURRENT branch,
-  and prints the push + PR commands. It NEVER creates a branch on its own.
+- At each checkpoint, call \`memory_status\`. If the outbox has drafts,
+  summarize them (one line each) and ask the user which ones to sync. Sync
+  NOTHING the user did not name.
+- When the user says "sync memory" (or "同步记忆"), run the checkpoint sync
+  flow above: call \`memory_status\`, summarize the outbox drafts, and ask which
+  ones to sync. ALWAYS use the \`memory_status\` tool for this — never browse
+  the memory data directory directly.
+- When the user approves, call \`memory_submit\` with the approved ids. It
+  copies the drafts into the current project's \`.ai/open-memex/\` directory as
+  \`proposed\` and commits locally on the CURRENT branch. It NEVER creates a
+  branch on its own.
 - After the submit, ask ONE follow-up: "want me to create a branch + push +
-  open the PR, or will you handle it yourself?" A "yes, you do it" answer covers
-  the whole chain — branch creation, push, PR creation — do NOT re-ask at each
-  step. If the user says they will do it themselves, hand them the printed
-  push/PR commands and do nothing. NEVER create branches, push, or open PRs
-  without their explicit approval.
-- Base branch for the memory PR defaults to the branch you are on; the user may
-  redirect it to the integration branch (main) for branch-independent knowledge.
-- If anything conflicts (same id with different content, push rejected), STOP and
-  let the user judge — never overwrite.
+  open the PR, or will you handle it yourself?" A "yes, you do it" answer
+  covers the whole chain — branch creation, push, PR creation — do NOT re-ask
+  at each step. If the user says they will do it themselves, hand them the
+  printed push/PR commands and do nothing. NEVER create branches, push, or open
+  PRs without their explicit approval.
+- If the user wants the memories reviewed on a separate branch, create the
+  branch first (the commit comes along), then push and open the PR. The PR base
+  defaults to the branch submit ran on; \`--base\` overrides it (e.g. \`main\` for
+  branch-independent knowledge).
+- If anything conflicts (same id with different content, push rejected), STOP
+  and let the user judge — never overwrite.
 - After the PR merges, call \`memory_pr_status\` (with \`apply\` when the user
   approves) to map the PR's review state back onto each memory — merged means
   \`published\`, an approval means \`approved\` (credited to the reviewer).

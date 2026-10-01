@@ -550,7 +550,9 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   prints the `open-memex init` pointer (never prompts — CI-safe); bare
   `open-memex` on a fresh machine offers to run init on a TTY. Close the
   init→first-use gap (D51): init ends with a one-line next-step hint
-  (`open-memex add` + ask the agent to recall it).
+  (`open-memex add` + ask the agent to recall it). Agent-prompt clarity pass
+  (D52): rewrite both agent-facing prompts (MCP handshake + init template) so
+  agents execute them correctly.
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.
@@ -1009,6 +1011,24 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   onboarding after wiring. *Rationale: the CLI is editor-independent, so the
   hint works no matter which client was wired; `add` + recall is the smallest
   loop that proves the whole system works. Approved 2026-09-30.*
+
+- **D52** — agent-prompt clarity rewrite (0.6.0-alpha.3). Both agent-facing
+  prompts (MCP `initialize` instructions in `src/mcp.ts`, init instruction
+  template in `src/init.ts`) are rewritten to fix ambiguities found on review:
+  (1) the proactive-save vs approval-gate contradiction is resolved by naming
+  the two cases — facts the user *states* are saved proactively, conclusions
+  the agent *infers* are proposed first and saved only on approval;
+  (2) `memory_status`/`memory_search` are excluded from the "after any
+  memory_* action" checkpoint trigger (self-trigger loop);
+  (3) tool names use the full `memory_*` form in both prompts;
+  (4) the four checkpoints are defined once as "Checkpoints" and referenced,
+  with an operational heuristic ("a task the user would describe in one
+  sentence") replacing "meaningful chunk of work";
+  (5) empty outbox → do nothing; "the user commits" → "any git commit in this
+  session"; `type "reference"` named explicitly; PR-base mechanics spelled out
+  per D28. *Rationale: these prompts are the product's UI for agents — a
+  literal-minded agent must execute them correctly without guessing.
+  Approved 2026-10-01.*
 
 ## Open Questions
 

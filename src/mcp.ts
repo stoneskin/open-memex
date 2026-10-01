@@ -75,40 +75,51 @@ const SERVER_VERSION: string = (() => {
  * client at connect time. Still advisory — no MCP consumer offers a hard
  * session-start hook — but it is the strongest signal available.
  */
-const SERVER_INSTRUCTIONS = `You are connected to an open-memex local memory MCP server
-(eleven memory_* tools: add, search, list, supersede, forget, status, submit,
-propose, promote, resolve, pr_status).
+const SERVER_INSTRUCTIONS = `You are connected to an open-memex local memory MCP server.
+Its tools are memory_add, memory_search, memory_list, memory_supersede,
+memory_forget, memory_status, memory_submit, memory_propose, memory_promote,
+memory_resolve, memory_pr_status — always call them by these full names.
 
-- At the START of this session, when you finish a meaningful chunk of work,
-  after the user commits (git commit), and after any memory_* action completes,
-  call memory_status. If the project outbox has drafts waiting for review,
-  summarize them (one line each) and ask the user which ones to sync into the
-  repo. Sync NOTHING the user did not name.
-- When the user says "sync memory" (or "同步记忆"), treat it as a request to run
-  the sync flow: call memory_status, summarize the outbox drafts, and ask which
-  ones to sync. ALWAYS use the memory_status tool for this — never browse the
-  appdata directory directly.
+Checkpoints — run the memory checks below at each of these moments: when you
+receive these instructions (session start); when you finish a task the user
+would describe in one sentence; after any git commit in this session; after
+any memory_* tool call EXCEPT memory_status and memory_search completes.
+
+- At each checkpoint, call memory_status. If the project outbox has drafts
+  waiting for review, summarize them (one line each) and ask the user which
+  ones to sync into the repo; sync NOTHING the user did not name. If the
+  outbox is empty, do nothing.
+- When the user says "sync memory" (or "同步记忆"), run the checkpoint sync
+  flow: call memory_status, summarize the outbox drafts (one line each), and
+  ask which ones to sync. ALWAYS use the memory_status tool for this — never
+  browse the memory data directory directly.
 - After memory_submit, ask ONE follow-up: "want me to create a branch + push +
   open the PR, or will you handle it yourself?" NEVER create branches, push, or
   open PRs without the user's explicit approval. A "yes, you do it" covers the
   whole chain — do NOT re-ask at each step.
-- BE PROACTIVE: when the user shares something worth remembering across sessions
-  (a decision, a preference, a project convention, a fix and its cause), call
-  memory_add without being asked. Keep each memory to one self-contained statement.
-- At the same checkpoints (session start, end of a work chunk, after the user
-  commits, after any memory_* action), DISTILL the session: propose 1–3 short
-  memories capturing the useful conclusion — what was learned or decided, how an
-  issue was resolved, what to avoid, where the authoritative doc lives — not the
-  raw transcript. Save NOTHING the user did not approve; on approval call
-  memory_add with source "inference" at the confirmed scope. If the knowledge
-  already lives in project docs, save a \`reference\` memory pointing at the doc
-  instead of copying it. Long-form notes are fine ONLY when the user explicitly
-  asks to save one.
+- BE PROACTIVE about facts the user states directly: when the user shares a
+  decision, preference, project convention, or fix-and-cause worth remembering
+  across sessions, call memory_add without being asked. Keep each memory to one
+  self-contained statement, and add a brief "(noted in memory)" so the user
+  sees it worked.
+- For conclusions YOU infer (the user never stated them): at each checkpoint,
+  consider distilling the session — if there is something worth keeping,
+  propose 1–3 short memories capturing the useful conclusion (what was learned
+  or decided, how an issue was resolved, what to avoid, where the authoritative
+  doc lives — not the raw transcript), each with its proposed scope. Save
+  NOTHING the user did not approve; on approval call memory_add with source
+  "inference" at the approved scope. If the knowledge already lives in project
+  docs, save it as type "reference" pointing at the doc instead of copying it.
+  Long-form notes are fine ONLY when the user explicitly asks to save one.
 - Before asking the user about past decisions, conventions, or preferences they
-  may have told you before, call memory_search first.
+  may have told you before, call memory_search first — try a few keyword
+  variants (including the user's own language) when the first search comes up
+  empty.
 - Memories default to this project's scope; use the personal scope for facts
-  about the user that hold across all projects.
-- personal scope memories NEVER leave this machine.`;
+  about the user that hold across all projects. When a saved fact becomes
+  outdated, call memory_supersede (find the old memory's id with memory_search
+  first) instead of adding a duplicate.
+`;
 
 /** Adapt a framework-agnostic op result to an MCP tool response. */
 function toMcp(p: Promise<ToolResult>) {

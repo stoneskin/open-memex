@@ -189,6 +189,11 @@ project has a solution file. Prefer to pick a single editor? Pass `--client`:
 >   project: init once, the wiring works in every project. It works the same
 >   whether the package was installed globally or run via npx.
 
+Installing the package also prints a reminder to run `open-memex init` — the
+wiring is a separate step. And if you run bare `open-memex` on a machine where
+init never completed, it offers to run it for you (only on an interactive
+terminal; scripts and CI just see the usual usage text).
+
 **VS Code** (Copilot):
 
 ```sh

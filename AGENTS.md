@@ -64,6 +64,11 @@ previews keyword capture without writing, `open-memex doctor` runs health checks
 (node version, config, scope resolution, storage writability, VS Code MCP enablement, MCP handshake).
 `open-memex init` with no --client auto-detects and wires every installed editor
 (`--yes` skips, scripts never prompt); `open-memex config set <key> <value>` edits settings after install.
+`npm install -g` prints a pointer to `open-memex init` via a postinstall script
+(print-only — postinstall must never prompt, it runs in CI/Docker; D50).
+Bare `open-memex` on a machine where init never completed offers to run it on a
+TTY (usage as before when non-interactive); init/uninstall maintain a
+`.init.json` first-run marker at the data root so the offer is asked once (D50).
 `open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]`
 reverses init — removes the MCP server entry / opencode plugin line / Copilot
 instructions section; memory data never touched (D48); no --client → auto-detect

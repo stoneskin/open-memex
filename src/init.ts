@@ -7,6 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { DEFAULT_CONFIG, saveConfig } from "./config.ts";
 import { projectRoot } from "./paths.ts";
+import { markFirstRunDone, clearFirstRunMarker } from "./first-run.ts";
 
 const MARKER = "<!-- open-memex -->";
 
@@ -720,6 +721,8 @@ export async function initProject(opts: {
     writeInstructions(root, scope, clients.find((c) => c !== "opencode")!);
   }
   console.log(`\nDone. Reload your editor window to start the open-memex MCP server.`);
+  // D50: init completed — the bare-`open-memex` first-run offer won't ask again.
+  markFirstRunDone("initialized");
 }
 
 // ---------------------------------------------------------------------------
@@ -909,4 +912,7 @@ export async function uninstallProject(opts: {
       : "\nDone. Nothing to remove — no open-memex wiring found.",
   );
   console.log("Your memories are untouched (uninstall never deletes data).");
+  // D50: unwiring is the reverse of init — drop the first-run marker so the
+  // next bare `open-memex` offers to wire again.
+  if (changed > 0) clearFirstRunMarker();
 }

@@ -181,6 +181,10 @@ npx -y open-memex init --yes
 > - `init --global` 是把*编辑器配置*写到用户级而不是项目里：init 一次，
 >   每个项目都生效。不管包是全局安装的还是用 npx 临时跑的，效果一样。
 
+装完包还会打印一句提醒，让你跑 `open-memex init`——接线是独立的一步。
+如果你在从没跑过 init 的机器上直接敲 `open-memex`，它会问你要不要现在
+init（只在交互终端里问；脚本和 CI 里看到的还是原来的 usage）。
+
 **VS Code**（Copilot）：
 
 ```sh

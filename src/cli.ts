@@ -556,7 +556,28 @@ function printMcpConfig(client: string): never {
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
-  if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") usage(0);
+  if (!cmd) {
+    // D50: fresh machine + interactive terminal → offer init instead of bare usage.
+    // Non-interactive (CI/scripts/pipes) prints usage exactly as before.
+    const { offerFirstRunInit } = await import("./first-run.ts");
+    const outcome = await offerFirstRunInit(async () => {
+      // Re-exec `open-memex init` as a child with inherited stdio instead of
+      // calling initProject() in-process: the offer's readline already
+      // consumed stdin's buffer, and a second readline on the same stream
+      // would see EOF on burst input instead of the user's next answers.
+      const { spawnSync } = await import("node:child_process");
+      const r = spawnSync(
+        process.execPath,
+        [...process.execArgv, fileURLToPath(import.meta.url), "init"],
+        { stdio: "inherit" },
+      );
+      if (r.error) throw r.error;
+      if ((r.status ?? 1) !== 0) process.exit(r.status ?? 1);
+    });
+    if (outcome !== "initialized") usage(0);
+    return;
+  }
+  if (cmd === "--help" || cmd === "-h" || cmd === "help") usage(0);
 
   if (cmd === "--version" || cmd === "-v") {
     // package.json sits two levels above this file in both layouts

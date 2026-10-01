@@ -546,6 +546,9 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 - **0.5.1 (stable).** `--help` accuracy: `mcp` help states the server exposes 11
   tools (a superset of the opencode plugin's five memory tools); install hints point
   at the stable line instead of `@alpha` (F27).
+- **0.6.0 (in development).** Close the install→init gap (D50): postinstall
+  prints the `open-memex init` pointer (never prompts — CI-safe); bare
+  `open-memex` on a fresh machine offers to run init on a TTY.
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.
@@ -975,6 +978,27 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   *Rationale: an empty file is the safest write target, not a corrupt file;
   refusing it sent the user down a manual path for no reason. Triggered by
   Stone's report 2026-09-29.*
+- **D50** — close the install→init gap (0.6.0-alpha.1). `npm install -g`
+  only puts the CLI on PATH; the editor wiring is `init`'s job, and a clean
+  reinstall wipes it — Stone hit exactly this on 2026-09-30 (fresh opencode
+  reinstall + `npm i -g open-memex`, then no open-memex in `opencode.jsonc`).
+  Two changes, both CI-safe: (1) a `postinstall` script that **prints**
+  `Run \`open-memex init\`…` — postinstall must never prompt, it runs in CI /
+  Docker / `npm ci` where stdin isn't a terminal; (2) bare `open-memex` on a
+  machine where init never completed **offers** to run it (default yes) when
+  stdin+stdout are TTYs, otherwise prints usage exactly as before. Asked-state
+  is a `.init.json` marker at the data root — init writes it on success, a
+  declined offer writes it too, so the question is asked once; `uninstall`
+  removes it (unwiring is the reverse of init, so the next bare run offers to
+  wire again). The marker is a dotfile and export builds from DB rows, so it
+  can't leak into bundles. The offer re-execs `open-memex init` as a child
+  with inherited stdio rather than calling init in-process — the offer's own
+  readline already consumed stdin's buffer, and a second readline on the same
+  stream would see EOF on burst input (verified with a pty test).
+  *Rationale: install ≠ setup, and the gap only shows up on a fresh machine —
+  exactly when the user has the least context. A printed hint covers the
+  install moment; the interactive offer covers the first-run moment; neither
+  can hang a pipeline. Approved 2026-09-30.*
 
 ## Open Questions
 

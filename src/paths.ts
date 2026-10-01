@@ -21,6 +21,15 @@ export interface Paths {
 
 let _cached: Paths | null = null;
 
+/**
+ * Read-only data-root path — never creates the directory. For existence
+ * checks (D50 first-run detection) that must not pollute storage; contrast
+ * `paths()`, which mkdirs as a side effect.
+ */
+export function dataRootPath(): string {
+  return dataRoot();
+}
+
 export function paths(): Paths {
   if (_cached) return _cached;
   const root = dataRoot();

@@ -1087,6 +1087,22 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   three editors. *Lesson: never hand-edit version fields in package-lock.json.
   Reported 2026-10-01.*
 
+- **D54** — Agent Skills support (0.6.0-alpha.8). Ship a bundled
+  `open-memex` skill (`skills/open-memex/SKILL.md`: frontmatter + CLI guide —
+  proactive save, search, scope routing, outbox→submit flow) inside the npm
+  package. `init` copies it (not symlinks — Windows needs no Developer Mode)
+  into each wired editor's user-level skills dir: VS Code →
+  `~/.copilot/skills/open-memex/`, Cursor → `~/.cursor/skills/open-memex/`,
+  opencode → `~/.config/opencode/skills/open-memex/`; Visual Studio has no
+  skills concept and is skipped. User-level by design (D46: init once). An
+  existing skill is never clobbered silently — kept unless `--force`.
+  `uninstall` removes only the `open-memex` skill directory. The skill tells
+  agents to prefer MCP tools (`memory_add` etc.) when available and fall back
+  to the CLI otherwise (with the `npx -y open-memex@latest` prefix when the
+  CLI isn't on PATH). *Rationale: skill-aware agents get memory with zero MCP
+  configuration; the skill is the CLI-shaped complement to the MCP server.
+  Requested by Stone 2026-10-01 after the Agent Skills ecosystem suggestion.*
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

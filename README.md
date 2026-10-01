@@ -186,7 +186,9 @@ npx -y open-memex init --yes
 With no `--client`, `init` **detects your installed editors and wires them all**
 — user-level where the editor supports it (VS Code / Cursor MCP config, opencode
 native plugin), so one init covers every project. Visual Studio joins in when the
-project has a solution file. Prefer to pick a single editor? Pass `--client`:
+project has a solution file. It also installs an **Agent Skill** (`open-memex`)
+into each editor's skills folder, so skill-aware agents can use your memory via
+the CLI with no MCP configuration. Prefer to pick a single editor? Pass `--client`:
 
 > **Two different "globals" — don't mix them up.**
 > - `npm install -g open-memex` installs the *package* globally: it puts the

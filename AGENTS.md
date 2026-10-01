@@ -75,9 +75,15 @@ TTY (usage as before when non-interactive); init/uninstall maintain a
 `.init.json` first-run marker at the data root so the offer is asked once (D50);
 init ends with a one-line next-step hint (`open-memex add` + ask the agent to
 recall it) so a first-time user sees what "it works" looks like (D51).
+init also installs the bundled `open-memex` Agent Skill (skills/open-memex/SKILL.md,
+teaches skill-aware agents the CLI: save/search/scope rules/outbox flow) into each
+wired editor's user-level skills dir — ~/.copilot/skills/ (VS Code),
+~/.cursor/skills/ (Cursor), ~/.config/opencode/skills/ (opencode); Visual Studio
+has no skills concept and is skipped. Copy, not symlink (Windows needs no
+Developer Mode); existing skill kept unless --force (D54).
 `open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]`
 reverses init — removes the MCP server entry / opencode plugin line / Copilot
-instructions section; memory data never touched (D48); no --client → auto-detect
+instructions section / Agent Skill directory; memory data never touched (D48); no --client → auto-detect
 with an interactive confirm, explicit --client never prompts; `--yes` only skips
 that confirm; `--global` limits cleanup to user-level. Empty/whitespace-only
 config files parse as `{}` and are safely populated (D49); non-JSON (JSONC)

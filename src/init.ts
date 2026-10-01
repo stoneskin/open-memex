@@ -553,6 +553,77 @@ export interface DetectEnv {
   xdgConfigHome?: string;
 }
 
+// ---------------------------------------------------------------------------
+// D54: Agent Skills. The bundled open-memex skill (skills/open-memex/SKILL.md)
+// teaches skill-aware agents to use open-memex via the CLI. init copies it
+// (not symlinks — Windows needs no Developer Mode) into each wired editor's
+// user-level skills dir; uninstall removes only our directory.
+// ---------------------------------------------------------------------------
+
+/** Package root, two levels above this module (src/init.ts or dist/init.js). */
+export function packageRoot(): string {
+  return path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+}
+
+/** Where the bundled skill lives inside the installed package. */
+export function skillSourceDir(pkgRoot: string = packageRoot()): string {
+  return path.join(pkgRoot, "skills", "open-memex");
+}
+
+/**
+ * D54: user-level Agent Skills directory for the open-memex skill, per client.
+ * null = the client has no skills concept (Visual Studio).
+ */
+export function skillTargetDir(
+  client: InitClient,
+  env: DetectEnv = {},
+): string | null {
+  const home = env.home ?? os.homedir();
+  switch (client) {
+    case "vscode":
+      return path.join(home, ".copilot", "skills", "open-memex");
+    case "cursor":
+      return path.join(home, ".cursor", "skills", "open-memex");
+    case "opencode":
+      return path.join(
+        opencodeConfigDir(home, env.xdgConfigHome ?? process.env.XDG_CONFIG_HOME),
+        "skills",
+        "open-memex",
+      );
+    case "visualstudio":
+      return null;
+  }
+}
+
+/**
+ * Install the bundled skill for one client. Skips when already present unless
+ * force (a customized skill is never clobbered silently).
+ */
+export function writeSkill(
+  client: InitClient,
+  opts: { force?: boolean; pkgRoot?: string } & DetectEnv = {},
+): "installed" | "skipped" | "unsupported" | "missing-source" {
+  const target = skillTargetDir(client, opts);
+  if (!target) return "unsupported";
+  const source = skillSourceDir(opts.pkgRoot ?? packageRoot());
+  if (!exists(path.join(source, "SKILL.md"))) return "missing-source";
+  if (exists(target) && !opts.force) return "skipped";
+  fs.rmSync(target, { recursive: true, force: true });
+  fs.cpSync(source, target, { recursive: true });
+  return "installed";
+}
+
+/** Remove the open-memex skill installed by init for one client. */
+export function removeSkill(
+  client: InitClient,
+  env: DetectEnv = {},
+): "removed" | "absent" {
+  const target = skillTargetDir(client, env);
+  if (!target || !exists(target)) return "absent";
+  fs.rmSync(target, { recursive: true, force: true });
+  return "removed";
+}
+
 function exists(p: string): boolean {
   try {
     return fs.existsSync(p);
@@ -726,6 +797,11 @@ export async function initProject(opts: {
         writeMcpJson(root, client, opts.force);
       }
     }
+    // D54: Agent Skills — user-level by design (init once), alongside the MCP wiring.
+    const skill = writeSkill(client, { force: opts.force });
+    if (skill === "installed") console.log(`  + Agent Skill installed (${skillTargetDir(client)})`);
+    else if (skill === "skipped")
+      console.log(`  - Agent Skill already present for ${client} (use --force to refresh)`);
   }
   if (clients.length === 0) {
     console.log("  - editor setup skipped");
@@ -918,6 +994,8 @@ export async function uninstallProject(opts: {
       // Solution-level only — --global is meaningless, same as init.
       bump(removeServerEntryFile(path.join(root, ".mcp.json"), "servers"));
     }
+    // D54: remove the Agent Skill installed by init.
+    bump(removeSkill(client));
   }
   // Copilot instructions: init may have written personal (default) or project.
   if (clients.some((c) => c !== "opencode")) {

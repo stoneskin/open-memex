@@ -179,6 +179,8 @@ npx -y open-memex init --yes
 不带 `--client` 时，`init` 会**自动检测本机装了哪些编辑器，一次全接上**——
 支持用户级的编辑器走用户级（VS Code / Cursor 的 MCP 配置、opencode 原生插件），
 一次 init，所有项目通用；项目里有 solution 文件时 Visual Studio 也会一起配。
+同时会给每个编辑器装一个 **Agent Skill**（`open-memex`），懂 skill 的 agent
+不用配 MCP 也能通过 CLI 用你的记忆。
 想只配某一个编辑器？加 `--client`：
 
 > **两个"全局"不是一回事，别搞混。**

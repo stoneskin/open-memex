@@ -329,8 +329,9 @@ Example:
   open-memex capture --dry-run "remember: we deploy on Fridays"`,
 
   doctor: `Environment health check: Node version, config source, scope resolution,
-storage writability, then boots a real MCP server and runs initialize +
-tools/list against it — all eleven tools must show up.
+storage writability, VS Code MCP enablement (settings.json + system policy),
+then boots a real MCP server and runs initialize + tools/list against it —
+all eleven tools must show up.
 
 Usage: open-memex doctor
 
@@ -377,7 +378,7 @@ Usage:
 Every command has its own help with description and examples:
   open-memex <command> --help   (or -h)
 
-One-command project setup: \`open-memex init\` (or \`npx open-memex@alpha init\`) detects
+One-command project setup: \`open-memex init\` (or \`npx -y open-memex init\`) detects
 your installed editors and wires them all — user-level where the editor supports it
 (VS Code / Cursor MCP config, opencode native plugin), so one init covers every project;
 Visual Studio is included when the project has a solution file (its \`.mcp.json\`
@@ -392,9 +393,9 @@ confirms the detected editors and asks a couple of settings (keyword capture,
 first-turn injection); \`--yes\` accepts all defaults, and non-terminal runs never prompt.
 \`open-memex config set <key> <value>\` changes those settings after install.
 
-Once installed globally (\`npm i -g open-memex@alpha\`) the \`open-memex\` command is
-available directly: \`open-memex mcp\` starts the stdio MCP server (same five
-memory_* tools as the opencode plugin); \`open-memex mcp --print-config <client>\`
+Once installed globally (\`npm i -g open-memex\`) the \`open-memex\` command is
+available directly: \`open-memex mcp\` starts the stdio MCP server (11 tools, a superset of
+the opencode plugin's five memory_* tools); \`open-memex mcp --print-config <client>\`
 prints a copy-paste MCP client config snippet.
 
 Scope defaults to \`project\` (derived from cwd's git remote or path).
@@ -471,7 +472,7 @@ function resolveCliScope(flags: Record<string, string>, project: Scope): Scope {
 }
 
 /** Print a copy-paste MCP client config snippet. Requires a global install
- * (`npm i -g open-memex@alpha`) so the `open-memex` command is on PATH. */
+ * (`npm i -g open-memex`) so the `open-memex` command is on PATH. */
 function printMcpConfig(client: string): never {
   const c = client.toLowerCase();
   // D17: resolve the server command the same way `init` does.
@@ -547,7 +548,7 @@ function printMcpConfig(client: string): never {
   }
   if (!mc.durable) {
     console.error(
-      `\n# note: no durable \`open-memex\` on PATH — snippet uses npx. \`npm i -g open-memex@alpha\` for faster startup.`,
+      `\n# note: no durable \`open-memex\` on PATH — snippet uses npx. \`npm i -g open-memex\` for faster startup.`,
     );
   }
   process.exit(0);
@@ -724,7 +725,7 @@ async function main() {
     return;
   }
 
-  // `mcp` starts the stdio MCP server (same tools as the opencode plugin).
+  // `mcp` starts the stdio MCP server (11 tools; the opencode plugin exposes 5).
   // Branched before db() — runMcpServer() does its own init, and stdout must
   // stay clean for the MCP protocol.
   if (cmd === "mcp") {

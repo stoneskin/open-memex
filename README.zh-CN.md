@@ -100,7 +100,7 @@ personal scope：只属于这台机器——永不同步，永远进不了仓库
 npm install -g open-memex
 ```
 
-安装的是 `0.4.1` 正式版。
+安装的是 `0.5.1` 正式版。
 
 **Alpha 版**（最新开发版，给测试者）——`alpha` 标签：
 
@@ -226,7 +226,8 @@ open-memex init --client opencode --global --yes
 ```
 
 把 `"plugin": ["file:///absolute/path/to/open-memex/src/index.ts"]` 合并进用户级
-`~/.config/opencode/opencode.json`——一次配置，每个项目自动生效，不用逐个项目
+`~/.config/opencode/opencode.json`（如果你用的是 `opencode.jsonc`，就合并进那个）
+——一次配置，每个项目自动生效，不用逐个项目
 init。在 tools 之外还能获得关键词自动捕获和首轮上下文注入。（带注释的配置文件
 不会被改动——那种情况请手动加 `plugin` 这一行。）
 
@@ -600,6 +601,10 @@ distill-to-AGENTS.md 辅助（`distill-agents`，只提议不改写——人工�
 §3.5 检查点蒸馏写进 MCP 握手指令和 init 指令文件
 （agent 在检查点提议 1–3 条捕获，人来定）；找 1–2 个同事做 pilot。
 
+**`0.5.0`（稳定版）：** init 体验整修——`init --global` 一次写好用户级编辑器接线（D45）；裸 `init` 自动检测已装编辑器并一次全接上（D46）；非标准 JSON 配置不再报错，而是原样保留并打印手贴片段（D47）；`uninstall` 逆转 `init` 且永不碰记忆数据（D48）；空配置文件按空白处理、不再误判为损坏（D49）。"一份记忆，所有 Agent 通用"：同一台机器上的每个编辑器，经由同一个 MCP 接口读写同一份记忆。
+
+**`0.5.1`（稳定版）：** `--help` 文案准确性修正——`mcp` 帮助写明 server 暴露 11 个工具（含 opencode 插件的 5 个 memory 工具），安装提示改指稳定版而非 `@alpha`（F27）。
+
 **未来（看信号再定，不承诺版本）：** 组织层——组织记忆仓库、curator 约定；
 原生 agent 插件（Claude Code / Codex hooks，作为同一套 MCP tools 的增强路径）；
 本地 embedding 做基准测试门控的实验（**未经明确 opt-in 绝不下载
@@ -638,7 +643,7 @@ Linux：`~/.config/Code/User/mcp.json`），每个项目打开 server 都在。
 项目里如果有 `.vscode/mcp.json` 仍然优先；entry 里保留了
 `cwd=${workspaceFolder}`，project scope 按窗口照常工作。
 如果你的用户级 `mcp.json` 带注释（VS Code 接受 JSONC），`init` 不会碰它，
-只打印可直接手贴的配置片段。
+只打印可直接手贴的配置片段。空文件会被当作空白直接写入。
 
 **怎么拆掉编辑器接线？**
 `open-memex uninstall` 就是 `init` 的逆操作：删掉 MCP server 条目、opencode

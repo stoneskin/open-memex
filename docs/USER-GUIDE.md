@@ -2,9 +2,8 @@
 
 > This document describes open-memex's **mental model**: where your memories live,
 > how they flow, and who can see them. The in-repo directory (§2, §6 write path)
-> and the propose → promote → resolve workflow (§5) are implemented on the
-> `V2-dev-p2b` branch; features marked **2B** are still to be built;
-> everything else is 0.3.0 behavior.
+> and the propose → promote → resolve workflow (§5) shipped in 0.4.0
+> (Phase 2B); everything described here is current as of 0.5.0.
 
 ## In one sentence
 
@@ -172,7 +171,7 @@ personal idea ──propose──▶ outbox draft ──submit──▶ proposed
 - **Submit** (explicit, your call): `open-memex submit <id...>` → local branch
   + local commit into `.ai/open-memex/`; push/PR are printed for you (or done
   by your agent on your Yes).
-- **Pull** **2B**: `open-memex pull` (always explicit, never automatic) → git fetch +
+- **Pull**: `open-memex pull` (always explicit, never automatic) → git fetch +
   fast-forward → scans `.ai/open-memex/*.md` → merges into the local `index.db` by
   file mtime. Retrieval always goes through SQLite, never walks git.
 - **personal scope**: never syncs (§1 iron rule).
@@ -194,4 +193,4 @@ personal idea ──propose──▶ outbox draft ──submit──▶ proposed
 
 ---
 
-*Companion design record: `docs/V2-DESIGN.md` (decisions D1–D24).*
+*Companion design record: `docs/V2-DESIGN.md` (decisions D1–D49).*

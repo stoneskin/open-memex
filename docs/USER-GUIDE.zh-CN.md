@@ -2,8 +2,7 @@
 
 > 本文档讲的是 open-memex 的**心智模型**：你的记忆住在哪里、怎么流动、谁能看到。
 > in-repo 目录（§2、§6 的写路径）和 propose → promote → resolve 工作流（§5）
-> 已在 `V2-dev-p2b` 分支实现；标有 **2B** 的功能属于 Phase 2B 待实现部分，
-> 其余为 0.3.0 已有行为。
+> 已随 0.4.0（Phase 2B）发布；本文描述的均为 0.5.0 现行行为。
 
 ## 一句话
 
@@ -143,7 +142,7 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
   **不碰 repo、不自动 commit、不自动 push**。
 - **交**（显式，你说了算）：`open-memex submit <id...>` → 本地分支 + 本地 commit
   进 `.ai/open-memex/`；push/PR 命令打印给你（或你的 agent 拿着你的 Yes 自己做）。
-- **拉** **2B**：`open-memex pull`（必须显式，没有自动）→ git fetch + fast-forward →
+- **拉**：`open-memex pull`（必须显式，没有自动）→ git fetch + fast-forward →
   扫描 `.ai/open-memex/*.md` → 按文件 mtime 合进本地 `index.db`。检索永远走 SQLite，不 walk git。
 - **personal scope**：永远不同步（§1 铁律）。
 - **没 git 的项目**：照常用，project scope 降级为纯本地并明确提示，不会坏掉。
@@ -158,4 +157,4 @@ server 不能主动推送，调不调 `memory_search` 全看 model 的判断。�
 
 ---
 
-*配套设计文档：`docs/V2-DESIGN.md`（D1–D24 决策记录）。*
+*配套设计文档：`docs/V2-DESIGN.md`（D1–D49 决策记录）。*

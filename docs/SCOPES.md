@@ -64,14 +64,15 @@ moves `memories/user/` → `memories/personal/` and rewrites the frontmatter
 tree is kept. Reads remain backward compatible: a v1 file with `scope: user`
 is interpreted as `personal`.
 
-## Visibility (planned, not yet enforced)
+## Visibility
 
 v2 frontmatter carries a separate `visibility` field (`private` | `internal` |
-`shared`). The intended rule: `visibility: private` inside a shared scope is
-**physically isolated** — written to a local-only cache directory, never
-under `.open-memex/` — rather than relying on `.gitignore`. This is not
-implemented yet; today, treat `personal` as the only confidentiality
-boundary and review anything you place under `.open-memex/` before pushing.
+`shared`), defaulting to `private` for the personal scope and `internal` for
+the project scope. `open-memex export` excludes `visibility: private` memories
+by default (`--all` / `-a` includes them, D40). Physical isolation of private
+memories into a local-only cache directory is still planned; today, treat
+`personal` as the only hard confidentiality boundary and review anything you
+place under `.ai/open-memex/` before pushing.
 
 ## Reserved names
 

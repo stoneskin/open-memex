@@ -71,7 +71,7 @@ export const TOOL_DESCRIPTIONS = {
     "Replace an existing memory with a newer version. The old memory is kept as history (status: superseded) and retrieval returns the new one. Use when a saved fact becomes outdated and should be replaced rather than duplicated.",
   memory_forget: "Delete a memory by id. Use when the user asks to forget something.",
   memory_status:
-    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start and at task checkpoints, then ask the user which drafts to sync. The user may also trigger this flow by saying 'sync memory' (or '同步记忆').",
+    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start, when the server reports drafts waiting for review, or when the user says 'sync memory' (or '同步记忆'); then ask the user which drafts to sync.",
   memory_submit:
     "Move outbox drafts into the repo memory dir for review: copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically.",
   memory_propose:
@@ -104,7 +104,7 @@ export const memoryAddArgs = {
     .string()
     .optional()
     .describe(
-      "Where this memory came from. Default: tool. Pass 'inference' for agent-proposed captures at checkpoints (V2-DESIGN §3.5).",
+      "Where this memory came from. Default: tool. Pass 'inference' for agent-proposed captures (V2-DESIGN §3.5).",
     ),
 };
 export type MemoryAddArgs = z.infer<z.ZodObject<typeof memoryAddArgs>>;

@@ -5,5 +5,5 @@
 // prints the pointer. Plain JS, no dependencies.
 console.log(
   "\nopen-memex installed. Run `open-memex init` to wire it into your editors — " +
-    "it auto-detects VS Code, Cursor and opencode.\n",
+    "it auto-detects VS Code, Cursor and opencode (and Visual Studio for solution projects).\n",
 );

@@ -84,7 +84,7 @@ export async function offerFirstRunInit(
   if (!shouldOfferFirstRun()) return "skipped";
   console.log(
     `It looks like open-memex hasn't been set up on this machine yet.\n` +
-      "`open-memex init` wires it into your editors (auto-detects VS Code, Cursor and opencode).\n",
+      "`open-memex init` wires it into your editors (auto-detects VS Code, Cursor and opencode — and Visual Studio for solution projects).\n",
   );
   if (await askYesNo("Run it now? [Y/n] ")) {
     await runInit();

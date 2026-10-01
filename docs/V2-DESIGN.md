@@ -1073,6 +1073,20 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   channel the project controls — the CLI — not in npm script output.
   Reported 2026-10-01.*
 
+- **F29** — Copilot review fixes on PR #11 (0.6.0-alpha.7). (a) The lockfile
+  carried a stray `"version": "0.6.0-alpha.1"` key as a direct child of
+  `packages` (left by the D50 version bump; hand-edited bumps preserved it) —
+  `npm ls --package-lock-only` failed on it. Removed; version bumps now go
+  through `npm pkg set` so npm owns the lockfile format. (b) D53 missed the
+  shared `TOOL_DESCRIPTIONS.memory_status`: it still told agents to call the
+  tool "at session start and at task checkpoints" — the polling this change
+  retires. Now: session start, server-reported drafts, or explicit "sync
+  memory". Same staleness removed from the `source` field hint. (c) Onboarding
+  strings (postinstall note, first-run nudge, bare-CLI offer) now mention
+  Visual Studio auto-detection for solution projects instead of listing only
+  three editors. *Lesson: never hand-edit version fields in package-lock.json.
+  Reported 2026-10-01.*
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

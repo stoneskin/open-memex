@@ -591,7 +591,7 @@ async function main() {
     if (isFirstRun()) {
       console.error(
         "open-memex: first run? `open-memex init` wires it into your editors " +
-          "(auto-detects VS Code, Cursor, opencode).",
+          "(auto-detects VS Code, Cursor, opencode — and Visual Studio for solution projects).",
       );
     }
   }

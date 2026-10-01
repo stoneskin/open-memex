@@ -589,6 +589,9 @@ export interface DetectEnv {
 // teaches skill-aware agents to use open-memex via the CLI. init copies it
 // (not symlinks — Windows needs no Developer Mode) into each wired editor's
 // user-level skills dir; uninstall removes only our directory.
+// D55 exception: opencode with the native plugin (global mode) never gets the
+// skill — the plugin already provides memory tools, and the duplicated CLI
+// guidance only makes the agent chatty. See shouldInstallSkill.
 // ---------------------------------------------------------------------------
 
 /** Package root, two levels above this module (src/init.ts or dist/init.js). */
@@ -653,6 +656,19 @@ export function removeSkill(
   if (!target || !exists(target)) return "absent";
   fs.rmSync(target, { recursive: true, force: true });
   return "removed";
+}
+
+/**
+ * D55: whether init installs the Agent Skill for a client. opencode with the
+ * native plugin (global mode) already gives the agent memory tools plus
+ * keyword capture and context injection — the skill's CLI guidance is pure
+ * duplication there and makes the agent chatty (two overlapping instruction
+ * sets + a "MCP or CLI?" choice on every memory action). Everywhere else the
+ * skill stays as the no-tools fallback.
+ */
+export function shouldInstallSkill(client: InitClient, global: boolean): boolean {
+  if (client === "opencode" && global) return false;
+  return true;
 }
 
 function exists(p: string): boolean {
@@ -813,6 +829,12 @@ export async function initProject(opts: {
   const root = projectRoot();
   console.log(`open-memex init — project root: ${root}`);
   for (const client of clients) {
+    // D55: opencode's native plugin supersedes the skill — don't install it
+    // there, and remove one a previous init left behind.
+    const installSkill = shouldInstallSkill(client, global);
+    if (client === "opencode" && !installSkill && removeSkill(client) === "removed") {
+      console.log(`  - Agent Skill removed for opencode (superseded by the native plugin)`);
+    }
     if (client === "vscode" || client === "cursor") {
       if (global) writeGlobalMcpJson(client, opts.force);
       else writeMcpJson(root, client, opts.force);
@@ -828,6 +850,7 @@ export async function initProject(opts: {
         writeMcpJson(root, client, opts.force);
       }
     }
+    if (!installSkill) continue;
     // D54: Agent Skills — user-level by design (init once), alongside the MCP wiring.
     const skill = writeSkill(client, { force: opts.force });
     if (skill === "installed") console.log(`  + Agent Skill installed (${skillTargetDir(client)})`);

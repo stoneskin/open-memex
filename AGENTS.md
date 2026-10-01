@@ -78,7 +78,9 @@ recall it) so a first-time user sees what "it works" looks like (D51).
 init also installs the bundled `open-memex` Agent Skill (skills/open-memex/SKILL.md,
 teaches skill-aware agents the CLI: save/search/scope rules/outbox flow) into each
 wired editor's user-level skills dir — ~/.copilot/skills/ (VS Code),
-~/.cursor/skills/ (Cursor), ~/.config/opencode/skills/ (opencode); Visual Studio
+~/.cursor/skills/ (Cursor), ~/.config/opencode/skills/ (opencode, per-project MCP
+mode only — with the native plugin the skill is skipped and any previously installed
+one is removed, D55); Visual Studio
 has no skills concept and is skipped. Copy, not symlink (Windows needs no
 Developer Mode); existing skill kept unless --force (D54).
 `open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]`

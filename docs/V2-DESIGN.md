@@ -1120,6 +1120,21 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   must clean up its own old wiring — the old entry and the new entry are never
   both valid. Reported 2026-10-01.*
 
+- **D55** — opencode's native plugin supersedes the Agent Skill
+  (0.6.0-alpha.10). Real-world feedback (Stone 2026-10-01): with both the
+  native plugin's `memory_*` tools and the D54 skill installed, opencode's
+  agent turned chatty — two overlapping instruction sets plus a "use MCP or
+  CLI?" choice on every memory action. No data corruption (identical saves
+  dedupe), but the UX regressed from "one tool call and done" to narration.
+  `init` no longer installs the skill for opencode when the native plugin is
+  wired (`--global`), and removes a previously installed one; the per-project
+  plain-MCP mode keeps the skill as the no-tools fallback. VS Code/Cursor
+  keep the skill — their MCP wiring is more fragile (server-start failures,
+  policy blocks), so the fallback still earns its keep, and the skill already
+  tells agents to prefer MCP tools when available. *Lesson: don't ship two
+  overlapping integrations for the same editor — the agent pays the
+  duplication cost in chatter. Reported 2026-10-01.*
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

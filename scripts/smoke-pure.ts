@@ -8,7 +8,7 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
-import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME } from "../src/init.ts";
+import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME, shouldInstallSkill } from "../src/init.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -498,6 +498,11 @@ fs.writeFileSync(path.join(winBin, "code.cmd"), "@echo off\n");
 ok("win32 detects vscode via code.cmd",
   detectInstalledClients({ pathEnv: winBin, home: emptyHome, platform: "win32", root: emptyHome, xdgConfigHome: path.join(emptyHome, ".config") }).includes("vscode"));
 for (const d of [fakeHome, binDir, detHome, detRoot, emptyHome, winBin]) fs.rmSync(d, { recursive: true, force: true });
+// D55: opencode's native plugin supersedes the skill — init must not install it there.
+ok("opencode+global skips skill", shouldInstallSkill("opencode", true) === false);
+ok("opencode per-project keeps skill fallback", shouldInstallSkill("opencode", false) === true);
+ok("vscode keeps skill", shouldInstallSkill("vscode", true) === true);
+ok("cursor keeps skill", shouldInstallSkill("cursor", false) === true);
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

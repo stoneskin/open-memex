@@ -554,7 +554,9 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   (D52): rewrite both agent-facing prompts (MCP handshake + init template) so
   agents execute them correctly. Push-not-poll outbox (D53): the checkpoint
   mechanism is retired — the server reports the outbox draft count at session
-  start and appends it to mutating tool results when non-zero.
+  start and appends it to mutating tool results when non-zero. Install→init
+  reminder fix (F28): one-line stderr nudge on every CLI entry point until
+  init runs (npm swallows postinstall stdout).
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.
@@ -1056,6 +1058,20 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   is silent when the outbox is empty, so the common case costs nothing.
   `memory_submit` drains the outbox, so its own note is naturally silent.
   Approved 2026-10-01.*
+
+- **F28** — install→init reminder was invisible (0.6.0-alpha.5). The D50
+  postinstall pointer never reaches the user: npm runs lifecycle scripts in
+  the background and swallows their stdout unless `--foreground-scripts` is
+  passed (reproduced on npm 10.9.4 — the script ran with code 0, its output
+  never displayed). The install-time channel is therefore best-effort only.
+  Fix: every CLI entry point now prints a one-line nudge on stderr until init
+  has run or been declined (`open-memex init` wires editors), gated by the
+  existing `.init.json` first-run marker — stderr keeps the MCP stdio protocol
+  (stdout) intact, so even `open-memex mcp` spawned by an editor carries it
+  safely. `init`/`uninstall` are excluded. The bare-`open-memex` interactive
+  offer on a TTY (D50) is unchanged. *Rationale: the reminder must live in a
+  channel the project controls — the CLI — not in npm script output.
+  Reported 2026-10-01.*
 
 ## Open Questions
 

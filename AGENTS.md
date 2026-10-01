@@ -66,6 +66,10 @@ previews keyword capture without writing, `open-memex doctor` runs health checks
 (`--yes` skips, scripts never prompt); `open-memex config set <key> <value>` edits settings after install.
 `npm install -g` prints a pointer to `open-memex init` via a postinstall script
 (print-only — postinstall must never prompt, it runs in CI/Docker; D50).
+Note: npm swallows lifecycle-script stdout (background run unless
+`--foreground-scripts`), so the postinstall pointer is best-effort only —
+every CLI entry point also prints a one-line stderr nudge until init has run
+or been declined (F28; stderr keeps the MCP stdio protocol intact).
 Bare `open-memex` on a machine where init never completed offers to run it on a
 TTY (usage as before when non-interactive); init/uninstall maintain a
 `.init.json` first-run marker at the data root so the offer is asked once (D50);

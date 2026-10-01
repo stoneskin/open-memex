@@ -117,7 +117,7 @@ npm install -g open-memex@alpha
 open-memex init
 ```
 
-The install isn't complete until you run `open-memex init` — it wires up your editors (VS Code, Cursor, opencode).
+The install isn't complete until you run `open-memex init` — it wires up your editors (VS Code, Cursor, opencode, and Visual Studio for solution projects).
 
 See what's published:
 

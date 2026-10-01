@@ -112,7 +112,7 @@ npm install -g open-memex@alpha
 open-memex init
 ```
 
-不跑 `open-memex init` 把编辑器接上，安装就不算完成（支持 VS Code、Cursor、opencode）。
+不跑 `open-memex init` 把编辑器接上，安装就不算完成（支持 VS Code、Cursor、opencode，有 .sln 的项目还支持 Visual Studio）。
 
 查看已发布版本：
 

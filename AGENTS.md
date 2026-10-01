@@ -68,7 +68,9 @@ previews keyword capture without writing, `open-memex doctor` runs health checks
 (print-only — postinstall must never prompt, it runs in CI/Docker; D50).
 Bare `open-memex` on a machine where init never completed offers to run it on a
 TTY (usage as before when non-interactive); init/uninstall maintain a
-`.init.json` first-run marker at the data root so the offer is asked once (D50).
+`.init.json` first-run marker at the data root so the offer is asked once (D50);
+init ends with a one-line next-step hint (`open-memex add` + ask the agent to
+recall it) so a first-time user sees what "it works" looks like (D51).
 `open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]`
 reverses init — removes the MCP server entry / opencode plugin line / Copilot
 instructions section; memory data never touched (D48); no --client → auto-detect

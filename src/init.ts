@@ -721,6 +721,9 @@ export async function initProject(opts: {
     writeInstructions(root, scope, clients.find((c) => c !== "opencode")!);
   }
   console.log(`\nDone. Reload your editor window to start the open-memex MCP server.`);
+  // D51: close the init→first-use gap — one concrete next step so a new user
+  // sees what "it works" looks like instead of stopping at "it's wired".
+  console.log(`  Next step: \`open-memex add "standup is at 9:30"\` — then ask your agent what it remembers.`);
   // D50: init completed — the bare-`open-memex` first-run offer won't ask again.
   markFirstRunDone("initialized");
 }

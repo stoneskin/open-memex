@@ -184,6 +184,8 @@ npx -y open-memex init --yes
 装完包还会打印一句提醒，让你跑 `open-memex init`——接线是独立的一步。
 如果你在从没跑过 init 的机器上直接敲 `open-memex`，它会问你要不要现在
 init（只在交互终端里问；脚本和 CI 里看到的还是原来的 usage）。
+init 跑完会打印一个具体的下一步——用 `open-memex add` 存一条记忆，再让
+agent 回忆它——让第一次用的用户一眼看到"跑起来了"是什么样子。
 
 **VS Code**（Copilot）：
 

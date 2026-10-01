@@ -192,7 +192,10 @@ project has a solution file. Prefer to pick a single editor? Pass `--client`:
 Installing the package also prints a reminder to run `open-memex init` — the
 wiring is a separate step. And if you run bare `open-memex` on a machine where
 init never completed, it offers to run it for you (only on an interactive
-terminal; scripts and CI just see the usual usage text).
+terminal; scripts and CI just see the usual usage text). When init finishes,
+it prints one concrete next step — save a memory with `open-memex add`, then
+ask your agent to recall it — so a first-time user sees what "it works" looks
+like.
 
 **VS Code** (Copilot):
 

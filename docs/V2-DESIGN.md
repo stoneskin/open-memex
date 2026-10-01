@@ -548,7 +548,9 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   at the stable line instead of `@alpha` (F27).
 - **0.6.0 (in development).** Close the install→init gap (D50): postinstall
   prints the `open-memex init` pointer (never prompts — CI-safe); bare
-  `open-memex` on a fresh machine offers to run init on a TTY.
+  `open-memex` on a fresh machine offers to run init on a TTY. Close the
+  init→first-use gap (D51): init ends with a one-line next-step hint
+  (`open-memex add` + ask the agent to recall it).
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.
@@ -999,6 +1001,14 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   exactly when the user has the least context. A printed hint covers the
   install moment; the interactive offer covers the first-run moment; neither
   can hang a pipeline. Approved 2026-09-30.*
+- **D51** — close the init→first-use gap (0.6.0-alpha.2). D50 gets the user to
+  a wired editor; a first-time user then stops at "it's wired" with no idea
+  what to do next. `init` now ends with one concrete next step:
+  ``Next step: `open-memex add "standup is at 9:30"` — then ask your agent what
+  it remembers.`` One line, printed unconditionally — the cheapest possible
+  onboarding after wiring. *Rationale: the CLI is editor-independent, so the
+  hint works no matter which client was wired; `add` + recall is the smallest
+  loop that proves the whole system works. Approved 2026-09-30.*
 
 ## Open Questions
 

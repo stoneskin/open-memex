@@ -552,7 +552,9 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   init→first-use gap (D51): init ends with a one-line next-step hint
   (`open-memex add` + ask the agent to recall it). Agent-prompt clarity pass
   (D52): rewrite both agent-facing prompts (MCP handshake + init template) so
-  agents execute them correctly.
+  agents execute them correctly. Push-not-poll outbox (D53): the checkpoint
+  mechanism is retired — the server reports the outbox draft count at session
+  start and appends it to mutating tool results when non-zero.
 - **Phase 4 — Future, signal-gated.** Cloud `RemoteProvider` customization only on: multi-private-repo
   sharing needs, fine-grained ACL, audit/compliance mandates · optional API-backed exporters/providers
   for enterprise knowledge systems.
@@ -1028,6 +1030,31 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   session"; `type "reference"` named explicitly; PR-base mechanics spelled out
   per D28. *Rationale: these prompts are the product's UI for agents — a
   literal-minded agent must execute them correctly without guessing.
+  Approved 2026-10-01.*
+
+- **D53** — push-not-poll outbox: the checkpoint mechanism is retired; code
+  pushes state to the agent instead (0.6.0-alpha.4). `src/submit.ts` gains
+  `outboxDraftCount()` (one indexed SQLite COUNT on the current scope's outbox,
+  no git I/O); `src/tools/ops.ts` gains `withOutboxNote()`, which appends
+  `[open-memex: N draft(s) waiting in the project outbox — call memory_status
+  to review]` to mutating tool results, only when N > 0. It is wired into the
+  five MCP mutating tools (`memory_add`, `memory_supersede`, `memory_forget`,
+  `memory_submit`, `memory_propose`) and the three opencode-plugin mutating
+  tools (`memory_add`, `memory_supersede`, `memory_forget` — there the note
+  stays generic because the plugin has no `memory_status`). The MCP server
+  also appends the live draft count to the `initialize` instructions when N >
+  0 (stdio servers start fresh per session, so construction-time state is
+  session-start state). Both agent-facing prompts drop the Checkpoints section
+  and the post-`memory_submit`/`memory_propose` status checks; the sync rule
+  becomes one line ("when the server reports drafts waiting, call
+  `memory_status`") plus the existing "sync memory" trigger. The static init
+  template keeps one explicit session-start `memory_status` call, since a
+  static file cannot carry live state. An anti-nag clause is added: if the
+  agent already asked about these drafts this session, it does not ask again.
+  *Rationale: the server knows the outbox state; making the agent poll for it
+  on a timer wastes tool calls and teaches a habit that scales badly. The note
+  is silent when the outbox is empty, so the common case costs nothing.
+  `memory_submit` drains the outbox, so its own note is naturally silent.
   Approved 2026-10-01.*
 
 ## Open Questions

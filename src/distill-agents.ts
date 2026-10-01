@@ -68,12 +68,13 @@ export function distillAgentsMarkdown(opts: DistillAgentsOptions): string {
   }
   // D43 — §3.5 memory-hygiene footer (double insurance for opencode users,
   // who never see the MCP handshake / init instructions): teach the agent
-  // reading this AGENTS.md to propose distilled captures at checkpoints.
+  // reading this AGENTS.md to propose distilled captures when a task ends
+  // (D53: the checkpoint mechanism is gone).
   lines.push(`### Memory hygiene (open-memex)`);
   lines.push(``);
   lines.push(
-    `- At checkpoints (session start, end of a work chunk, after the user commits),`,
-    `  distill the session: propose 1–3 short memories capturing the useful`,
+    `- When you finish a task the user would describe in one sentence, distill`,
+    `  the session: propose 1–3 short memories capturing the useful`,
     `  conclusion — what was learned or decided, how an issue was resolved, what`,
     `  to avoid, where the authoritative doc lives — not the raw transcript.`,
     `  Save nothing without user approval.`,

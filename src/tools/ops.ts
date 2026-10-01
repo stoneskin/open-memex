@@ -24,7 +24,7 @@ import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
 import { findDuplicates, supersede } from "../store/lifecycle.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
-import { getSyncStatus, formatSyncStatus, submitMemories } from "../submit.ts";
+import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "../github.ts";
 import {
   proposeMemories,
@@ -37,6 +37,26 @@ import {
 export interface ToolResult {
   title: string;
   output: string;
+}
+
+/**
+ * D53: push, don't poll. Append the project-outbox pending count to mutating
+ * tool results so agents learn about drafts waiting for review without a
+ * checkpoint poll. Silent when the outbox is empty. `reviewHint` names the
+ * tool to call (MCP); transports without that tool leave it generic.
+ */
+export async function withOutboxNote(
+  scopeKey: string,
+  p: Promise<ToolResult>,
+  reviewHint?: string,
+): Promise<ToolResult> {
+  const r = await p;
+  const n = outboxDraftCount(scopeKey);
+  if (n > 0) {
+    const tail = reviewHint ? ` — ${reviewHint}` : " for review";
+    r.output += `\n[open-memex: ${n} draft${n === 1 ? "" : "s"} waiting in the project outbox${tail}]`;
+  }
+  return r;
 }
 
 /** LLM-facing tool descriptions, shared by the opencode plugin and the MCP server. */

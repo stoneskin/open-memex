@@ -58,22 +58,20 @@ You have a local memory MCP server (\`open-memex\`). Its tools are
 \`memory_promote\`, \`memory_resolve\`, \`memory_pr_status\` — always call them by
 these full names.
 
-Checkpoints — run the memory checks below at each of these moments: when you
-receive these instructions (session start); when you finish a task the user
-would describe in one sentence; after any git commit in this session; after
-any \`memory_*\` tool call EXCEPT \`memory_status\` and \`memory_search\` completes.
-
-- At each checkpoint, call \`memory_status\`. If the project outbox has drafts
-  waiting for review, summarize them (one line each) and ask the user which
-  ones to sync into the repo; sync NOTHING the user did not name. If the
-  outbox is empty, do nothing.
+- The server tells you when project outbox drafts are waiting for review — in
+  tool results. At session start, call \`memory_status\` once to check. When
+  drafts are waiting, summarize them (one line each) and ask the user which
+  ones to sync into the repo; sync NOTHING the user did not name. If you
+  already asked about these drafts this session, don't ask again. When the
+  server reports none waiting, do nothing.
 - BE PROACTIVE about facts the user states directly: when the user shares a
   decision, preference, project convention, or fix-and-cause worth remembering
   across sessions, call \`memory_add\` without being asked. Keep each memory to
   one self-contained statement, and add a brief "(noted in memory)" so the
   user sees it worked.
-- For conclusions YOU infer (the user never stated them): at each checkpoint,
-  consider distilling the session — if there is something worth keeping,
+- For conclusions YOU infer (the user never stated them): when you finish a
+  task the user would describe in one sentence, consider distilling the
+  session — if there is something worth keeping,
   propose 1–3 short memories capturing the useful conclusion (what was learned
   or decided, how an issue was resolved, what to avoid, where the authoritative
   doc lives — not the raw transcript), each with its proposed scope. Save
@@ -95,10 +93,10 @@ any \`memory_*\` tool call EXCEPT \`memory_status\` and \`memory_search\` comple
 Project memories you save land in a local outbox first — they are NOT in git
 yet. Syncing them into the repo for review is an explicit, user-approved step:
 
-- At each checkpoint, call \`memory_status\`. If the outbox has drafts,
-  summarize them (one line each) and ask the user which ones to sync. Sync
-  NOTHING the user did not name.
-- When the user says "sync memory" (or "同步记忆"), run the checkpoint sync
+- When the server reports drafts waiting for review, call \`memory_status\` to
+  see them. Summarize the drafts (one line each) and ask the user which ones
+  to sync. Sync NOTHING the user did not name.
+- When the user says "sync memory" (or "同步记忆"), run the sync
   flow above: call \`memory_status\`, summarize the outbox drafts, and ask which
   ones to sync. ALWAYS use the \`memory_status\` tool for this — never browse
   the memory data directory directly.

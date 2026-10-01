@@ -52,8 +52,10 @@ import {
   memoryResolveArgs,
   memoryPrStatusArgs,
   TOOL_DESCRIPTIONS,
+  withOutboxNote,
   type ToolResult,
 } from "./tools/ops.ts";
+import { outboxDraftCount } from "./submit.ts";
 
 // Server version tracks package.json — never hardcode it here again.
 // package.json sits two levels above this file in both layouts
@@ -80,19 +82,16 @@ Its tools are memory_add, memory_search, memory_list, memory_supersede,
 memory_forget, memory_status, memory_submit, memory_propose, memory_promote,
 memory_resolve, memory_pr_status — always call them by these full names.
 
-Checkpoints — run the memory checks below at each of these moments: when you
-receive these instructions (session start); when you finish a task the user
-would describe in one sentence; after any git commit in this session; after
-any memory_* tool call EXCEPT memory_status and memory_search completes.
-
-- At each checkpoint, call memory_status. If the project outbox has drafts
-  waiting for review, summarize them (one line each) and ask the user which
-  ones to sync into the repo; sync NOTHING the user did not name. If the
-  outbox is empty, do nothing.
-- When the user says "sync memory" (or "同步记忆"), run the checkpoint sync
-  flow: call memory_status, summarize the outbox drafts (one line each), and
-  ask which ones to sync. ALWAYS use the memory_status tool for this — never
-  browse the memory data directory directly.
+- The server tells you when project outbox drafts are waiting for review —
+  in tool results, and in these session-start instructions. When it does,
+  summarize them (one line each) and ask the user which ones to sync into the
+  repo; sync NOTHING the user did not name. If you already asked about these
+  drafts this session, don't ask again. When the server reports none waiting,
+  do nothing.
+- When the user says "sync memory" (or "同步记忆"), call memory_status,
+  summarize the outbox drafts (one line each), and ask which ones to sync.
+  ALWAYS use the memory_status tool for this — never browse the memory data
+  directory directly.
 - After memory_submit, ask ONE follow-up: "want me to create a branch + push +
   open the PR, or will you handle it yourself?" NEVER create branches, push, or
   open PRs without the user's explicit approval. A "yes, you do it" covers the
@@ -102,8 +101,9 @@ any memory_* tool call EXCEPT memory_status and memory_search completes.
   across sessions, call memory_add without being asked. Keep each memory to one
   self-contained statement, and add a brief "(noted in memory)" so the user
   sees it worked.
-- For conclusions YOU infer (the user never stated them): at each checkpoint,
-  consider distilling the session — if there is something worth keeping,
+- For conclusions YOU infer (the user never stated them): when you finish a
+  task the user would describe in one sentence, consider distilling the
+  session — if there is something worth keeping,
   propose 1–3 short memories capturing the useful conclusion (what was learned
   or decided, how an issue was resolved, what to avoid, where the authoritative
   doc lives — not the raw transcript), each with its proposed scope. Save
@@ -175,9 +175,17 @@ export async function runMcpServer() {
     };
   };
 
+  // D53: session-start outbox state, pushed. The stdio server starts fresh per
+  // session, so construction-time state ≈ session-start state.
+  const n = outboxDraftCount(scope.key);
+  const instructions =
+    n > 0
+      ? `${SERVER_INSTRUCTIONS}\n\nSession start: the project outbox has ${n} draft${n === 1 ? "" : "s"} waiting for review — call memory_status to see them.`
+      : SERVER_INSTRUCTIONS;
+
   const server = new McpServer(
     { name: "open-memex", version: SERVER_VERSION },
-    { instructions: SERVER_INSTRUCTIONS },
+    { instructions },
   );
 
   server.registerTool(
@@ -186,7 +194,7 @@ export async function runMcpServer() {
       description: TOOL_DESCRIPTIONS.memory_add,
       inputSchema: z.object(memoryAddArgs),
     },
-    withSync((args) => toMcp(addMemory(getScope, cfg, args))),
+    withSync((args) => toMcp(withOutboxNote(getScope().key, addMemory(getScope, cfg, args), "call memory_status to review"))),
   );
 
   server.registerTool(
@@ -215,7 +223,7 @@ export async function runMcpServer() {
       description: TOOL_DESCRIPTIONS.memory_supersede,
       inputSchema: z.object(memorySupersedeArgs),
     },
-    withSync((args) => toMcp(supersedeMemory(cfg, args))),
+    withSync((args) => toMcp(withOutboxNote(getScope().key, supersedeMemory(cfg, args), "call memory_status to review"))),
   );
 
   server.registerTool(
@@ -225,7 +233,7 @@ export async function runMcpServer() {
       inputSchema: z.object(memoryForgetArgs),
       annotations: { destructiveHint: true },
     },
-    withSync((args) => toMcp(forgetMemory(args))),
+    withSync((args) => toMcp(withOutboxNote(getScope().key, forgetMemory(args), "call memory_status to review"))),
   );
 
   server.registerTool(
@@ -244,7 +252,7 @@ export async function runMcpServer() {
       description: TOOL_DESCRIPTIONS.memory_submit,
       inputSchema: z.object(memorySubmitArgs),
     },
-    withSync((args) => toMcp(submitMemoriesOp(args))),
+    withSync((args) => toMcp(withOutboxNote(getScope().key, submitMemoriesOp(args), "call memory_status to review"))),
   );
 
   server.registerTool(
@@ -253,7 +261,7 @@ export async function runMcpServer() {
       description: TOOL_DESCRIPTIONS.memory_propose,
       inputSchema: z.object(memoryProposeArgs),
     },
-    withSync((args) => toMcp(proposeMemoriesOp(args))),
+    withSync((args) => toMcp(withOutboxNote(getScope().key, proposeMemoriesOp(args), "call memory_status to review"))),
   );
 
   server.registerTool(

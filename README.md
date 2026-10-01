@@ -516,8 +516,9 @@ branches and PRs. Nothing moves without you naming it.
 
 In an AI chat with the MCP server connected, just say **"sync memory"**
 (or "同步记忆") — the agent runs the status check, summarizes the outbox drafts,
-and asks which ones to sync. The agent also proposes this on its own at session
-start and at work checkpoints.
+and asks which ones to sync. The server also tells the agent on its own: at
+session start the handshake reports how many drafts are waiting, and every
+memory-changing tool result carries the current count when it is non-zero.
 
 ```sh
 open-memex sync-status
@@ -571,8 +572,8 @@ open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] 
 # (decisions, constraints, lessons, gotchas, howtos). Prints markdown;
 # -o writes it to a file. You review and merge by hand — open-memex
 # never rewrites your AGENTS.md on its own. The snippet ends with a
-# "memory hygiene" section (§3.5 checkpoint guidance) so agents reading
-# AGENTS.md learn to propose distilled captures at checkpoints.
+# "memory hygiene" section (§3.5 distillation guidance) so agents reading
+# AGENTS.md learn to propose distilled captures when a task ends.
 
 open-memex propose <id...> --to project [--local-approve]
 # propose one or several personal memories at once (one branch, one PR);
@@ -627,8 +628,9 @@ server with cwd set to your project root (`init` handles this for you).
 > **Note:** MCP is request/response — it gives the agent tools, not the opencode
 > plugin's automatic keyword capture or first-turn context injection. Proactive
 > memory use depends on the agent's instructions: the server sends session-start
-> guidance (call `memory_status` at session start and at checkpoints) in the MCP
-> handshake `instructions`, and `init` writes the fuller version into the
+> guidance in the MCP handshake `instructions` (including the live outbox draft
+> count at session start, plus the pending count appended to memory-changing
+> tool results when non-zero), and `init` writes the fuller version into the
 > editor's instruction files. Both are advisory — no MCP consumer offers a hard
 > session-start hook.
 
@@ -644,8 +646,8 @@ outbox → `sync-status` → `submit` (local branch+commit, push/PR on your Yes)
 `export` / `import` archive for user portability (Markdown + manifest, no walled
 garden; private excluded by default, `-a` / `--all` for full migration);
 distill-to-AGENTS.md assist (`distill-agents`, propose-only — you merge by hand);
-§3.5 checkpoint distillation in the MCP handshake + init instructions (the agent
-proposes 1–3 captures at checkpoints, the human decides); 1–2 colleague pilot.
+§3.5 distillation in the MCP handshake + init instructions (the agent proposes
+1–3 captures when a task ends, the human decides); 1–2 colleague pilot.
 
 **`0.5.0` (stable):** init UX pass — `init --global` writes the editor wiring
 once at user level (D45); bare `init` auto-detects installed editors and wires

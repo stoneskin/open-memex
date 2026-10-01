@@ -577,6 +577,25 @@ async function main() {
     if (outcome !== "initialized") usage(0);
     return;
   }
+
+  // F28: npm runs lifecycle scripts in the background and swallows their
+  // stdout (unless --foreground-scripts), so the D50 postinstall pointer
+  // never reaches the user. Every CLI entry point therefore carries a
+  // one-line nudge on stderr until init has run or been declined — stderr
+  // keeps the MCP stdio protocol (stdout) intact, and the .init.json marker
+  // makes it once-ever. `init`/`uninstall` are excluded (already there /
+  // nothing to wire). Placed before the --help/--version early returns:
+  // `-v` is the first thing people run after installing.
+  if (cmd !== "init" && cmd !== "uninstall") {
+    const { isFirstRun } = await import("./first-run.ts");
+    if (isFirstRun()) {
+      console.error(
+        "open-memex: first run? `open-memex init` wires it into your editors " +
+          "(auto-detects VS Code, Cursor, opencode).",
+      );
+    }
+  }
+
   if (cmd === "--help" || cmd === "-h" || cmd === "help") usage(0);
 
   if (cmd === "--version" || cmd === "-v") {
@@ -586,23 +605,6 @@ async function main() {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
     console.log(`open-memex ${pkg.version}`);
     return;
-  }
-
-  // F28: npm runs lifecycle scripts in the background and swallows their
-  // stdout (unless --foreground-scripts), so the D50 postinstall pointer
-  // never reaches the user. Every CLI entry point therefore carries a
-  // one-line nudge on stderr until init has run or been declined — stderr
-  // keeps the MCP stdio protocol (stdout) intact, and the .init.json marker
-  // makes it once-ever. `init`/`uninstall` are excluded (already there /
-  // nothing to wire).
-  if (cmd !== "init" && cmd !== "uninstall") {
-    const { isFirstRun } = await import("./first-run.ts");
-    if (isFirstRun()) {
-      console.error(
-        "open-memex: first run? `open-memex init` wires it into your editors " +
-          "(auto-detects VS Code, Cursor, opencode).",
-      );
-    }
   }
 
   // Per-command help: `open-memex <command> --help`. Checked before loadConfig()

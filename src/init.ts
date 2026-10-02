@@ -14,6 +14,15 @@ const MARKER = "<!-- open-memex -->";
 /** npm dist-tag carrying the 0.3.x preview line. */
 const ALPHA_TAG = "open-memex@alpha";
 
+/**
+ * F30: pre-rename package name. The my-o-memory → open-memex rename left
+ * editor configs behind that still load the OLD plugin/server — which writes
+ * to the OLD data dir, silently splitting the user's memories in two.
+ * init, uninstall and doctor treat these leftovers as stale and remove (or
+ * report) them wherever they touch a config.
+ */
+export const LEGACY_PACKAGE_NAME = "my-o-memory";
+
 export interface McpCommand {
   command: string;
   args: string[];
@@ -254,12 +263,17 @@ function writeServerEntryFile(
     doc = parsed;
   }
   const merged = mergeServerEntry(doc, sectionKey, entry, force);
-  if (merged === "kept") {
+  // F30: drop a stale my-o-memory server entry — the rename left configs
+  // loading the OLD server, which writes to the OLD data dir.
+  const staleRemoved = removeServerEntry(doc, sectionKey, LEGACY_PACKAGE_NAME) === "removed";
+  if (merged === "kept" && !staleRemoved) {
     console.log(`  = ${file} already configures open-memex — left as is (use --force to overwrite)`);
     return file;
   }
   if (mkdir) fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+  if (staleRemoved)
+    console.log(`  - ${file} (stale my-o-memory server entry removed — package renamed to open-memex)`);
   console.log(`  + ${file}`);
   return file;
 }
@@ -336,16 +350,25 @@ function writeOpencodeGlobalPlugin(force: boolean): string | null {
     } catch {
       console.log(`  ! ${file} has comments or invalid JSON — left untouched, fix it manually.`);
       console.log(`    To enable open-memex everywhere, add "plugin": ["${url}"] to it.`);
+      console.log(`    Also remove any "${LEGACY_PACKAGE_NAME}" entries from "plugin" (stale — package renamed).`);
       return null;
     }
   }
-  if (mergePluginEntry(doc, url, force) === "kept") {
+  // F30: the my-o-memory → open-memex rename left the OLD plugin loading
+  // alongside the new one — it writes to the OLD data dir, silently splitting
+  // memories in two. Drop it wherever init touches the plugin list.
+  const staleRemoved = removePluginEntry(doc, LEGACY_PACKAGE_NAME) === "removed";
+  const merged = mergePluginEntry(doc, url, force);
+  if (merged === "kept" && !staleRemoved) {
     console.log(`  = ${file} already loads the open-memex plugin — left as is (use --force to overwrite)`);
     return file;
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
-  console.log(`  + ${file} (native plugin — works in every project, no per-project init needed)`);
+  if (staleRemoved)
+    console.log(`  - ${file} (stale my-o-memory plugin entry removed — package renamed to open-memex)`);
+  if (merged === "added")
+    console.log(`  + ${file} (native plugin — works in every project, no per-project init needed)`);
   return file;
 }
 
@@ -368,7 +391,9 @@ function writeOpencodeMcpJson(root: string, force: boolean): string | null {
     doc = parsed;
   }
   const section = ((doc["mcp"] ??= {}) as Record<string, unknown>);
-  if (section["open-memex"] && !force) {
+  // F30: drop the pre-rename server entry — it points at the OLD data dir.
+  const staleRemoved = removeServerEntry(doc, "mcp", LEGACY_PACKAGE_NAME) === "removed";
+  if (section["open-memex"] && !force && !staleRemoved) {
     console.log(`  = ${file} already configures open-memex — left as is (use --force to overwrite)`);
     return file;
   }
@@ -380,6 +405,8 @@ function writeOpencodeMcpJson(root: string, force: boolean): string | null {
     enabled: true,
   };
   fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+  if (staleRemoved)
+    console.log(`  - ${file} (stale my-o-memory MCP entry removed — package renamed to open-memex)`);
   console.log(`  + ${file}`);
   if (!mc.durable) {
     console.log(`  ! no durable \`open-memex\` on PATH (one-shot npx?) — wrote an npx-based command.`);
@@ -408,7 +435,9 @@ function writeVisualStudioMcpJson(root: string, force: boolean): string | null {
     }
   }
   const section = ((doc["servers"] ??= {}) as Record<string, unknown>);
-  if (section["open-memex"] && !force) {
+  // F30: drop the pre-rename server entry — it points at the OLD data dir.
+  const staleRemoved = removeServerEntry(doc, "servers", LEGACY_PACKAGE_NAME) === "removed";
+  if (section["open-memex"] && !force && !staleRemoved) {
     console.log(`  = ${file} already configures open-memex — left as is (use --force to overwrite)`);
     return file;
   }
@@ -420,6 +449,8 @@ function writeVisualStudioMcpJson(root: string, force: boolean): string | null {
     args: mc.args,
   };
   fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+  if (staleRemoved)
+    console.log(`  - ${file} (stale my-o-memory MCP entry removed — package renamed to open-memex)`);
   console.log(`  + ${file}`);
   if (!mc.durable) {
     console.log(`  ! no durable \`open-memex\` on PATH (one-shot npx?) — wrote an npx-based command.`);
@@ -558,6 +589,9 @@ export interface DetectEnv {
 // teaches skill-aware agents to use open-memex via the CLI. init copies it
 // (not symlinks — Windows needs no Developer Mode) into each wired editor's
 // user-level skills dir; uninstall removes only our directory.
+// D55 exception: opencode with the native plugin (global mode) never gets the
+// skill — the plugin already provides memory tools, and the duplicated CLI
+// guidance only makes the agent chatty. See shouldInstallSkill.
 // ---------------------------------------------------------------------------
 
 /** Package root, two levels above this module (src/init.ts or dist/init.js). */
@@ -622,6 +656,19 @@ export function removeSkill(
   if (!target || !exists(target)) return "absent";
   fs.rmSync(target, { recursive: true, force: true });
   return "removed";
+}
+
+/**
+ * D55: whether init installs the Agent Skill for a client. opencode with the
+ * native plugin (global mode) already gives the agent memory tools plus
+ * keyword capture and context injection — the skill's CLI guidance is pure
+ * duplication there and makes the agent chatty (two overlapping instruction
+ * sets + a "MCP or CLI?" choice on every memory action). Everywhere else the
+ * skill stays as the no-tools fallback.
+ */
+export function shouldInstallSkill(client: InitClient, global: boolean): boolean {
+  if (client === "opencode" && global) return false;
+  return true;
 }
 
 function exists(p: string): boolean {
@@ -782,6 +829,12 @@ export async function initProject(opts: {
   const root = projectRoot();
   console.log(`open-memex init — project root: ${root}`);
   for (const client of clients) {
+    // D55: opencode's native plugin supersedes the skill — don't install it
+    // there, and remove one a previous init left behind.
+    const installSkill = shouldInstallSkill(client, global);
+    if (client === "opencode" && !installSkill && removeSkill(client) === "removed") {
+      console.log(`  - Agent Skill removed for opencode (superseded by the native plugin)`);
+    }
     if (client === "vscode" || client === "cursor") {
       if (global) writeGlobalMcpJson(client, opts.force);
       else writeMcpJson(root, client, opts.force);
@@ -797,6 +850,7 @@ export async function initProject(opts: {
         writeMcpJson(root, client, opts.force);
       }
     }
+    if (!installSkill) continue;
     // D54: Agent Skills — user-level by design (init once), alongside the MCP wiring.
     const skill = writeSkill(client, { force: opts.force });
     if (skill === "installed") console.log(`  + Agent Skill installed (${skillTargetDir(client)})`);
@@ -827,16 +881,19 @@ export async function initProject(opts: {
 // ---------------------------------------------------------------------------
 
 /**
- * Pure removal of the open-memex server entry from a parsed config doc.
+ * Pure removal of a server entry from a parsed config doc.
  * Prunes the section when it becomes empty. Mutates `doc`.
+ * `key` defaults to "open-memex"; F30 passes LEGACY_PACKAGE_NAME to sweep
+ * the pre-rename leftovers.
  */
 export function removeServerEntry(
   doc: Record<string, unknown>,
   sectionKey: string,
+  key = "open-memex",
 ): "removed" | "absent" {
   const section = doc[sectionKey];
-  if (!section || typeof section !== "object" || !("open-memex" in section)) return "absent";
-  delete (section as Record<string, unknown>)["open-memex"];
+  if (!section || typeof section !== "object" || !(key in section)) return "absent";
+  delete (section as Record<string, unknown>)[key];
   if (Object.keys(section as Record<string, unknown>).length === 0) delete doc[sectionKey];
   return "removed";
 }
@@ -886,11 +943,15 @@ function removeServerEntryFile(file: string, sectionKey: string): "removed" | "a
     return null;
   }
   const res = removeServerEntry(doc, sectionKey);
-  if (res === "removed") {
+  // F30: also sweep the pre-rename leftovers — uninstalling open-memex while
+  // the OLD my-o-memory entry still loads leaves a zombie server on the old data dir.
+  const stale = removeServerEntry(doc, sectionKey, LEGACY_PACKAGE_NAME);
+  if (res === "removed" || stale === "removed") {
     fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
-    console.log(`  - ${file} (open-memex entry removed)`);
+    console.log(`  - ${file} (memory-plugin server entries removed)`);
+    return "removed";
   }
-  return res;
+  return "absent";
 }
 
 /** Remove the open-memex plugin URL from one opencode user-level config file. */
@@ -903,11 +964,14 @@ function removeOpencodePluginFile(file: string): "removed" | "absent" | null {
     return null;
   }
   const res = removePluginEntry(doc, "open-memex");
-  if (res === "removed") {
+  // F30: also sweep the pre-rename leftover — see removeServerEntryFile.
+  const stale = removePluginEntry(doc, LEGACY_PACKAGE_NAME);
+  if (res === "removed" || stale === "removed") {
     fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
-    console.log(`  - ${file} (open-memex plugin removed)`);
+    console.log(`  - ${file} (memory-plugin entries removed)`);
+    return "removed";
   }
-  return res;
+  return "absent";
 }
 
 /** Remove the open-memex section from one copilot-instructions.md file. */

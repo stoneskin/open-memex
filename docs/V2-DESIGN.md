@@ -1103,6 +1103,38 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   configuration; the skill is the CLI-shaped complement to the MCP server.
   Requested by Stone 2026-10-01 after the Agent Skills ecosystem suggestion.*
 
+- **F30** — Sweep pre-rename `my-o-memory` leftovers (0.6.0-alpha.9). The
+  my-o-memory → open-memex rename left editor configs behind that still load
+  the OLD plugin/server, which writes to the OLD data dir — silently splitting
+  the user's memories in two (found live on Stone's work machine 2026-10-01:
+  the old opencode plugin sat above the new one in `opencode.json`, so
+  opencode and the CLI wrote to different data roots). `init` now drops stale
+  `my-o-memory` plugin entries and `my-o-memory` MCP server keys wherever it
+  touches a config (opencode global plugin list, per-project `opencode.jsonc`,
+  `.mcp.json`, VS Code/Cursor `mcp.json` incl. `--global`), even on the
+  "kept" path; JSONC files it can't parse get a manual-removal hint.
+  `uninstall` sweeps the same leftovers. `doctor` gains a read-only
+  `legacy my-o-memory` check: fails when a legacy data dir exists next to the
+  data root, when a user-level config still references `my-o-memory`, or when
+  `MY_O_MEMORY_HOME` points at a pre-rename dir. *Lesson: a package rename
+  must clean up its own old wiring — the old entry and the new entry are never
+  both valid. Reported 2026-10-01.*
+
+- **D55** — opencode's native plugin supersedes the Agent Skill
+  (0.6.0-alpha.10). Real-world feedback (Stone 2026-10-01): with both the
+  native plugin's `memory_*` tools and the D54 skill installed, opencode's
+  agent turned chatty — two overlapping instruction sets plus a "use MCP or
+  CLI?" choice on every memory action. No data corruption (identical saves
+  dedupe), but the UX regressed from "one tool call and done" to narration.
+  `init` no longer installs the skill for opencode when the native plugin is
+  wired (`--global`), and removes a previously installed one; the per-project
+  plain-MCP mode keeps the skill as the no-tools fallback. VS Code/Cursor
+  keep the skill — their MCP wiring is more fragile (server-start failures,
+  policy blocks), so the fallback still earns its keep, and the skill already
+  tells agents to prefer MCP tools when available. *Lesson: don't ship two
+  overlapping integrations for the same editor — the agent pays the
+  duplication cost in chatter. Reported 2026-10-01.*
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

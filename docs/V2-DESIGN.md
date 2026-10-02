@@ -1139,6 +1139,8 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._
 
+- **Checkpoint proactivity for capture (open, 2026-10-02):** D53 retired checkpoint *polling* — the server pushes draft counts instead. But agent proactivity at task checkpoints genuinely helps knowledge capture (§3.5 distillation), so the open question is the degree: proactive enough to catch distillable moments, without nagging the user or burning tokens at every checkpoint. Candidate directions (server-pushed hints in tool results, client-side heuristics, or a middle setting) to be evaluated in a later version; default posture TBD.
+
 ---
 
 *End of draft v2.*

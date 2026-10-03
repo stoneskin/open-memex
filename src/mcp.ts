@@ -112,9 +112,10 @@ memory_resolve, memory_pr_status — always call them by these full names.
   docs, save it as type "reference" pointing at the doc instead of copying it.
   Long-form notes are fine ONLY when the user explicitly asks to save one.
 - Before asking the user about past decisions, conventions, or preferences they
-  may have told you before, call memory_search first — try a few keyword
-  variants (including the user's own language) when the first search comes up
-  empty.
+  may have told you before, call memory_search first — search well: break the
+  question into its concepts and try 2–3 phrasings per concept (synonyms, the
+  user's other language, shorter keyword forms), and check the other scope too,
+  before concluding nothing is stored.
 - Memories default to this project's scope; use the personal scope for facts
   about the user that hold across all projects. When a saved fact becomes
   outdated, call memory_supersede (find the old memory's id with memory_search
@@ -178,10 +179,16 @@ export async function runMcpServer() {
   // D53: session-start outbox state, pushed. The stdio server starts fresh per
   // session, so construction-time state ≈ session-start state.
   const n = outboxDraftCount(scope.key);
+  // D61: the alias guidance rides the handshake only when the install
+  // enables capture aliases — otherwise agents would attach aliases the
+  // server then drops.
+  const aliasGuidance = cfg.captureAliases
+    ? "\n- When you save a memory, attach 2–4 aliases via memory_add's aliases parameter: alternate phrasings, synonyms, equivalents in the user's other language. They are indexed with the memory so a differently-worded question still finds it."
+    : "";
   const instructions =
-    n > 0
+    (n > 0
       ? `${SERVER_INSTRUCTIONS}\n\nSession start: the project outbox has ${n} draft${n === 1 ? "" : "s"} waiting for review — call memory_status to see them.`
-      : SERVER_INSTRUCTIONS;
+      : SERVER_INSTRUCTIONS) + aliasGuidance;
 
   const server = new McpServer(
     { name: "open-memex", version: SERVER_VERSION },

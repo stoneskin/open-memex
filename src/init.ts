@@ -894,6 +894,14 @@ export async function initProject(opts: {
     );
     if (injectOnFirstTurn !== DEFAULT_CONFIG.injectOnFirstTurn)
       patch.injectOnFirstTurn = injectOnFirstTurn;
+    // D61: capture-time aliases — agents attach alternate phrasings to each
+    // memory so differently-worded questions still find it.
+    const captureAliases = await askBool(
+      "Attach alternate phrasings (aliases) to memories so reworded questions still find them?",
+      DEFAULT_CONFIG.captureAliases,
+    );
+    if (captureAliases !== DEFAULT_CONFIG.captureAliases)
+      patch.captureAliases = captureAliases;
     if (Object.keys(patch).length > 0) {
       const file = saveConfig(patch);
       console.log(

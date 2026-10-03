@@ -1,6 +1,6 @@
 // Quick smoke test — runs the pure-logic modules (no bun:sqlite dependency).
 // Usage:  node --experimental-strip-types scripts\smoke-pure.ts
-import { parse, serialize, ulid, normalizeFrontmatter, msToRfc3339, timeToMs, parseRawFrontmatter, type Frontmatter } from "../src/store/markdown.ts";
+import { parse, serialize, ulid, normalizeFrontmatter, msToRfc3339, timeToMs, parseRawFrontmatter, normalizeAliases, type Frontmatter } from "../src/store/markdown.ts";
 import { planConversion, isV2File, migrateV2 } from "../src/store/v2migrate.ts";
 import { redact, findSecret } from "../src/redact.ts";
 import { detectKeywords } from "../src/capture/keywords.ts";
@@ -56,6 +56,21 @@ ok("parses", parsed !== null);
 ok("id survives", parsed?.fm.id === a);
 ok("tags survive", JSON.stringify(parsed?.fm.tags) === '["hello","world"]');
 ok("body survives", parsed?.body.trim() === body);
+
+console.log("== capture aliases (D61) ==");
+ok("normalize trims/dedupes/caps at 4",
+  JSON.stringify(normalizeAliases(["  Time Off ", "time off", "", "节假日", "vacation", "PTO", "leave"])) === '["Time Off","节假日","vacation","PTO"]');
+ok("normalize of undefined is empty", JSON.stringify(normalizeAliases(undefined)) === "[]");
+const fmA: Frontmatter = { ...fm, id: ulid(), aliases: ["time off", "节假日", "vacation days"] };
+const parsedA = parse(serialize(fmA, "body text"));
+ok("aliases survive round-trip",
+  JSON.stringify(parsedA?.fm.aliases) === '["time off","节假日","vacation days"]');
+ok("no aliases -> field omitted from file",
+  !/^aliases:/m.test(serialize(fm, "x")));
+ok("empty aliases array -> field omitted",
+  !/^aliases:/m.test(serialize({ ...fm, aliases: [] }, "x")));
+ok("parse caps hand-edited aliases at 4",
+  (normalizeFrontmatter({ id: "x", aliases: ["1", "2", "3", "4", "5"] } as never).aliases ?? []).length === 4);
 
 console.log("== redact ==");
 const r1 = redact("api key is <private>sk-supersecretkey</private> ok", DEFAULT_CONFIG.redactPatterns);

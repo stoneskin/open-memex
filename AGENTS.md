@@ -64,7 +64,9 @@ resolves the server command
 at init time — npx fallback when no durable bin is on PATH, D17),
 `open-memex config` prints the effective config, `open-memex capture --dry-run "text"`
 previews keyword capture without writing, `open-memex doctor` runs health checks
-(node version, config, scope resolution, storage writability, VS Code MCP enablement, MCP handshake).
+(node version, config, scope resolution, storage writability, SQLite locking,
+opencode plugin entry (target exists + no host-SDK runtime imports, D59),
+VS Code MCP enablement, MCP handshake).
 `open-memex init` with no --client auto-detects and wires every installed editor
 (`--yes` skips, scripts never prompt); `open-memex config set <key> <value>` edits settings after install.
 `npm install -g` prints a pointer to `open-memex init` via a postinstall script

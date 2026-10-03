@@ -63,6 +63,14 @@ export function hitStateLabel(h: Pick<SearchHit, "scope_key" | "review_state">):
   return ` [${h.review_state || "draft"}]`;
 }
 
+/** Optional diagnostics out-param for `search --explain` (D57). */
+export interface SearchStats {
+  ftsQuery: string;
+  candidates: number;
+  hiddenSuperseded: number;
+  hiddenExcluded: number;
+}
+
 /**
  * Lifecycle-aware post-processing (§3.3):
  * - retracted / archived are excluded from retrieval (kept for audit);
@@ -71,7 +79,7 @@ export function hitStateLabel(h: Pick<SearchHit, "scope_key" | "review_state">):
  *   drafts/rejected rank after unreviewed content;
  * - deprecated stays visible as a warning but ranks after active.
  */
-function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
+function resolveVisible(rows: RawRow[], limit: number, stats?: SearchStats): SearchHit[] {
   const byId = new Map(rows.map((r) => [r.id, r]));
   const fullRow = (id: string): RawRow | undefined => {
     const cached = byId.get(id);
@@ -96,9 +104,13 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
   const deprecated: SearchHit[] = [];
 
   for (const r of rows) {
-    if (r.status === "retracted" || r.status === "archived") continue;
+    if (r.status === "retracted" || r.status === "archived") {
+      if (stats) stats.hiddenExcluded++;
+      continue;
+    }
     let target = r;
     if (r.status === "superseded") {
+      if (stats) stats.hiddenSuperseded++;
       let cur = r;
       const chain = new Set([r.id]);
       while (cur.status === "superseded" && cur.superseded_by) {
@@ -127,9 +139,15 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
  */
 export function search(
   query: string,
-  opts: { scopeKeys?: string[]; limit?: number; type?: string } = {},
+  opts: { scopeKeys?: string[]; limit?: number; type?: string; stats?: SearchStats } = {},
 ): SearchHit[] {
   const q = toFtsQuery(query);
+  if (opts.stats) {
+    opts.stats.ftsQuery = q;
+    opts.stats.candidates = 0;
+    opts.stats.hiddenSuperseded = 0;
+    opts.stats.hiddenExcluded = 0;
+  }
   if (!q) return [];
   const limit = Math.max(1, Math.min(opts.limit ?? 8, 50));
   // Over-fetch: lifecycle filtering (chain resolution, exclusions) happens
@@ -176,7 +194,8 @@ export function search(
 
   // FTS5 bm25: lower = better; invert for intuition.
   const raw: RawRow[] = rows.map((r) => ({ ...r, score: -r.score }));
-  return resolveVisible(raw, limit);
+  if (opts.stats) opts.stats.candidates = raw.length;
+  return resolveVisible(raw, limit, opts.stats);
 }
 
 export function list(

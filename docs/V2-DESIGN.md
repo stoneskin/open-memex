@@ -1152,6 +1152,33 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   of maximum doubt: memories live only on this machine, personal ones never
   leave it, nothing is uploaded.
 
+- **D57** — explainable search, a memory audit, and the concurrency posture
+  written down (0.6.1-alpha.2; addresses most of the retrieval-explainability
+  / memory-health open question and establishes the concurrent-sessions
+  behavior it asked for). (1) `open-memex search --explain` prints the
+  constructed FTS expression, per-hit bm25 score, and how many matches
+  lifecycle hid (superseded vs retracted/archived), so a miss is diagnosable
+  — bad query, stale memory, or chain-hidden — without reading the index.
+  (2) New `open-memex audit` (read-only; doctor checks the environment, this
+  checks the memories): near-duplicate active pairs (same ≥ 0.8 Jaccard as
+  write-time dedup), actives untouched for 90+ days, broken supersede chains,
+  personal files found inside the in-repo memory dir (iron-rule breach), and
+  index/file drift. Reports only; fixes stay with `supersede` / `forget` by
+  hand. (3) Concurrency, measured: every process opens its own connection to
+  one WAL index; memory files are per-memory ULIDs, so concurrent writes to
+  *different* memories never collide on disk. SQLite was the gap — no
+  `busy_timeout` was set, so better-sqlite3 silently tolerated 5s while
+  bun:sqlite (opencode plugin) timed out at 0 and failed instantly under any
+  overlapping write. Now unified at `PRAGMA busy_timeout = 5000` in `db()`.
+  Past the timeout the CLI prints one plain line ("store is busy … nothing
+  was lost") instead of a stack trace — and nothing *is* lost: the memory
+  file is written before the index update, so the next sync reconciles it
+  (verified end-to-end: a write blocked 8s still lands once the lock frees).
+  Memory file writes are tmp+rename, so a concurrent reader never sees a
+  torn file. Same-memory concurrent edits remain last-writer-wins (accepted:
+  different processes editing the same memory simultaneously is a human
+  conflict, not a storage one). `doctor` reports the live locking settings.
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

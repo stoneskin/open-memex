@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, configSource, DEFAULT_CONFIG } from "./config.ts";
 import { paths } from "./paths.ts";
 import { resolveCwdScope } from "./scope.ts";
+import { db, backendName } from "./store/db.ts";
 import { LEGACY_PACKAGE_NAME, opencodeGlobalConfigPath, userMcpConfigPath } from "./init.ts";
 
 interface Check {
@@ -68,6 +69,27 @@ function storageCheck(): Check {
     return { name: "storage", ok: true, detail: `${p.root} (writable)` };
   } catch (err) {
     return { name: "storage", ok: false, detail: String(err) };
+  }
+}
+
+/**
+ * D57: several processes share one index (CLI, MCP per editor, opencode
+ * plugin). WAL + a 5s busy timeout is what keeps an overlapping write a
+ * brief wait instead of an instant failure — report the live settings.
+ */
+function lockingCheck(): Check {
+  try {
+    const d = db();
+    const jm = (d.prepare("PRAGMA journal_mode").get() as { journal_mode: string }).journal_mode;
+    const bt = (d.prepare("PRAGMA busy_timeout").get() as { timeout: number }).timeout;
+    const ok = jm === "wal" && bt >= 1000;
+    return {
+      name: "locking",
+      ok,
+      detail: `journal=${jm}, busy_timeout=${bt}ms (${backendName()})`,
+    };
+  } catch (err) {
+    return { name: "locking", ok: false, detail: String(err) };
   }
 }
 
@@ -298,7 +320,7 @@ function vscodeMcpCheck(): Check {
 
 export async function runDoctor(): Promise<boolean> {
   console.log("open-memex doctor");
-  const checks: Check[] = [nodeCheck(), configCheck(), scopeCheck(), storageCheck(), vscodeMcpCheck()];
+  const checks: Check[] = [nodeCheck(), configCheck(), scopeCheck(), storageCheck(), lockingCheck(), vscodeMcpCheck()];
   checks.push(await mcpCheck());
   checks.push(legacyCheck());
   let allOk = true;

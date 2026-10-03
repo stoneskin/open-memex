@@ -31,6 +31,7 @@ npm run typecheck                                    # tsc --noEmit — the only
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
 npm run cli -- <command> --help                          # per-command help (AI assistants discover flags this way)
 npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
+npm run cli -- audit [--scope project|personal|both]            # memory health: near-dup pairs, stale actives, broken chains, personal-in-repo (read-only)
 npm run cli -- pull                                          # fetch + fast-forward only (explicit; diverged = clean failure, never force-merge)
 npm run cli -- push                                          # push current branch to remote (explicit only; open-memex never auto-pushes)
 npm run cli -- export [--scope project|personal|both] [--all] [-o <file>]  # portable .tar.gz bundle (markdown + manifest); private excluded unless --all

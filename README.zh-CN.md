@@ -420,6 +420,7 @@ open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [
 open-memex config                                  # 打印生效配置
 open-memex config set <key> <value>                # 改一个设置
 open-memex doctor                                  # 环境健康检查
+open-memex audit                                   # 记忆健康检查（近重复、陈旧、断链）
 open-memex capture --dry-run "记住我喜欢简洁的回答"  # 预览关键词捕获
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio
 open-memex --help      # 这份参考
@@ -432,6 +433,7 @@ open-memex --version   # 已安装版本
 ```sh
 open-memex add "This repo uses better-sqlite3" --type fact
 open-memex search "auth flow"
+open-memex search "auth flow" --explain   # 显示 FTS 表达式、分数、被生命周期藏掉的计数
 open-memex list --scope project
 open-memex supersede <id> "Updated content"
 open-memex status <id> deprecated
@@ -514,6 +516,7 @@ open-memex resolve [id-or-path]
 open-memex where        # 显示存储与配置路径
 open-memex scopes       # 列出各项目作用域及记忆计数
 open-memex reindex      # 从 markdown 重建 SQLite 索引
+open-memex audit        # 记忆健康检查：近重复对、陈旧记忆、断裂的取代链
 open-memex migrate --to-v2 [--dry-run]   # v1 数据 → v2（把 user 作用域改名为 personal）
 ```
 

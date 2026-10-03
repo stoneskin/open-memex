@@ -598,6 +598,7 @@ open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [
 open-memex config                                  # print effective config
 open-memex config set <key> <value>                # change a setting
 open-memex doctor                                  # environment health check
+open-memex audit                                   # memory health check (duplicates, stale, broken chains)
 open-memex capture --dry-run "记住我喜欢简洁的回答"  # preview keyword capture
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio
 open-memex --help      # this reference
@@ -610,6 +611,7 @@ Memory operations:
 ```sh
 open-memex add "This repo uses better-sqlite3" --type fact
 open-memex search "auth flow"
+open-memex search "auth flow" --explain   # show FTS expression, scores, lifecycle-hidden counts
 open-memex list --scope project
 open-memex supersede <id> "Updated content"
 open-memex status <id> deprecated
@@ -711,6 +713,7 @@ Maintenance:
 open-memex where        # show storage + config paths
 open-memex scopes       # list project scopes with memory counts
 open-memex reindex      # rebuild the SQLite index from markdown
+open-memex audit        # memory health: duplicate pairs, stale memories, broken chains
 open-memex migrate --to-v2 [--dry-run]   # v1 data → v2 (renames user scope to personal)
 ```
 

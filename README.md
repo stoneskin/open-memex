@@ -578,8 +578,9 @@ branches and PRs like any other file.
 
 Settings live in `~/.config/opencode/open-memex.jsonc` — the `opencode` in the
 path is historical; this one file is shared by every client. Override the config
-path with `MY_O_MEMORY_CONFIG` and the storage root with `MY_O_MEMORY_HOME`
-(legacy environment names from before the rename, still honored).
+path with `OPEN_MEMEX_CONFIG` and the storage root with `OPEN_MEMEX_HOME`
+(the pre-rename `MY_O_MEMORY_CONFIG` / `MY_O_MEMORY_HOME` names are still
+honored as fallbacks).
 
 Defaults:
 

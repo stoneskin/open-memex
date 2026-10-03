@@ -102,7 +102,7 @@ The published `open-memex` bin points at `dist/cli.js` (compiled at publish time
 From a source checkout, `npm run cli` / `npm run mcp` still run `src/` directly
 with type-stripping — no build step needed for development.
 
-There is **no `npm test`** and no CI. Verification loop is: `npm run typecheck` + `smoke-pure.ts` + (if touching sqlite) `npm run cli -- reindex` against a scratch `MY_O_MEMORY_HOME`.
+There is **no `npm test`** and no CI. Verification loop is: `npm run typecheck` + `smoke-pure.ts` + (if touching sqlite) `npm run cli -- reindex` against a scratch `OPEN_MEMEX_HOME`.
 
 To load the plugin in opencode locally, `~/.config/opencode/opencode.jsonc` must have:
 ```
@@ -115,7 +115,7 @@ Restart opencode after any change — the plugin is not hot-reloaded.
 Storage root:
 - Windows: `%APPDATA%\open-memex\`
 - Linux/macOS: `$XDG_DATA_HOME/open-memex/` (fallback `~/.local/share/open-memex/`)
-- Override with `MY_O_MEMORY_HOME` (use this for tests to avoid clobbering real data).
+- Override with `OPEN_MEMEX_HOME` (use this for tests to avoid clobbering real data). The pre-rename `MY_O_MEMORY_HOME` is still honored as a fallback (D62).
 
 Layout: `memories/<scope_key>/<id>.md` (YAML frontmatter + body) + `index.db` (SQLite FTS5).
 

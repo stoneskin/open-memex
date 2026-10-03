@@ -84,9 +84,13 @@ function stripJsonComments(raw: string): string {
   return out;
 }
 
-/** Where `config set` / interactive `init` persist. Respects MY_O_MEMORY_CONFIG. */
+/**
+ * Where `config set` / interactive `init` persist. Respects OPEN_MEMEX_CONFIG
+ * (D62); MY_O_MEMORY_CONFIG is the pre-rename fallback, still honored.
+ */
 export function configFilePath(): string {
   return (
+    process.env.OPEN_MEMEX_CONFIG ??
     process.env.MY_O_MEMORY_CONFIG ??
     path.join(os.homedir(), ".config", "opencode", "open-memex.jsonc")
   );
@@ -156,6 +160,7 @@ export function saveConfig(patch: Record<string, unknown>): string {
 /** Path of the config file in effect, or null when using built-in defaults. */
 export function configSource(): string | null {
   const candidates = [
+    process.env.OPEN_MEMEX_CONFIG,
     process.env.MY_O_MEMORY_CONFIG,
     path.join(os.homedir(), ".config", "opencode", "open-memex.jsonc"),
     path.join(os.homedir(), ".config", "opencode", "open-memex.json"),

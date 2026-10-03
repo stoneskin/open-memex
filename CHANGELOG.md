@@ -9,6 +9,10 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Environment variable names (D62)
+
+- The override variables now answer to `OPEN_MEMEX_HOME` (storage root) and `OPEN_MEMEX_CONFIG` (config path). The pre-rename `MY_O_MEMORY_HOME` / `MY_O_MEMORY_CONFIG` names keep working as fallbacks — nothing to migrate, the data root itself does not move. `doctor` notes when the storage root came from the legacy variable.
+
 ## Proactive capture: checkpoint proposals and aliases (D61)
 
 - At task checkpoints the agent now proposes instead of waiting to be asked: when a task wraps up, it offers 1–3 short candidate memories distilled from the session (decisions and their reasons, conventions, gotchas, approaches tried and abandoned) and saves only the ones you approve — approved inferences are marked `source: "inference"`. One memorability rubric and one search discipline (break the question into concepts, try several phrasings, check both scopes) are written into every guidance surface — the bundled skill, the AGENTS.md memory-hygiene footer, the MCP handshake, and the tool descriptions — so behavior is consistent across editors. Nothing is auto-drafted in the background; that posture waits on memory visibility.

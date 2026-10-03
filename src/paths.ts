@@ -3,8 +3,23 @@ import fs from "node:fs";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
 
+/**
+ * D62: the data-root override env var. `OPEN_MEMEX_HOME` is the current
+ * name; `MY_O_MEMORY_HOME` (pre-rename package name) is still honored as a
+ * fallback so existing setups and scripts keep working. New name wins
+ * when both are set.
+ */
+export function homeOverride(): { dir: string; via: "OPEN_MEMEX_HOME" | "MY_O_MEMORY_HOME" } | null {
+  if (process.env.OPEN_MEMEX_HOME)
+    return { dir: path.resolve(process.env.OPEN_MEMEX_HOME), via: "OPEN_MEMEX_HOME" };
+  if (process.env.MY_O_MEMORY_HOME)
+    return { dir: path.resolve(process.env.MY_O_MEMORY_HOME), via: "MY_O_MEMORY_HOME" };
+  return null;
+}
+
 function dataRoot(): string {
-  if (process.env.MY_O_MEMORY_HOME) return path.resolve(process.env.MY_O_MEMORY_HOME);
+  const override = homeOverride();
+  if (override) return override.dir;
   if (process.platform === "win32") {
     const appData = process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
     return path.join(appData, "open-memex");

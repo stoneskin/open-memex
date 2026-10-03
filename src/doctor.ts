@@ -94,14 +94,17 @@ function lockingCheck(): Check {
 }
 
 /**
- * D59: patrol the opencode native-plugin entry. The D58 field failure was
- * silent — the entry was configured, the host never loaded it, and nothing
- * anywhere said why. Two death modes to catch:
- *   1. the entry's target file does not exist (package moved, nvm rolled
- *      to a new version dir, checkout deleted);
- *   2. the plugin's import closure runtime-imports @opencode-ai/plugin
- *      (or another host-only module the package does not depend on),
- *      which is unresolvable from a global install (D58 regression).
+ * D59/D60: patrol the opencode native-plugin entries. The D58 field failure
+ * was silent — the entry was configured, the host never loaded it, and
+ * nothing anywhere said why. Death modes to catch:
+ *   1. the entry's target does not exist (package moved, nvm rolled to a
+ *      new version dir, checkout deleted);
+ *   2. the plugin's import closure runtime-imports a host SDK package
+ *      (@opencode-ai/plugin on v1, @opencode/plugin on v2) — unresolvable
+ *      from a global install, the host silently skips the plugin (D58);
+ *   3. (D60) the config wires only the other host generation: an
+ *      opencode 2 host never reads the v1 `plugin` file entry (it demands
+ *      a directory under `plugins`), and opencode 1 cannot read `plugins`.
  * Read-only; only inspects the user-level opencode configs.
  */
 function opencodePluginCheck(): Check {
@@ -109,23 +112,37 @@ function opencodePluginCheck(): Check {
   try {
     const jsonPath = opencodeGlobalConfigPath();
     const candidates = [jsonPath, jsonPath.replace(/\.json$/, ".jsonc")];
-    const entries: string[] = [];
+    const v1Entries: string[] = [];
+    const v2Entries: string[] = [];
     let sawConfig = false;
+    const v2EntryPackage = (entry: unknown): string | null => {
+      if (typeof entry === "string") return entry;
+      if (entry !== null && typeof entry === "object" && "package" in entry) {
+        const p = (entry as { package?: unknown }).package;
+        return typeof p === "string" ? p : null;
+      }
+      return null;
+    };
     for (const f of candidates) {
       if (!fs.existsSync(f)) continue;
       sawConfig = true;
       const text = fs.readFileSync(f, "utf8");
       try {
-        const doc = JSON.parse(text) as { plugin?: unknown };
-        const list = Array.isArray(doc.plugin) ? doc.plugin : [];
-        for (const e of list) {
-          if (typeof e === "string") entries.push(e);
+        const doc = JSON.parse(text) as { plugin?: unknown; plugins?: unknown };
+        if (Array.isArray(doc.plugin)) {
+          for (const e of doc.plugin) if (typeof e === "string") v1Entries.push(e);
+        }
+        if (Array.isArray(doc.plugins)) {
+          for (const e of doc.plugins) {
+            const p = v2EntryPackage(e);
+            if (p !== null) v2Entries.push(p);
+          }
         }
       } catch {
         // JSONC (comments/trailing commas): fall back to scanning quoted
         // strings for plugin entries.
         for (const m of text.matchAll(/"(file:[^"]+|[^"]+\.(?:ts|js|mts|mjs))"/g)) {
-          entries.push(m[1]!);
+          v1Entries.push(m[1]!);
         }
       }
     }
@@ -134,22 +151,62 @@ function opencodePluginCheck(): Check {
     }
 
     const problems: string[] = [];
+    // Host SDK packages per generation; a runtime import of either from a
+    // globally installed plugin cannot resolve (D58).
     const RUNTIME_SDK_IMPORT =
-      /^\s*import\s+(?!type\b)[^;]*?["']@opencode-ai\/plugin(?:\/[^"']*)?["']/m;
-    const RUNTIME_SDK_REQUIRE = /require\(\s*["']@opencode-ai\/plugin(?:\/[^"']*)?["']\s*\)/;
+      /^\s*import\s+(?!type\b)[^;]*?["']@opencode(?:-ai)?\/plugin(?:\/[^"']*)?["']/m;
+    const RUNTIME_SDK_REQUIRE = /require\(\s*["']@opencode(?:-ai)?\/plugin(?:\/[^"']*)?["']\s*\)/;
 
+    const toPath = (entry: string): string | null => {
+      try {
+        return entry.startsWith("file:") ? fileURLToPath(entry) : entry;
+      } catch {
+        return null;
+      }
+    };
     // An entry is ours when its path names the package, or when the target
     // file carries the plugin's "[open-memex]" log marker (source checkouts
     // can live at any path).
-    const isOurEntry = (entry: string): boolean => {
-      if (entry.includes("open-memex")) return true;
+    const fileHasMarker = (target: string): boolean => {
       try {
-        const target = entry.startsWith("file:") ? fileURLToPath(entry) : entry;
-        if (!fs.existsSync(target)) return false;
         return fs.readFileSync(target, "utf8").slice(0, 65536).includes("[open-memex]");
       } catch {
         return false;
       }
+    };
+    /** Resolve an OpenCode 2 directory entry to its entry file, if any. */
+    const resolveV2EntryFile = (target: string): string | null => {
+      try {
+        if (!fs.existsSync(target)) return null;
+        if (fs.statSync(target).isFile()) return target;
+        for (const idx of ["index.ts", "index.js", "index.mts", "index.mjs"]) {
+          const p = path.join(target, idx);
+          if (fs.existsSync(p)) return p;
+        }
+        const pkgJson = path.join(target, "package.json");
+        if (fs.existsSync(pkgJson)) {
+          const pkg = JSON.parse(fs.readFileSync(pkgJson, "utf8")) as { main?: unknown };
+          if (typeof pkg.main === "string") {
+            const main = path.join(target, pkg.main);
+            if (fs.existsSync(main)) return main;
+          }
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    };
+    const isOursV1 = (entry: string): boolean => {
+      if (entry.includes("open-memex")) return true;
+      const target = toPath(entry);
+      return target !== null && fs.existsSync(target) && fileHasMarker(target);
+    };
+    const isOursV2 = (entry: string): boolean => {
+      if (entry.includes("open-memex")) return true;
+      const target = toPath(entry);
+      if (target === null) return false;
+      const file = resolveV2EntryFile(target);
+      return file !== null && fileHasMarker(file);
     };
     const scanSdkImports = (entryFile: string): string[] => {
       // Walk the entry's relative-import closure looking for host-SDK
@@ -184,15 +241,14 @@ function opencodePluginCheck(): Check {
       return offenders;
     };
 
-    const ours = entries.filter(isOurEntry);
-    if (ours.length === 0) {
+    const oursV1 = v1Entries.filter(isOursV1);
+    const oursV2 = v2Entries.filter(isOursV2);
+    if (oursV1.length === 0 && oursV2.length === 0) {
       return { name, ok: true, detail: "no global plugin entry (per-project or MCP wiring is not checked)" };
     }
-    for (const entry of ours) {
-      let target: string;
-      try {
-        target = entry.startsWith("file:") ? fileURLToPath(entry) : entry;
-      } catch {
+    for (const entry of oursV1) {
+      const target = toPath(entry);
+      if (target === null) {
         problems.push(`entry "${entry}" is not a parseable file URL`);
         continue;
       }
@@ -204,17 +260,72 @@ function opencodePluginCheck(): Check {
       }
       for (const f of scanSdkImports(target)) {
         problems.push(
-          `${f} runtime-imports @opencode-ai/plugin — opencode silently skips plugins whose imports it cannot resolve from a global install (D58)`,
+          `${f} runtime-imports a host SDK package — opencode silently skips plugins whose imports it cannot resolve from a global install (D58)`,
         );
       }
     }
+    for (const entry of oursV2) {
+      // A bare package name ("open-memex" via `opencode plugin add`) is
+      // resolved by the host's plugin manager; there is no local path to
+      // verify.
+      const isPackageName =
+        !entry.startsWith("file:") &&
+        !entry.startsWith(".") &&
+        !path.isAbsolute(entry) &&
+        !/^[a-zA-Z]:[\\/]/.test(entry);
+      if (isPackageName) continue;
+      const target = toPath(entry);
+      if (target === null || !fs.existsSync(target)) {
+        problems.push(
+          `opencode 2 entry "${entry}" does not resolve to an existing path — run \`open-memex init --client opencode --global --force\` to re-point it`,
+        );
+        continue;
+      }
+      const entryFile = resolveV2EntryFile(target);
+      if (entryFile === null) {
+        problems.push(
+          `opencode 2 entry "${entry}" has no loadable plugin file (looked for index.ts/index.js and package.json main)`,
+        );
+        continue;
+      }
+      for (const f of scanSdkImports(entryFile)) {
+        problems.push(
+          `${f} runtime-imports a host SDK package — opencode silently skips plugins whose imports it cannot resolve from a global install (D58)`,
+        );
+      }
+    }
+
+    // D60: generation mismatch — the config wires only the generation the
+    // installed host cannot read. Best-effort: no binary, no opinion.
+    let hostMajor: number | null = null;
+    try {
+      const out = execFileSync("opencode", ["--version"], {
+        timeout: 3000,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      const m = out.match(/(\d+)\.(\d+)\.(\d+)/);
+      if (m) hostMajor = Number(m[1]);
+    } catch {
+      hostMajor = null;
+    }
+    if (hostMajor !== null && hostMajor >= 2 && oursV1.length > 0 && oursV2.length === 0) {
+      problems.push(
+        `the installed opencode is v${hostMajor} but the config only has the opencode 1 "plugin" entry — v2 loads directories from "plugins" and will silently skip this plugin; run \`open-memex init --client opencode --global --force\` to add the v2 entry`,
+      );
+    } else if (hostMajor === 1 && oursV2.length > 0 && oursV1.length === 0) {
+      problems.push(
+        `the installed opencode is v1 but the config only has the opencode 2 "plugins" entry — v1 reads the "plugin" key and will not load this plugin; run \`open-memex init --client opencode --global --force\` to add the v1 entry`,
+      );
+    }
+
     if (problems.length > 0) {
       return { name, ok: false, detail: problems.join("; ") };
     }
     return {
       name,
       ok: true,
-      detail: `${ours.length} plugin ${ours.length === 1 ? "entry" : "entries"}: target exists, no host-SDK runtime imports`,
+      detail: `${oursV1.length + oursV2.length} plugin ${oursV1.length + oursV2.length === 1 ? "entry" : "entries"}: target exists, no host-SDK runtime imports`,
     };
   } catch (err) {
     return { name, ok: false, detail: String(err) };

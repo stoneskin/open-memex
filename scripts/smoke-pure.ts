@@ -9,7 +9,7 @@ import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/sco
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
-import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME, shouldInstallSkill } from "../src/init.ts";
+import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, mergeV2PluginEntry, removeV2PluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME, shouldInstallSkill } from "../src/init.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -504,6 +504,27 @@ ok("plugin remove absent", removePluginEntry({ plugin: ["other"] }, "open-memex"
 const lpdoc: Record<string, unknown> = { plugin: ["file:///g/my-o-memory/src/index.ts", "file:///g/open-memex/src/index.ts"] };
 ok("plugin remove drops legacy my-o-memory entry", removePluginEntry(lpdoc, LEGACY_PACKAGE_NAME) === "removed"
   && JSON.stringify(lpdoc["plugin"]) === JSON.stringify(["file:///g/open-memex/src/index.ts"]));
+// D60: the OpenCode 2 `plugins` array (directory strings and {package} objects).
+const vdoc: Record<string, unknown> = {};
+ok("v2 merge creates array", mergeV2PluginEntry(vdoc, "/x/open-memex/src", false) === "added"
+  && JSON.stringify(vdoc["plugins"]) === JSON.stringify(["/x/open-memex/src"]));
+ok("v2 merge dup kept", mergeV2PluginEntry(vdoc, "/x/open-memex/src", false) === "kept");
+const vdoc2: Record<string, unknown> = { plugins: [{ package: "other-plugin", options: {} }, "/old/open-memex/src"] };
+ok("v2 merge kept with existing open-memex entry (no force)", mergeV2PluginEntry(vdoc2, "/new/open-memex/src", false) === "kept"
+  && (vdoc2["plugins"] as unknown[]).length === 2);
+ok("v2 merge force replaces stale open-memex dir, keeps others", mergeV2PluginEntry(vdoc2, "/new/open-memex/src", true) === "added"
+  && (vdoc2["plugins"] as unknown[]).length === 2
+  && JSON.stringify(vdoc2["plugins"]) === JSON.stringify([{ package: "other-plugin", options: {} }, "/new/open-memex/src"]));
+ok("v2 remove drops string + object entries", removeV2PluginEntry(vdoc2, "open-memex") === "removed"
+  && JSON.stringify(vdoc2["plugins"]) === JSON.stringify([{ package: "other-plugin", options: {} }]));
+ok("v2 remove absent", removeV2PluginEntry(vdoc2, "open-memex") === "absent");
+const vdoc3: Record<string, unknown> = { plugins: ["/x/open-memex/src"] };
+ok("v2 remove prunes empty array", removeV2PluginEntry(vdoc3, "open-memex") === "removed" && !("plugins" in vdoc3));
+// D60: the plugin entrypoint default-exports both host generations.
+const entryModule = (await import("../src/index.ts")) as { default: { id?: unknown; setup?: unknown; server?: unknown } };
+ok("entry default export has id/setup/server", entryModule.default.id === "open-memex"
+  && typeof entryModule.default.setup === "function"
+  && typeof entryModule.default.server === "function");
 // removeInstructionsSection: cuts MARKER..end, "" when nothing remains.
 ok("instructions remove keeps prior content",
   removeInstructionsSection("# mine\n\n<!-- open-memex -->\n# OpenMemex memory\n") === "# mine\n");

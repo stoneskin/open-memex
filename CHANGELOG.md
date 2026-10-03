@@ -9,6 +9,13 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## One plugin, both opencode generations (D60)
+
+- The native plugin now loads on **opencode 2** as well as opencode 1. `open-memex init --client opencode --global` writes both config spellings — the v1 `"plugin"` file entry and the v2 `"plugins"` directory entry — and each host reads its own. Previously an opencode 2 host silently skipped the plugin (a file entry is not a directory it can load), leaving no tools and no explanation.
+- Tools register with code mode off (`options.codemode: false`): on opencode 2 an unflagged plugin tool is only reachable through a JS `execute` meta-tool, and models that call it by name get "Unknown tool" — with the opt-out, the five tools are ordinary function calls on both generations.
+- On the opencode 1 side this raises the minimum host version to **1.18.29**: the dual entrypoint is a plain exported object, and older v1 hosts only invoke function exports.
+- `open-memex doctor` extends the plugin patrol to both config keys: v2 entries are checked for a resolvable entry file and the same no-host-SDK-runtime-import rule, and when the installed opencode major version disagrees with what the config wires, doctor fails and names the fix.
+
 ## [0.6.2] - 2026-10-03
 
 ## Doctor patrols the plugin entry (D59)

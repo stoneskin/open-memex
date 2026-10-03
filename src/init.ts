@@ -301,6 +301,16 @@ function opencodePluginUrl(): string {
 }
 
 /**
+ * D60: the same plugin directory, in the form OpenCode 2 wants. v2 rejects
+ * file entries in `plugins` ("configured plugin path must be a directory")
+ * and loads `<dir>/index.ts` instead.
+ */
+function opencodePluginDir(): string {
+  const pkgRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  return path.join(pkgRoot, "src");
+}
+
+/**
  * D46: opencode's user-level config. opencode reads `~/.config/opencode/`
  * (`$XDG_CONFIG_HOME` when set) on every platform; a `plugin` entry there
  * loads open-memex in every project with no per-project init.
@@ -330,6 +340,65 @@ export function mergePluginEntry(
   return "added";
 }
 
+/** The package path an OpenCode 2 `plugins` entry refers to, if any. */
+function v2EntryPackage(entry: unknown): string | null {
+  if (typeof entry === "string") return entry;
+  if (entry !== null && typeof entry === "object" && "package" in entry) {
+    const p = (entry as { package?: unknown }).package;
+    return typeof p === "string" ? p : null;
+  }
+  return null;
+}
+
+/**
+ * D60: pure merge of the open-memex directory into the `plugins` array
+ * (the OpenCode 2 spelling). An existing open-memex entry (any form)
+ * counts as present; with force, stale open-memex entries are replaced
+ * by `dir`. Same "added"/"kept" contract as mergePluginEntry.
+ */
+export function mergeV2PluginEntry(
+  doc: Record<string, unknown>,
+  dir: string,
+  force: boolean,
+): "added" | "kept" {
+  let plugins = doc["plugins"];
+  if (!Array.isArray(plugins)) {
+    plugins = [] as unknown[];
+    doc["plugins"] = plugins;
+  }
+  const list = plugins as unknown[];
+  const ours = (e: unknown) => (v2EntryPackage(e) ?? "").includes("open-memex");
+  if (!force && list.some(ours)) return "kept";
+  for (let i = list.length - 1; i >= 0; i--) {
+    const p = v2EntryPackage(list[i]);
+    if (p === dir) {
+      if (!force) return "kept";
+      list.splice(i, 1);
+    } else if (force && ours(list[i])) {
+      list.splice(i, 1);
+    }
+  }
+  list.push(dir);
+  return "added";
+}
+
+/**
+ * Pure removal of open-memex entries from the `plugins` array (OpenCode 2
+ * spelling — strings and `{package}` objects). Drops the key when empty.
+ */
+export function removeV2PluginEntry(
+  doc: Record<string, unknown>,
+  match: string,
+): "removed" | "absent" {
+  const plugins = doc["plugins"];
+  if (!Array.isArray(plugins)) return "absent";
+  const kept = (plugins as unknown[]).filter((p) => !(v2EntryPackage(p) ?? "").includes(match));
+  if (kept.length === plugins.length) return "absent";
+  if (kept.length === 0) delete doc["plugins"];
+  else doc["plugins"] = kept;
+  return "removed";
+}
+
 /**
  * D46: wire the native plugin at the opencode user level — the one-time
  * global setup. Merges into the existing config when it parses as JSON;
@@ -343,13 +412,15 @@ function writeOpencodeGlobalPlugin(force: boolean): string | null {
       .map((f) => path.join(dir, f))
       .find((f) => fs.existsSync(f)) ?? path.join(dir, "opencode.json");
   const url = opencodePluginUrl();
+  const pluginDir = opencodePluginDir();
   let doc: Record<string, unknown> = {};
   if (fs.existsSync(file)) {
     try {
       doc = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     } catch {
       console.log(`  ! ${file} has comments or invalid JSON — left untouched, fix it manually.`);
-      console.log(`    To enable open-memex everywhere, add "plugin": ["${url}"] to it.`);
+      console.log(`    To enable open-memex everywhere, add "plugin": ["${url}"] (opencode 1)`);
+      console.log(`    and "plugins": ["${pluginDir}"] (opencode 2) to it.`);
       console.log(`    Also remove any "${LEGACY_PACKAGE_NAME}" entries from "plugin" (stale — package renamed).`);
       return null;
     }
@@ -358,8 +429,12 @@ function writeOpencodeGlobalPlugin(force: boolean): string | null {
   // alongside the new one — it writes to the OLD data dir, silently splitting
   // memories in two. Drop it wherever init touches the plugin list.
   const staleRemoved = removePluginEntry(doc, LEGACY_PACKAGE_NAME) === "removed";
+  removeV2PluginEntry(doc, LEGACY_PACKAGE_NAME);
   const merged = mergePluginEntry(doc, url, force);
-  if (merged === "kept" && !staleRemoved) {
+  // D60: write both key generations — opencode 1 reads `plugin`, opencode 2
+  // reads `plugins`; each host ignores the other's key.
+  const mergedV2 = mergeV2PluginEntry(doc, pluginDir, force);
+  if (merged === "kept" && mergedV2 === "kept" && !staleRemoved) {
     console.log(`  = ${file} already loads the open-memex plugin — left as is (use --force to overwrite)`);
     return file;
   }
@@ -367,7 +442,7 @@ function writeOpencodeGlobalPlugin(force: boolean): string | null {
   fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
   if (staleRemoved)
     console.log(`  - ${file} (stale my-o-memory plugin entry removed — package renamed to open-memex)`);
-  if (merged === "added")
+  if (merged === "added" || mergedV2 === "added")
     console.log(`  + ${file} (native plugin — works in every project, no per-project init needed)`);
   return file;
 }
@@ -963,13 +1038,16 @@ function removeOpencodePluginFile(file: string): "removed" | "absent" | null {
   const doc = parseJsonConfig(fs.readFileSync(file, "utf8"));
   if (doc === null) {
     console.error(`  ! ${file} is not valid JSON — left untouched, fix it manually`);
-    console.error(`    Delete the open-memex URL from the "plugin" array.`);
+    console.error(`    Delete the open-memex URL from the "plugin" array and the open-memex path from "plugins".`);
     return null;
   }
   const res = removePluginEntry(doc, "open-memex");
+  // D60: the v2 `plugins` entry goes too (strings and {package} objects).
+  const resV2 = removeV2PluginEntry(doc, "open-memex");
   // F30: also sweep the pre-rename leftover — see removeServerEntryFile.
   const stale = removePluginEntry(doc, LEGACY_PACKAGE_NAME);
-  if (res === "removed" || stale === "removed") {
+  removeV2PluginEntry(doc, LEGACY_PACKAGE_NAME);
+  if (res === "removed" || resV2 === "removed" || stale === "removed") {
     fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
     console.log(`  - ${file} (memory-plugin entries removed)`);
     return "removed";

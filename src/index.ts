@@ -1,133 +1,46 @@
 import type { Plugin } from "@opencode-ai/plugin";
-import { loadConfig } from "./config.ts";
-import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE, type Scope } from "./scope.ts";
-import { db } from "./store/db.ts";
-import { syncScope, upsertFromFile } from "./store/sync.ts";
-import { scopeHasFiles } from "./store/migrate.ts";
 import {
-  writeMemoryFile,
-  readMemoryFile,
-  ulid,
-  msToRfc3339,
-  type Frontmatter,
-} from "./store/markdown.ts";
-import { buildContextBlock } from "./retrieve/inject.ts";
-import { detectKeywords } from "./capture/keywords.ts";
-import { findDuplicates } from "./store/lifecycle.ts";
-import { redact } from "./redact.ts";
+  PLUGIN_ID,
+  bootstrapPlugin,
+  captureFromText,
+  injectOnce,
+} from "./plugin-core.ts";
 import { makeTools } from "./tools/memory.ts";
+import { v2Plugin } from "./opencode-v2.ts";
 
-const plugin: Plugin = async ({ worktree, directory }) => {
-  const cfg = loadConfig();
+/**
+ * One entrypoint, both opencode generations (D60):
+ * - OpenCode 2 structurally decodes the default export as `{ id, setup }`
+ *   and ignores `server` (see src/opencode-v2.ts).
+ * - OpenCode 1 (≥1.18.29) reads `server` off the same default export and
+ *   ignores `setup` — the function below is the v1 plugin exactly as it
+ *   behaved before dual support.
+ * Neither host runtime-imports an SDK package from this file: v1's SDK is
+ * type-only (D58), and v2's decode is structural.
+ */
+const server: Plugin = async ({ worktree, directory }) => {
   const roots = worktree || directory || process.cwd();
-  const scope: Scope = resolveProjectScope(roots);
-
-  // Init DB and one-shot sync of markdown -> index on plugin load.
-  try {
-    db();
-    syncScope(scope.key);
-    syncScope(PERSONAL_SCOPE.key);
-    if (cfg.logLevel === "debug") {
-      console.log(`[open-memex] loaded. scope=${scope.key}`);
-    }
-    // If a git remote was added *after* memories were first captured, the
-    // scope key changes (cwd-hash -> origin-hash). Detect the legacy dir on
-    // disk and tell the user how to migrate. We do NOT auto-migrate: two
-    // different repos at the same cwd would collide.
-    const cwdScope = resolveCwdScope(roots);
-    if (cwdScope.key !== scope.key && scopeHasFiles(cwdScope.key)) {
-      console.warn(
-        `[open-memex] found memories under legacy scope key "${cwdScope.key}". ` +
-          `Current project scope is "${scope.key}". ` +
-          `To move them: npm run cli -- migrate --from ${cwdScope.key}`,
-      );
-    }
-  } catch (err) {
-    console.error("[open-memex] init failed:", err);
-  }
-
-  const tools = makeTools(() => scope, cfg);
-  const injectedSessions = new Set<string>();
+  const state = bootstrapPlugin(roots);
+  const tools = makeTools(() => state.scope, state.cfg);
 
   return {
     tool: tools,
 
     async "chat.message"(_input, output) {
-      if (!cfg.keywordCaptureEnabled) return;
       const parts = (output.parts ?? []) as Array<{ type: string; text?: string }>;
       const text = parts
         .map((p) => (p?.type === "text" ? p.text ?? "" : ""))
         .filter(Boolean)
         .join("\n");
-      if (!text) return;
-
-      const hits = detectKeywords(text, cfg);
-      for (const h of hits) {
-        const { content, hadSecret, matchedPattern } = redact(h.content, cfg.redactPatterns);
-        // Secrets are masked (first 4 chars kept) and the capture proceeds;
-        // skip only when nothing usable remains.
-        if (content.length === 0) continue;
-        if (hadSecret && cfg.logLevel === "debug") {
-          console.log(`[open-memex] keyword capture masked secret (${matchedPattern})`);
-        }
-        // Personal patterns ("remember for me" / "记住（个人）") force the personal scope.
-        const target = h.personal ? PERSONAL_SCOPE : scope;
-        // Dedup (§3.4): skip exact duplicates captured before.
-        if (findDuplicates(target.key, content).exact) continue;
-        const now = Date.now();
-        const rfc = msToRfc3339(now);
-        const fm: Frontmatter = {
-          id: ulid(),
-          schema_version: 2,
-          scope_key: target.key,
-          scope: target.kind === "project" ? "project" : "personal",
-          visibility: target.kind === "project" ? "internal" : "private",
-          project_name: target.projectName,
-          type: "fact",
-          role: "knowledge",
-          importance: "normal",
-          status: "active",
-          tags: ["keyword"],
-          source: "keyword",
-          created_at: rfc,
-          updated_at: rfc,
-          supersedes: null,
-          superseded_by: null,
-          review_state: "draft",
-          proposed_by: null,
-          approved_by: null,
-          derived_from: null,
-          review_note: null,
-          review_history: [],
-        };
-        try {
-          const { filePath } = writeMemoryFile(fm, content);
-          const mf = readMemoryFile(filePath);
-          if (mf) upsertFromFile(mf);
-          // Capture feedback: always visible (not debug-only) — the user said
-          // "记住…", they should see that it landed. The opencode plugin API
-          // offers no toast channel, so the plugin log is the feedback surface.
-          const preview = content.length > 60 ? content.slice(0, 60) + "…" : content;
-          console.log(`[open-memex] remembered → ${target.kind} scope: "${preview}"`);
-        } catch (err) {
-          console.error("[open-memex] keyword capture failed:", err);
-        }
-      }
+      captureFromText(text, state);
     },
 
     async "experimental.chat.system.transform"(input, output) {
-      if (!cfg.injectOnFirstTurn) return;
-      const sid = input.sessionID ?? "";
-      if (injectedSessions.has(sid)) return;
-      injectedSessions.add(sid);
-      try {
-        const block = buildContextBlock(scope, cfg);
-        if (block) output.system.push(block);
-      } catch (err) {
-        console.error("[open-memex] context injection failed:", err);
-      }
+      injectOnce(input.sessionID ?? "", state, (block) => {
+        output.system.push(block);
+      });
     },
   };
 };
 
-export default plugin;
+export default { id: PLUGIN_ID, setup: v2Plugin.setup, server };

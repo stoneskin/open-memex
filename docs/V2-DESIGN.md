@@ -1210,6 +1210,46 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   `@opencode-ai/plugin`, the exact D58 death. It checks only what can be
   attributed; per-project and MCP wiring are out of scope.
 
+- **D60** — one plugin serves both opencode generations (0.7.0-alpha.1).
+  Opencode 2 changes the plugin contract end to end: config reads
+  `plugins` (directories or `{package}` objects) instead of v1's
+  `plugin` file entries, a v1-style file entry only earns a log warning
+  ("configured plugin path must be a directory") and is silently skipped
+  — the D58 death in a new shape; and the plugin value itself is a
+  structurally decoded `{ id, setup(ctx) }` rather than the v1 server
+  factory. A single `open-memex init --client opencode --global` now
+  writes both keys (`plugin` file URL and `plugins` directory): each
+  host loads from its own key — verified: opencode 1.18.34 ignores the
+  `plugins` array with a config-normalization warning, and opencode 2
+  warns per `plugin` file entry but loads the directory entry — so users on either generation get a
+  working plugin from the same install. `src/index.ts` default-exports
+  `{ id, setup, server }`: v2 calls `setup`, v1 calls `server`, the
+  shared logic (bootstrap, keyword capture, one-time injection) lives in
+  `src/plugin-core.ts`. Cost of the bridge on the v1 side: v1 hosts
+  older than 1.18.29 only invoke function default exports and would
+  skip this object; 1.18.29+ accepts it — the README states the new
+  minimum. The v2 adapter (src/opencode-v2.ts) obeys D58's rule — no
+  runtime `@opencode/plugin` import (a devDependency again); the
+  context is duck-typed from the 2.0 surface, tool arg shapes compile
+  from the same zod shapes via `z.toJSONSchema`, and hooks map
+  one-to-one (session `prompt` → keyword capture, session `context` →
+  first-turn injection). One registration subtlety cost real debugging
+  time and is worth recording: on 2.0.1 a plugin tool added without
+  options is exposed to the model only in code mode — callable through
+  an `execute` meta-tool that runs model-written JS
+  (`tools.memory_search(...)`) — and a model that instead calls the
+  tool by name gets a host-side "Unknown tool" error, so whether the
+  memory tools work at all depends on the model's calling style. Each
+  tool therefore registers with `options: { codemode: false }`, which
+  restores plain function calling (verified: direct calls execute
+  first try). The D59 doctor check extends to both keys:
+  v2 entries are checked for an existing, resolvable entry file and the
+  closure scan now covers `@opencode/plugin` too, plus a generation
+  advisory — when the installed host and the config point at different
+  generations, doctor fails and names the fix (`init --force`; package-
+  name entries installed via `opencode plugin add` are recorded but not
+  path-checked). Field-verified on real hosts 1.18.34 and 2.0.1.
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

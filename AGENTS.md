@@ -18,7 +18,7 @@ via `prepublishOnly` — Node refuses `--experimental-strip-types` for files und
 
 Tool logic is host-agnostic and lives in `src/tools/ops.ts` (plain functions + shared zod arg shapes + `TOOL_DESCRIPTIONS`). `src/tools/memory.ts` (opencode) and `src/mcp.ts` are thin adapters — when adding or changing a tool, change `ops.ts` once and both hosts pick it up.
 
-**Plugin code must not runtime-import `@opencode-ai/plugin`** (D58): it is a devDependency, and opencode does not resolve it for `file://` plugins loaded from a global npm install — the import fails and opencode silently skips the plugin (no error, no tools). Type-only imports are fine. `src/tools/memory.ts` carries a local stand-in for the SDK's `tool()` (a runtime identity) for exactly this reason.
+**Plugin code must not runtime-import a host SDK package** (D58, extended by D60): `@opencode-ai/plugin` (v1) and `@opencode/plugin` (v2) are devDependencies, and neither host resolves them for plugins loaded from a global npm install — the import fails and the host silently skips the plugin (no error, no tools). Type-only imports are fine. `src/tools/memory.ts` carries a local stand-in for the v1 SDK's `tool()` (a runtime identity), and `src/opencode-v2.ts` duck-types the v2 context, for exactly this reason. The plugin entry is a dual export (`{ id, setup, server }`, D60): v1 ≥1.18.29 calls `server`, opencode 2 calls `setup`; both adapt `src/plugin-core.ts`.
 
 Consequences:
 - Imports **must** use explicit `.ts` extensions (`allowImportingTsExtensions: true`, `moduleResolution: "Bundler"`).
@@ -65,7 +65,8 @@ at init time — npx fallback when no durable bin is on PATH, D17),
 `open-memex config` prints the effective config, `open-memex capture --dry-run "text"`
 previews keyword capture without writing, `open-memex doctor` runs health checks
 (node version, config, scope resolution, storage writability, SQLite locking,
-opencode plugin entry (target exists + no host-SDK runtime imports, D59),
+opencode plugin entries for both host generations (target exists + no
+host-SDK runtime imports, D59/D60),
 VS Code MCP enablement, MCP handshake).
 `open-memex init` with no --client auto-detects and wires every installed editor
 (`--yes` skips, scripts never prompt); `open-memex config set <key> <value>` edits settings after install.

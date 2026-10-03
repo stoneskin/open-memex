@@ -180,6 +180,8 @@ open-memex init --client opencode --global --yes
 
 把原生插件并入你的用户级 `~/.config/opencode/opencode.json`（如果你已有的是 `opencode.jsonc`，就并进那个）——一次设置，每个项目都生效，不用逐项目 init。你会得到 5 个核心工具、关键词自动捕获和第一轮上下文注入。（配置文件里有注释时它不会动，`init` 会打印要手动加的那一行。）
 
+同一套安装同时支持两个 opencode 世代：`init` 会同时写入 opencode 1 的写法（`"plugin"`）和 opencode 2 的写法（`"plugins"`），每个宿主只读自己的那把。opencode 1 要求 **1.18.29 或更新版本**。接线和已装宿主版本对不上，`open-memex doctor` 会报出来。
+
 **opencode**（作为普通 MCP 消费者）：
 
 ```sh
@@ -238,7 +240,7 @@ open-memex uninstall --yes
 
 - **记忆数据**（首次使用时创建，不是 `init` 本身写的）：Windows 上是 `%APPDATA%\open-memex\`，macOS/Linux 上是 `~/.local/share/open-memex/`——你的记忆文件和搜索索引。`uninstall` 永不修改这里的任何东西。
 - **编辑器接线**（由 `open-memex uninstall` 移除）：
-  - opencode：一条 `"plugin"` 条目，并入 `~/.config/opencode/opencode.json`（或 `.jsonc`）。改名之前遗留的 `my-o-memory` 旧条目会同时被清掉。
+  - opencode：一条 `"plugin"` 条目（opencode 1）和一条 `"plugins"` 条目（opencode 2），并入 `~/.config/opencode/opencode.json`（或 `.jsonc`）。改名之前遗留的 `my-o-memory` 旧条目会同时被清掉。
   - VS Code / Cursor：用户级或项目级 MCP 配置里的一条 `open-memex` 服务器条目，外加 Copilot 指令文件里的一段 open-memex 内容（默认是用户级 `~/.copilot/copilot-instructions.md`；`--instructions project` 改为写进仓库的 `.github/copilot-instructions.md`，适合团队全员都用 open-memex 的情况）。
   - Visual Studio：solution 旁边的 `.mcp.json`。
   - Agent Skill：VS Code（`~/.copilot/skills/`）、Cursor（`~/.cursor/skills/`）或 per-project MCP 模式下的 opencode（`~/.config/opencode/skills/`）各自一个 `skills/open-memex/` 文件夹。

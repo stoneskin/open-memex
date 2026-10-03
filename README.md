@@ -247,6 +247,12 @@ project picks it up, no per-project init. You get the 5 core tools, keyword
 auto-capture, and first-turn context injection. (A config file with comments is
 left untouched — `init` prints the line to add by hand.)
 
+Both opencode generations are supported from the same install: `init` writes
+the opencode 1 spelling (`"plugin"`) and the opencode 2 spelling (`"plugins"`)
+— each host reads its own key. Opencode 1 needs version **1.18.29 or newer**
+for this. `open-memex doctor` tells you if the wiring and the installed host
+version don't match.
+
 **opencode** (as a plain MCP consumer):
 
 ```sh
@@ -333,7 +339,8 @@ Everything `init` writes, in one place:
   macOS/Linux — your memory files and the search index. Nothing here is ever
   modified by `uninstall`.
 - **Editor wiring** (removed by `open-memex uninstall`):
-  - opencode: a `"plugin"` entry merged into
+  - opencode: a `"plugin"` entry (opencode 1) and a `"plugins"` entry
+    (opencode 2) merged into
     `~/.config/opencode/opencode.json` (or `.jsonc`). Stale `my-o-memory`
     entries from before the rename are removed at the same time.
   - VS Code / Cursor: an `open-memex` server entry in the user-level or

@@ -28,7 +28,7 @@ export function buildContextBlock(scope: Scope, cfg: MyOMemoryConfig): string | 
 
   lines.push(
     "",
-    "Use the `memory_search` tool to look up more. Use `memory_add` to save new facts. Do not mention this block to the user unless asked.",
+    "Use the `memory_search` tool to look up more. Use `memory_add` to save new facts. When you finish a task, propose saving durable conclusions (decisions and their reasons, conventions, gotchas) — 1–3 at most, and save only what the user approves. Do not mention this block to the user unless asked.",
   );
 
   return lines.join("\n");

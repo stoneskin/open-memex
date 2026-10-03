@@ -15,6 +15,7 @@ import {
   readMemoryFile,
   ulid,
   msToRfc3339,
+  normalizeAliases,
   type Frontmatter,
 } from "./store/markdown.ts";
 import { loadConfig } from "./config.ts";
@@ -64,19 +65,24 @@ Example:
 
   add: `Save a fact, preference, decision, or note to local memory.
 
-Usage: open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2]
+Usage: open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2] [--aliases "a;b"]
 
 Flags:
-  --scope   project (default) or personal (personal never leaves this machine)
-  --type    memory type (default: fact)
-  --tag     comma-separated tags
+  --scope    project (default) or personal (personal never leaves this machine)
+  --type     memory type (default: fact)
+  --tag      comma-separated tags
+  --aliases  alternate phrasings of this fact (;-separated, up to 4), indexed
+             with the memory so differently-worded searches still match;
+             stored only when capture aliases are enabled (init default)
 
 Example:
   open-memex add "We deploy on Fridays" --scope project --tag process`,
 
   supersede: `Replace a memory with a newer version. The old one is kept as history.
 
-Usage: open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
+Usage: open-memex supersede <id> "new content" [--type T] [--tag t1,t2] [--aliases "a;b"]
+
+Without --aliases, the old memory's aliases carry over.
 
 Example:
   open-memex supersede 01ABC "We deploy on Thursdays now"`,
@@ -943,6 +949,16 @@ async function main() {
             .map((t) => t.trim())
             .filter(Boolean)
         : [],
+      // D61: --aliases "phrase one,phrase two" (semicolon also accepted,
+      // since aliases themselves may contain commas). Stored only when
+      // the install enables capture aliases.
+      ...(flags.aliases && cfg.captureAliases
+        ? {
+            aliases: normalizeAliases(
+              flags.aliases.split(/[;,]/).map((a) => a.trim()).filter(Boolean),
+            ),
+          }
+        : {}),
       source: "cli",
       created_at: rfc,
       updated_at: rfc,
@@ -985,6 +1001,10 @@ async function main() {
         tags: flags.tag
           ? flags.tag.split(",").map((t) => t.trim()).filter(Boolean)
           : undefined,
+        aliases:
+          flags.aliases && cfg.captureAliases
+            ? normalizeAliases(flags.aliases.split(/[;,]/).map((a) => a.trim()).filter(Boolean))
+            : undefined,
         source: "cli",
       });
       upsertFromFile(oldMf);

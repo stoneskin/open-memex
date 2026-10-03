@@ -9,6 +9,11 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Proactive capture: checkpoint proposals and aliases (D61)
+
+- At task checkpoints the agent now proposes instead of waiting to be asked: when a task wraps up, it offers 1–3 short candidate memories distilled from the session (decisions and their reasons, conventions, gotchas, approaches tried and abandoned) and saves only the ones you approve — approved inferences are marked `source: "inference"`. One memorability rubric and one search discipline (break the question into concepts, try several phrasings, check both scopes) are written into every guidance surface — the bundled skill, the AGENTS.md memory-hygiene footer, the MCP handshake, and the tool descriptions — so behavior is consistent across editors. Nothing is auto-drafted in the background; that posture waits on memory visibility.
+- Memories can carry up to 4 **aliases** — alternate phrasings, synonyms, other-language equivalents — stored in the memory file and indexed with it, so a differently-worded question still matches ("vacation days" finds the holiday policy; "节假日" too). `init` asks once (default on); `open-memex config set captureAliases false` turns it off. Existing memory files are untouched — the index rebuilds itself on first use.
+
 ## One plugin, both opencode generations (D60)
 
 - The native plugin now loads on **opencode 2** as well as opencode 1. `open-memex init --client opencode --global` writes both config spellings — the v1 `"plugin"` file entry and the v2 `"plugins"` directory entry — and each host reads its own. Previously an opencode 2 host silently skipped the plugin (a file entry is not a directory it can load), leaving no tools and no explanation.

@@ -137,6 +137,15 @@ Every write path (tool, keyword hook, CLI `add`) must:
 3. Check `findDuplicates` (design §3.4): identical content is idempotent (return existing id); near-duplicates (similarity ≥ 0.8) warn but save — suggest `supersede` when the new content replaces the old.
 4. `writeMemoryFile` first, then `readMemoryFile` + `upsertFromFile` to keep FTS in sync.
 
+Capture-time aliases (D61): `memory_add`/`supersede` may carry up to 4
+`aliases` (alternate phrasings) into frontmatter; they index in their own FTS
+column. Only when `cfg.captureAliases` is on (init asks once, default on) —
+when off, passed aliases are dropped. Always pass them through
+`normalizeAliases`; the keyword-capture path (no agent in the loop) never
+invents aliases. Checkpoint-proposal guidance (propose, never auto-draft) is
+copy, not mechanism: keep the rubric wording in sync across the skill, the
+AGENTS.md hygiene footer, the MCP handshake, and the tool descriptions.
+
 ## Lifecycle invariants (design §3.3)
 
 - Statuses: `active → superseded | deprecated | retracted | archived`. Retrieval excludes `retracted`/`archived`, ranks `active` above `deprecated`.

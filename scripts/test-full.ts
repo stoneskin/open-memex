@@ -133,6 +133,11 @@ ok("list --type filter", r.out.includes(idDecision) && !r.out.includes(idFact));
 r = cli(["search", "ff merges"], PROJ);
 ok("search finds decision", r.out.includes(idDecision), r.out.slice(0, 150));
 
+// D61: capture-time aliases — a differently-worded query still hits.
+const idAlias = addMem(["fulltest holiday policy lives in the handbook", "--aliases", "time off;vacation days"], PROJ);
+r = cli(["search", "vacation"], PROJ);
+ok("search hits via alias-only term", r.out.includes(idAlias), r.out.slice(0, 150));
+
 // ---------- 3. supersede / status / forget ----------
 console.log("== supersede / status / forget ==");
 r = cli(["supersede", idFact, "fulltest fact about deploys v2"], PROJ);

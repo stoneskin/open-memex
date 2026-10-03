@@ -599,7 +599,7 @@ open-memex init [--client vscode|cursor|opencode|visualstudio]
 open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]
 open-memex config                                  # print effective config
 open-memex config set <key> <value>                # change a setting
-open-memex doctor                                  # environment health check
+open-memex doctor                                  # environment health check (incl. plugin entry)
 open-memex audit                                   # memory health check (duplicates, stale, broken chains)
 open-memex capture --dry-run "记住我喜欢简洁的回答"  # preview keyword capture
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio

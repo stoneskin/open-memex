@@ -1197,6 +1197,19 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   register. Rule going forward: plugin code imports host SDK types only;
   runtime imports must resolve from the package's own dependencies.
 
+- **D59** — `doctor` patrols the plugin entry it used to take on faith
+  (0.6.2-alpha.1). D58's failure was invisible to every existing check:
+  `doctor` verified the MCP server end-to-end but never looked at the
+  opencode plugin entry, so a configured-but-dead plugin passed all
+  checks. The new `opencode plugin` check reads the user-level opencode
+  configs (`opencode.json` + `opencode.jsonc`), attributes entries to
+  this plugin by package path or the `[open-memex]` marker (source
+  checkouts live anywhere), and fails when (a) the entry's target file
+  does not exist — with the `init --force` re-point command named — or
+  (b) the entry's relative-import closure runtime-imports
+  `@opencode-ai/plugin`, the exact D58 death. It checks only what can be
+  attributed; per-project and MCP wiring are out of scope.
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

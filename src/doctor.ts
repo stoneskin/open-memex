@@ -93,6 +93,134 @@ function lockingCheck(): Check {
   }
 }
 
+/**
+ * D59: patrol the opencode native-plugin entry. The D58 field failure was
+ * silent — the entry was configured, the host never loaded it, and nothing
+ * anywhere said why. Two death modes to catch:
+ *   1. the entry's target file does not exist (package moved, nvm rolled
+ *      to a new version dir, checkout deleted);
+ *   2. the plugin's import closure runtime-imports @opencode-ai/plugin
+ *      (or another host-only module the package does not depend on),
+ *      which is unresolvable from a global install (D58 regression).
+ * Read-only; only inspects the user-level opencode configs.
+ */
+function opencodePluginCheck(): Check {
+  const name = "opencode plugin";
+  try {
+    const jsonPath = opencodeGlobalConfigPath();
+    const candidates = [jsonPath, jsonPath.replace(/\.json$/, ".jsonc")];
+    const entries: string[] = [];
+    let sawConfig = false;
+    for (const f of candidates) {
+      if (!fs.existsSync(f)) continue;
+      sawConfig = true;
+      const text = fs.readFileSync(f, "utf8");
+      try {
+        const doc = JSON.parse(text) as { plugin?: unknown };
+        const list = Array.isArray(doc.plugin) ? doc.plugin : [];
+        for (const e of list) {
+          if (typeof e === "string") entries.push(e);
+        }
+      } catch {
+        // JSONC (comments/trailing commas): fall back to scanning quoted
+        // strings for plugin entries.
+        for (const m of text.matchAll(/"(file:[^"]+|[^"]+\.(?:ts|js|mts|mjs))"/g)) {
+          entries.push(m[1]!);
+        }
+      }
+    }
+    if (!sawConfig) {
+      return { name, ok: true, detail: "no global opencode config found (skipped)" };
+    }
+
+    const problems: string[] = [];
+    const RUNTIME_SDK_IMPORT =
+      /^\s*import\s+(?!type\b)[^;]*?["']@opencode-ai\/plugin(?:\/[^"']*)?["']/m;
+    const RUNTIME_SDK_REQUIRE = /require\(\s*["']@opencode-ai\/plugin(?:\/[^"']*)?["']\s*\)/;
+
+    // An entry is ours when its path names the package, or when the target
+    // file carries the plugin's "[open-memex]" log marker (source checkouts
+    // can live at any path).
+    const isOurEntry = (entry: string): boolean => {
+      if (entry.includes("open-memex")) return true;
+      try {
+        const target = entry.startsWith("file:") ? fileURLToPath(entry) : entry;
+        if (!fs.existsSync(target)) return false;
+        return fs.readFileSync(target, "utf8").slice(0, 65536).includes("[open-memex]");
+      } catch {
+        return false;
+      }
+    };
+    const scanSdkImports = (entryFile: string): string[] => {
+      // Walk the entry's relative-import closure looking for host-SDK
+      // runtime imports (type-only imports are erased and fine).
+      const offenders: string[] = [];
+      const seen = new Set<string>();
+      const queue = [entryFile];
+      while (queue.length > 0 && seen.size < 300) {
+        const file = queue.shift()!;
+        if (seen.has(file)) continue;
+        seen.add(file);
+        let src: string;
+        try {
+          src = fs.readFileSync(file, "utf8");
+        } catch {
+          continue;
+        }
+        if (RUNTIME_SDK_IMPORT.test(src) || RUNTIME_SDK_REQUIRE.test(src)) {
+          offenders.push(file);
+        }
+        for (const m of src.matchAll(/(?:from\s+|import\s*\(\s*|import\s+)["'](\.[^"']+)["']/g)) {
+          const spec = m[1]!;
+          const base = path.resolve(path.dirname(file), spec);
+          for (const cand of [base, `${base}.ts`, `${base}.js`, path.join(base, "index.ts")]) {
+            if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+              queue.push(cand);
+              break;
+            }
+          }
+        }
+      }
+      return offenders;
+    };
+
+    const ours = entries.filter(isOurEntry);
+    if (ours.length === 0) {
+      return { name, ok: true, detail: "no global plugin entry (per-project or MCP wiring is not checked)" };
+    }
+    for (const entry of ours) {
+      let target: string;
+      try {
+        target = entry.startsWith("file:") ? fileURLToPath(entry) : entry;
+      } catch {
+        problems.push(`entry "${entry}" is not a parseable file URL`);
+        continue;
+      }
+      if (!fs.existsSync(target)) {
+        problems.push(
+          `entry points at ${target}, which does not exist — run \`open-memex init --client opencode --global --force\` to re-point it`,
+        );
+        continue;
+      }
+      for (const f of scanSdkImports(target)) {
+        problems.push(
+          `${f} runtime-imports @opencode-ai/plugin — opencode silently skips plugins whose imports it cannot resolve from a global install (D58)`,
+        );
+      }
+    }
+    if (problems.length > 0) {
+      return { name, ok: false, detail: problems.join("; ") };
+    }
+    return {
+      name,
+      ok: true,
+      detail: `${ours.length} plugin ${ours.length === 1 ? "entry" : "entries"}: target exists, no host-SDK runtime imports`,
+    };
+  } catch (err) {
+    return { name, ok: false, detail: String(err) };
+  }
+}
+
 /** Spawn the real MCP server, handshake, and verify the five tools list. */
 function mcpCheck(): Promise<Check> {
   const name = "mcp";
@@ -320,7 +448,7 @@ function vscodeMcpCheck(): Check {
 
 export async function runDoctor(): Promise<boolean> {
   console.log("open-memex doctor");
-  const checks: Check[] = [nodeCheck(), configCheck(), scopeCheck(), storageCheck(), lockingCheck(), vscodeMcpCheck()];
+  const checks: Check[] = [nodeCheck(), configCheck(), scopeCheck(), storageCheck(), lockingCheck(), opencodePluginCheck(), vscodeMcpCheck()];
   checks.push(await mcpCheck());
   checks.push(legacyCheck());
   let allOk = true;

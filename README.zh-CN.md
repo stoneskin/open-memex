@@ -421,7 +421,7 @@ open-memex init [--client vscode|cursor|opencode|visualstudio]
 open-memex uninstall [--client vscode|cursor|opencode|visualstudio] [--global] [--yes]
 open-memex config                                  # 打印生效配置
 open-memex config set <key> <value>                # 改一个设置
-open-memex doctor                                  # 环境健康检查
+open-memex doctor                                  # 环境健康检查（含插件入口巡检）
 open-memex audit                                   # 记忆健康检查（近重复、陈旧、断链）
 open-memex capture --dry-run "记住我喜欢简洁的回答"  # 预览关键词捕获
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio

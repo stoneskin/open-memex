@@ -23,7 +23,7 @@ memory on your machine.
   share the same memory instead of keeping separate silos.
 
 New here? This README takes you from install to a working memory in about a
-minute. The [user guide](./docs/USER-GUIDE.md) explains the mental model in
+minute. The [concept guide](./docs/CONCEPTS.md) explains the mental model in
 depth once you're up and running.
 
 ## Contents
@@ -751,7 +751,7 @@ the server with cwd set to your project root (`init` handles this for you).
   `migrate --to-v2` renames it.)
 
 See [docs/SCOPES.md](./docs/SCOPES.md) for the full scope model: key derivation,
-migration, visibility, reserved names. The [user guide](./docs/USER-GUIDE.md)
+migration, visibility, reserved names. The [concept guide](./docs/CONCEPTS.md)
 walks through the mental model end to end.
 
 ## Troubleshooting

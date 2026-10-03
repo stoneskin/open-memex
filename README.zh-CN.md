@@ -13,7 +13,7 @@
 - **本地优先**：记忆是纯 Markdown 文件（事实来源），外加一个可重建的 SQLite 关键词索引。除非你明确要分享，否则任何东西都不会离开你的机器。
 - **一份记忆，所有助手**：一条命令把几个编辑器都接上，它们共享同一份记忆，不再各存一份互不可见。
 
-第一次接触？这份 README 带你在一分钟左右从安装走到"记忆生效"。跑通之后，[用户指南](./docs/USER-GUIDE.zh-CN.md)会把心智模型讲透。
+第一次接触？这份 README 带你在一分钟左右从安装走到"记忆生效"。跑通之后，[概念指南](./docs/CONCEPTS.zh-CN.md)会把心智模型讲透。
 
 ## 目录
 
@@ -537,7 +537,7 @@ npx -y open-memex mcp        # 无需安装
 - **project（项目）**——限定在当前仓库，键由 git origin URL 的 hash 派生（所以同一仓库的多个 clone 共享一个作用域），没有远程时退回到当前工作目录路径。新记忆的默认作用域。
 - **personal（个人）**——横跨你的所有项目，仅限本机，永不向外同步。放个人偏好用。（v1 里叫 `user`；`migrate --to-v2` 会改名。）
 
-完整的 scope 模型（键派生、迁移、可见性、保留名）见 [docs/SCOPES.md](./docs/SCOPES.md)。[用户指南](./docs/USER-GUIDE.zh-CN.md)把心智模型完整走了一遍。
+完整的 scope 模型（键派生、迁移、可见性、保留名）见 [docs/SCOPES.md](./docs/SCOPES.md)。[概念指南](./docs/CONCEPTS.zh-CN.md)把心智模型完整走了一遍。
 
 ## 故障排查
 

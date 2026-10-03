@@ -391,7 +391,7 @@ npm install -g open-memex@latest   # 或 @alpha
 
 ## 配置
 
-设置放在 `~/.config/opencode/open-memex.jsonc`——路径里的 `opencode` 是历史名；这一个文件由所有客户端共享。用 `MY_O_MEMORY_CONFIG` 覆盖配置路径，用 `MY_O_MEMORY_HOME` 覆盖存储根目录（改名之前留下的旧环境变量名，仍然有效）。
+设置放在 `~/.config/opencode/open-memex.jsonc`——路径里的 `opencode` 是历史名；这一个文件由所有客户端共享。用 `OPEN_MEMEX_CONFIG` 覆盖配置路径，用 `OPEN_MEMEX_HOME` 覆盖存储根目录（改名之前的旧变量名 `MY_O_MEMORY_CONFIG` / `MY_O_MEMORY_HOME` 仍然有效，作为回退）。
 
 默认值：
 

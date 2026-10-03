@@ -8,7 +8,7 @@ import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadConfig, configSource, DEFAULT_CONFIG } from "./config.ts";
-import { paths } from "./paths.ts";
+import { paths, homeOverride } from "./paths.ts";
 import { resolveCwdScope } from "./scope.ts";
 import { db, backendName } from "./store/db.ts";
 import { LEGACY_PACKAGE_NAME, opencodeGlobalConfigPath, userMcpConfigPath } from "./init.ts";
@@ -66,7 +66,14 @@ function storageCheck(): Check {
   try {
     const p = paths();
     fs.accessSync(p.memories, fs.constants.W_OK);
-    return { name: "storage", ok: true, detail: `${p.root} (writable)` };
+    // D62: when the root came from the legacy env var, say so (still ok —
+    // the fallback is supported, doctor just names the current one).
+    const via = homeOverride()?.via;
+    const note =
+      via === "MY_O_MEMORY_HOME"
+        ? " (via legacy MY_O_MEMORY_HOME — OPEN_MEMEX_HOME is the current name)"
+        : "";
+    return { name: "storage", ok: true, detail: `${p.root} (writable)${note}` };
   } catch (err) {
     return { name: "storage", ok: false, detail: String(err) };
   }
@@ -579,10 +586,12 @@ export async function runDoctor(): Promise<boolean> {
 function legacyCheck(): Check {
   const name = "legacy my-o-memory";
   const found: string[] = [];
-  const envHome = process.env.MY_O_MEMORY_HOME;
+  // D62: the override may arrive via either env var name; check the value
+  // in effect, not just the legacy one.
+  const envHome = homeOverride()?.dir;
   if (envHome && envHome.includes(LEGACY_PACKAGE_NAME))
     found.push(
-      `MY_O_MEMORY_HOME points at a pre-rename dir (${envHome}) — unset it, then merge old data with \`open-memex migrate --to-v2\``,
+      `memory home points at a pre-rename dir (${envHome}) — unset it, then merge old data with \`open-memex migrate --to-v2\``,
     );
   const root = paths().root;
   const legacyDir = path.join(path.dirname(root), LEGACY_PACKAGE_NAME);

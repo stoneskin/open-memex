@@ -12,6 +12,8 @@ import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecy
 import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, mergeV2PluginEntry, removeV2PluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME, shouldInstallSkill } from "../src/init.ts";
 import { z } from "zod";
 import { memoryAddArgs } from "../src/tools/ops.ts";
+import { dataRootPath, homeOverride } from "../src/paths.ts";
+import { configFilePath } from "../src/config.ts";
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {
@@ -422,6 +424,38 @@ ok("failed backup keeps moved files safe in new root", fs.existsSync(path.join(n
 ok("failed backup leaves legacy dir for retry", fs.existsSync(legacyRoot2));
 delete process.env.MY_O_MEMORY_HOME;
 fs.rmSync(tmpHome, { recursive: true, force: true });
+
+console.log("== env var names (D62) ==");
+{
+  const saved = {
+    n: process.env.OPEN_MEMEX_HOME,
+    l: process.env.MY_O_MEMORY_HOME,
+    nc: process.env.OPEN_MEMEX_CONFIG,
+    lc: process.env.MY_O_MEMORY_CONFIG,
+  };
+  const restore = () => {
+    const set = (k: string, v: string | undefined) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
+    set("OPEN_MEMEX_HOME", saved.n);
+    set("MY_O_MEMORY_HOME", saved.l);
+    set("OPEN_MEMEX_CONFIG", saved.nc);
+    set("MY_O_MEMORY_CONFIG", saved.lc);
+  };
+  try {
+    delete process.env.OPEN_MEMEX_HOME;
+    delete process.env.MY_O_MEMORY_HOME;
+    ok("no override -> homeOverride null", homeOverride() === null);
+    process.env.MY_O_MEMORY_HOME = "/tmp/legacy-home";
+    ok("legacy fallback honored", dataRootPath().endsWith("legacy-home") && homeOverride()?.via === "MY_O_MEMORY_HOME");
+    process.env.OPEN_MEMEX_HOME = "/tmp/new-home";
+    ok("new name wins over legacy", dataRootPath().endsWith("new-home") && homeOverride()?.via === "OPEN_MEMEX_HOME");
+    process.env.MY_O_MEMORY_CONFIG = "/tmp/legacy.jsonc";
+    ok("config legacy fallback", configFilePath().endsWith("legacy.jsonc"));
+    process.env.OPEN_MEMEX_CONFIG = "/tmp/new.jsonc";
+    ok("config new name wins", configFilePath().endsWith("new.jsonc"));
+  } finally {
+    restore();
+  }
+}
 
 console.log("== lifecycle pure: contentHash / similarity ==");
 ok("hash deterministic + whitespace-insensitive", contentHash("hello   world\n") === contentHash("hello world"));

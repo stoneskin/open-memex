@@ -239,8 +239,13 @@ export function normalizeFrontmatter(
     tags: Array.isArray(raw.tags)
       ? raw.tags.filter((t): t is string => typeof t === "string")
       : [],
-    ...(Array.isArray(raw.aliases) && normalizeAliases(raw.aliases).length > 0
-      ? { aliases: normalizeAliases(raw.aliases) }
+    ...(Array.isArray(raw.aliases)
+      ? (() => {
+          const aliases = normalizeAliases(
+            raw.aliases.filter((a): a is string => typeof a === "string"),
+          );
+          return aliases.length > 0 ? { aliases } : {};
+        })()
       : {}),
     source: typeof raw.source === "string" ? raw.source : "",
     created_at: msToRfc3339(timeToMs(raw.created_at)),
@@ -290,10 +295,14 @@ export function isTaxonomyType(t: string): boolean {
 }
 
 export function serialize(fm: Frontmatter, body: string): string {
-  // D61: an empty aliases list is noise in the file — omit the key entirely
-  // (same convention as parse, which only sets it when non-empty).
-  const out =
-    fm.aliases && fm.aliases.length === 0 ? { ...fm, aliases: undefined } : fm;
+  // D61: an empty aliases list is noise in the file — drop the key entirely
+  // rather than relying on the YAML dumper to skip an undefined value
+  // (parse only sets the field when non-empty; keep both ends consistent).
+  let out: Frontmatter = fm;
+  if (fm.aliases && fm.aliases.length === 0) {
+    out = { ...fm };
+    delete out.aliases;
+  }
   const yml = yaml.dump(out, { lineWidth: -1, quotingType: '"' });
   return `---\n${yml}---\n\n${body.trimEnd()}\n`;
 }

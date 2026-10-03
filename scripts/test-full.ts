@@ -137,6 +137,29 @@ ok("search finds decision", r.out.includes(idDecision), r.out.slice(0, 150));
 const idAlias = addMem(["fulltest holiday policy lives in the handbook", "--aliases", "time off;vacation days"], PROJ);
 r = cli(["search", "vacation"], PROJ);
 ok("search hits via alias-only term", r.out.includes(idAlias), r.out.slice(0, 150));
+ok("alias-only hit explains itself (aka)", /aka:/i.test(r.out), r.out.slice(0, 150));
+
+// D61 review: aliases go through the same redaction as content. (The
+// secret is assembled at runtime so no credential-shaped literal sits
+// in this file.)
+const fakePat = "ghp_" + "Ab3".repeat(12);
+const idSecretAlias = addMem(["fulltest alias redaction target", "--aliases", `${fakePat}; benign alias`], PROJ);
+r = cli(["search", "benign"], PROJ);
+ok("benign alias still searchable", r.out.includes(idSecretAlias), r.out.slice(0, 150));
+{
+  const dir = path.join(TESTENV.MY_O_MEMORY_HOME, "memories");
+  const stack = [dir];
+  let hit = "";
+  while (stack.length && !hit) {
+    const d = stack.pop()!;
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) stack.push(p);
+      else if (p.endsWith(`${idSecretAlias}.md`)) hit = fs.readFileSync(p, "utf8");
+    }
+  }
+  ok("secret-looking alias is masked in the stored file", !!hit && !hit.includes(fakePat), hit.slice(0, 200));
+}
 
 // ---------- 3. supersede / status / forget ----------
 console.log("== supersede / status / forget ==");

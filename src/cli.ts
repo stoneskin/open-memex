@@ -71,9 +71,11 @@ Flags:
   --scope    project (default) or personal (personal never leaves this machine)
   --type     memory type (default: fact)
   --tag      comma-separated tags
-  --aliases  alternate phrasings of this fact (;-separated, up to 4), indexed
-             with the memory so differently-worded searches still match;
-             stored only when capture aliases are enabled (init default)
+  --aliases  alternate phrasings of this fact (up to 4), indexed with the
+             memory so differently-worded searches still match; separate
+             with ; (commas also accepted — use ; when an alias itself
+             contains one). Stored only when capture aliases are enabled
+             (init default)
 
 Example:
   open-memex add "We deploy on Fridays" --scope project --tag process`,
@@ -949,13 +951,17 @@ async function main() {
             .map((t) => t.trim())
             .filter(Boolean)
         : [],
-      // D61: --aliases "phrase one,phrase two" (semicolon also accepted,
-      // since aliases themselves may contain commas). Stored only when
-      // the install enables capture aliases.
-      ...(flags.aliases && cfg.captureAliases
+      // D61: --aliases "phrase one; phrase two" (comma also accepted; use
+      // ; when an alias itself contains a comma). A bare --aliases with no
+      // value makes parseFlags yield "true" — treat that as absent. Stored
+      // only when the install enables capture aliases, redacted like content.
+      ...(typeof flags.aliases === "string" && flags.aliases !== "true" && cfg.captureAliases
         ? {
             aliases: normalizeAliases(
-              flags.aliases.split(/[;,]/).map((a) => a.trim()).filter(Boolean),
+              flags.aliases
+                .split(/[;,]/)
+                .map((a) => redact(a.trim(), cfg.redactPatterns).content)
+                .filter(Boolean),
             ),
           }
         : {}),
@@ -1002,8 +1008,13 @@ async function main() {
           ? flags.tag.split(",").map((t) => t.trim()).filter(Boolean)
           : undefined,
         aliases:
-          flags.aliases && cfg.captureAliases
-            ? normalizeAliases(flags.aliases.split(/[;,]/).map((a) => a.trim()).filter(Boolean))
+          typeof flags.aliases === "string" && flags.aliases !== "true" && cfg.captureAliases
+            ? normalizeAliases(
+                flags.aliases
+                  .split(/[;,]/)
+                  .map((a) => redact(a.trim(), cfg.redactPatterns).content)
+                  .filter(Boolean),
+              )
             : undefined,
         source: "cli",
       });

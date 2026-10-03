@@ -1289,7 +1289,14 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   Gated by a new `captureAliases` config flag (init asks once, default
   on, `config set captureAliases off` opts out): when off, aliases
   passed by agents are dropped and the alias guidance disappears from
-  the MCP handshake. Keyword capture (no agent in the loop) leaves
+  the MCP handshake. Turning it off never rewrites existing memory
+  files — aliases already stored stay stored and searchable, and
+  supersede keeps carrying them forward; the flag gates new captures
+  only (no silent data destruction). Aliases pass through the same
+  secret redaction as memory content before they are stored, and a
+  malformed alias list (blanks, more than 4) is normalized silently —
+  never a tool-call error.
+  Keyword capture (no agent in the loop) leaves
   aliases empty rather than inventing them; `supersede` carries
   aliases forward unless the caller replaces them. Aliases are
   normalized (trim, case-insensitive dedupe, cap 4) and bad ones cost

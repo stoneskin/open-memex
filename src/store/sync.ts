@@ -63,7 +63,7 @@ export function upsertFromFile(mf: MemoryFile): void {
 function writeRow(mf: MemoryFile, mtimeMs: number): void {
   const { fm, body, filePath } = mf;
   const tags = (fm.tags ?? []).join(",");
-  const aliases = (fm.aliases ?? []).join(" ");
+  const aliases = (fm.aliases ?? []).join(",");
   db().prepare(UPSERT_SQL).run(
     fm.id,
     fm.scope_key,

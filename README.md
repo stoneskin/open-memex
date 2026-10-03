@@ -373,7 +373,19 @@ Three ways memories get in:
   (or it saves on its own when you state a fact worth keeping) — it calls
   `memory_add`. The routing above is a heuristic; you can always say "save this
   to my personal memory" or use the CLI with `--scope` to be explicit.
-- **The CLI**: `open-memex add "…"` with optional `--scope` / `--tags` / `--type`.
+- **Checkpoint proposals**: when a task wraps up, the agent proposes 1–3 short
+  candidate memories distilled from the session — decisions and their reasons,
+  conventions, gotchas, approaches tried and abandoned — and saves only the
+  ones you approve. Nothing is written silently: no draft is created behind
+  your back.
+- **The CLI**: `open-memex add "…"` with optional `--scope` / `--tags` / `--type`
+  / `--aliases`.
+
+**Aliases.** Each saved memory can carry up to 4 alternate phrasings
+(synonyms, another language's equivalent) that are indexed with it, so a
+question worded differently still finds the memory — "vacation days" finds the
+holiday policy. `init` asks once whether to enable this (default on); turn it
+off any time with `open-memex config set captureAliases false`.
 
 **Redaction.** Wrap anything sensitive in `<private>…</private>` and it is
 stripped before saving. Recognized secrets (API keys, tokens, high-entropy

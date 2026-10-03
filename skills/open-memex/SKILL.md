@@ -25,6 +25,32 @@ open-memex add "I prefer concise diffs" --scope personal   # applies everywhere
 Keep each memory one self-contained statement. Scope routing: facts about the
 user ("I"/"me") → `personal`; everything else → the current project.
 
+Worth saving: decisions and their reasons, preferences, conventions, gotchas,
+approaches tried and abandoned. Not worth saving: one-off task details or
+anything re-derivable from the code.
+
+Attach alternate phrasings when saving — synonyms, another way the question
+might be worded, equivalents in the user's other language — so reworded
+questions still find the memory:
+
+```sh
+open-memex add "Public holidays are listed in the HR portal" --aliases "holidays;time off;节假日"
+```
+
+(Aliases are stored only when the install has capture aliases enabled — the
+init default.)
+
+## At task checkpoints — propose, don't just save
+
+For conclusions you infer yourself (the user never stated them): when you
+finish a task the user would describe in one sentence, propose 1–3 short
+memories capturing the useful conclusion (what was learned or decided, how an
+issue was resolved, what to avoid, where the authoritative doc lives — not the
+raw transcript). Save nothing the user did not approve; on approval, save it —
+with the `memory_add` tool pass `source: "inference"` so the capture is marked
+as agent-proposed. Don't interrupt mid-task, and don't re-propose something
+the user already declined.
+
 ## Recall
 
 ```sh
@@ -33,7 +59,10 @@ open-memex list                       # recent memories in the current project
 ```
 
 Search before asking the user about past decisions or preferences they may
-have told you before.
+have told you before. Search well: break the question into its concepts and
+try 2–3 phrasings per concept — synonyms, the user's other language, shorter
+keyword forms — and check the other scope too, before concluding nothing is
+stored.
 
 ## Project outbox → repo (the sync flow)
 

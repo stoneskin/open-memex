@@ -206,6 +206,7 @@ export interface SupersedeInput {
   body: string;
   type?: string;
   tags?: string[];
+  aliases?: string[];
   source?: string;
 }
 
@@ -232,6 +233,8 @@ export function supersede(
     id: ulid(),
     type: input.type ?? oldMf.fm.type,
     tags: input.tags ?? oldMf.fm.tags,
+    // D61: aliases carry forward unless the caller replaces them.
+    aliases: input.aliases ?? oldMf.fm.aliases,
     source: input.source ?? oldMf.fm.source,
     status: "active",
     created_at: now,

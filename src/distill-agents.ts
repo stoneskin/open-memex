@@ -78,8 +78,14 @@ export function distillAgentsMarkdown(opts: DistillAgentsOptions): string {
     `  conclusion — what was learned or decided, how an issue was resolved, what`,
     `  to avoid, where the authoritative doc lives — not the raw transcript.`,
     `  Save nothing without user approval.`,
+    `  Worth keeping: decisions and their reasons, preferences, conventions,`,
+    `  gotchas, approaches tried and abandoned. Not worth keeping: one-off task`,
+    `  details or anything re-derivable from the code.`,
     `- If the knowledge already lives in project docs, save a \`reference\` memory`,
     `  pointing at the doc instead of copying it.`,
+    `- When saving via \`memory_add\`, attach 2–4 aliases (alternate phrasings,`,
+    `  synonyms, equivalents in the user's other language) when the install has`,
+    `  capture aliases enabled — they make reworded questions find the memory.`,
   );
   lines.push(``);
   return lines.join("\n");

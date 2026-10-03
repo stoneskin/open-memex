@@ -18,6 +18,7 @@ import {
   ulid,
   msToRfc3339,
   MEMORY_TYPE_TAXONOMY,
+  normalizeAliases,
   type Frontmatter,
 } from "../store/markdown.ts";
 import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
@@ -62,9 +63,9 @@ export async function withOutboxNote(
 /** LLM-facing tool descriptions, shared by the opencode plugin and the MCP server. */
 export const TOOL_DESCRIPTIONS = {
   memory_add:
-    "Save a fact, preference, decision, or note to persistent local memory. Call this PROACTIVELY whenever the user shares something worth remembering across sessions — project conventions, tool choices, personal preferences, decisions made, error fixes and their causes. Do not wait to be asked. Keep each memory to one self-contained statement. Default scope is the current project; use the personal scope for facts about the user that apply across all projects.",
+    "Save a fact, preference, decision, or note to persistent local memory. Call this PROACTIVELY whenever the user shares something worth remembering across sessions — project conventions, tool choices, personal preferences, decisions made, error fixes and their causes. Worth saving: decisions and their reasons, preferences, conventions, gotchas, approaches tried and abandoned. Not worth saving: one-off task details or anything re-derivable from the code. Do not wait to be asked. For facts you infer yourself rather than the user stating, propose them first and save only on approval. Keep each memory to one self-contained statement; attach aliases when the parameter is available. Default scope is the current project; use the personal scope for facts about the user that apply across all projects.",
   memory_search:
-    "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or personal scope. Call before asking the user about past decisions, conventions, or preferences they may have told you before — try a few keyword variants, including the user's own language, when the first search comes up empty.",
+    "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or personal scope. Call before asking the user about past decisions, conventions, or preferences they may have told you before. Search well: break the question into its concepts and try 2–3 phrasings per concept — synonyms, the user's other language, shorter keyword forms — and check the other scope too, before concluding nothing is stored.",
   memory_list:
     "List memories in a scope, newest first. Useful for browsing what is remembered, or verifying that a save landed.",
   memory_supersede:
@@ -92,6 +93,13 @@ export const scopeArg = z
     "Memory scope. `project` = tied to this repo. `personal` = global across all your projects. `user` is a deprecated alias of `personal`. Default: project.",
   );
 
+export const aliasesArg = z
+  .array(z.string())
+  .optional()
+  .describe(
+    "Optional: alternate phrasings of this fact — synonyms, another way a question might be worded, equivalents in the user's other language (e.g. 节假日 for 'public holidays'). They are indexed with the memory so differently-worded questions still match. Only used when the install has capture aliases enabled (init default). Send at most 4; extras and blanks are dropped silently, never an error.",
+  );
+
 export const memoryAddArgs = {
   content: z.string().min(1).describe("The fact to remember. One idea per memory."),
   type: z
@@ -100,6 +108,7 @@ export const memoryAddArgs = {
     .describe("Category of memory. Default: fact."),
   scope: scopeArg,
   tags: z.array(z.string()).optional().describe("Optional tags for filtering."),
+  aliases: aliasesArg,
   source: z
     .string()
     .optional()
@@ -138,6 +147,7 @@ export const memorySupersedeArgs = {
     .optional()
     .describe("Category of the new memory. Defaults to the old memory's type."),
   tags: z.array(z.string()).optional().describe("Optional tags for the new memory."),
+  aliases: aliasesArg,
 };
 export type MemorySupersedeArgs = z.infer<z.ZodObject<typeof memorySupersedeArgs>>;
 
@@ -210,6 +220,7 @@ function buildFrontmatter(
   body: {
     type: Frontmatter["type"];
     tags: string[];
+    aliases?: string[];
     source: Frontmatter["source"];
   },
 ): Frontmatter {
@@ -226,6 +237,7 @@ function buildFrontmatter(
     importance: "normal",
     status: "active",
     tags: body.tags,
+    ...(body.aliases && body.aliases.length > 0 ? { aliases: body.aliases } : {}),
     source: body.source,
     created_at: rfc,
     updated_at: rfc,
@@ -265,6 +277,15 @@ export async function addMemory(
   const fm = buildFrontmatter(s, {
     type: args.type ?? "fact",
     tags: args.tags ?? [],
+    // D61: aliases are stored only when the install enables them (init
+    // asks once, default on); normalize caps at 4 and drops junk silently.
+    // Aliases pass through the same redaction as content (write-path
+    // invariant) — an alias carrying a token gets masked, not stored raw.
+    aliases: cfg.captureAliases
+      ? normalizeAliases(
+          (args.aliases ?? []).map((a) => redact(a, cfg.redactPatterns).content),
+        )
+      : [],
     source: args.source ?? "tool",
   });
   const { filePath } = writeMemoryFile(fm, redacted);
@@ -335,6 +356,14 @@ export async function supersedeMemory(
       body: redacted,
       type: args.type,
       tags: args.tags,
+      // D61: explicit aliases replace the carried-over ones, only when
+      // the install enables capture aliases. Same redaction as content.
+      aliases:
+        cfg.captureAliases && args.aliases !== undefined
+          ? normalizeAliases(
+              args.aliases.map((a) => redact(a, cfg.redactPatterns).content),
+            )
+          : undefined,
       source: "tool",
     });
     upsertFromFile(oldMf);

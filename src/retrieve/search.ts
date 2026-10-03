@@ -7,6 +7,8 @@ export interface SearchHit {
   project_name: string;
   type: string;
   tags: string[];
+  /** D61: capture-time aliases stored on this memory (search hits only). */
+  aliases: string[];
   snippet: string;
   score: number;
   updated_at: number;
@@ -20,6 +22,7 @@ interface RawRow {
   project_name: string;
   type: string;
   tags: string;
+  aliases?: string;
   updated_at: number;
   snippet: string;
   score: number;
@@ -29,13 +32,22 @@ interface RawRow {
 }
 
 function toHit(r: RawRow): SearchHit {
+  const aliases = r.aliases ? r.aliases.split(",").map((a) => a.trim()).filter(Boolean) : [];
+  let snippet = r.snippet ?? "";
+  // D61: the snippet highlights matches in the body column only. When the
+  // match came through an alias (body shows no highlight), say so — the
+  // hit otherwise looks unrelated to the query.
+  if (aliases.length > 0 && !/\[[^\]]+\]/.test(snippet)) {
+    snippet += ` (aka: ${aliases.join(", ")})`;
+  }
   return {
     id: r.id,
     scope_key: r.scope_key,
     project_name: r.project_name,
     type: r.type,
     tags: r.tags ? r.tags.split(",").filter(Boolean) : [],
-    snippet: r.snippet ?? "",
+    aliases,
+    snippet,
     score: r.score,
     updated_at: r.updated_at,
     status: r.status,
@@ -161,7 +173,7 @@ export function search(
   const typeFilter = opts.type ? ` AND m.type = ?` : "";
 
   const sql = `
-    SELECT m.id, m.scope_key, m.project_name, m.type, m.tags, m.updated_at,
+    SELECT m.id, m.scope_key, m.project_name, m.type, m.tags, m.aliases, m.updated_at,
            m.status, m.superseded_by, m.review_state,
            snippet(memories_fts, 0, '[', ']', ' ... ', 12) AS snippet,
            bm25(memories_fts) AS score

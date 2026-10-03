@@ -7,6 +7,14 @@ export interface MyOMemoryConfig {
   maxProfileItems: number;
   injectOnFirstTurn: boolean;
   keywordCaptureEnabled: boolean;
+  /**
+   * D61: capture-time aliasing (retrieval layer 3). When on, agents are
+   * asked to attach 2–4 aliases (alternate phrasings, other-language
+   * equivalents) to each memory they save; ops stores them and the index
+   * searches them, so differently-worded questions still hit. Asked once
+   * at init, default on; off = aliases passed by agents are dropped.
+   */
+  captureAliases: boolean;
   /** Patterns whose capture group 1 becomes the memory body; saved to the current scope. */
   keywordPatterns: string[];
   /** Same shape, but hits are forced into the personal scope (e.g. "remember for me"). */
@@ -34,6 +42,7 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   maxProfileItems: 5,
   injectOnFirstTurn: true,
   keywordCaptureEnabled: true,
+  captureAliases: true,
   keywordPatterns: [
     "^\\s*remember(?!\\s+for\\s+me)(?:\\s+that)?[:,]?\\s+(.+)$",
     "^\\s*(?:please\\s+)?(?:note|don'?t\\s+forget)(?:\\s+that)?[:,]?\\s+(.+)$",
@@ -110,6 +119,7 @@ export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
   maxProfileItems: toNonNegInt,
   injectOnFirstTurn: toBool,
   keywordCaptureEnabled: toBool,
+  captureAliases: toBool,
   memoryDir: toRelativeDir,
   "sync.autoPull": toBool,
   logLevel: (v) => {

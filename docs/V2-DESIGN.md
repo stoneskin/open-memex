@@ -1250,6 +1250,60 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   name entries installed via `opencode plugin add` are recorded but not
   path-checked). Field-verified on real hosts 1.18.34 and 2.0.1.
 
+- **D61 — proactive capture cluster: propose posture, a shared
+  memorability rubric, and capture-time aliasing (retrieval layer 3).**
+  Builds on the "proactive capture" open question below and the
+  CHECKPOINT_PROACTIVITY / MEMORY_VISIBILITY notes. Three pieces,
+  shipped together because they are one user-visible behavior — the
+  agent capturing well without being asked each time:
+  (1) **Posture: propose, not auto-draft.** When the agent finishes a
+  task the user would describe in one sentence, it proposes 1–3 short
+  candidate memories in the conversation and saves only what the user
+  approves (approved inferences are saved with `source: "inference"`,
+  the §3.5 convention). The guidance is text, not mechanism — the same
+  rubric written into the bundled skill, the AGENTS.md memory-hygiene
+  footer, the MCP handshake instructions, the `memory_add` tool
+  description, and a one-line summary in the injected context block —
+  with throttling rules (task end / decision / gotcha moments only, no
+  mid-task interruptions, never re-propose a declined candidate). The
+  auto-draft posture (write first, surface later in bulk) is deferred
+  until memory visibility ships: without an inventory the user can
+  read, silent drafting reads as surveillance, so D61 deliberately
+  does not build it.
+  (2) **Rubric.** One memorability standard, shared by this live
+  capture path and the future retrospective-distillation group:
+  worth saving — decisions and their reasons, preferences,
+  conventions, gotchas, approaches tried and abandoned, and
+  `reference` memories pointing at authoritative docs; not worth
+  saving — one-off task details and anything re-derivable from the
+  code. Retrieval robustness layer 2 (agent-side query expansion:
+  decompose into concepts, 2–3 phrasings each, cross-language, check
+  the other scope) ships as guidance in the same texts, on top of the
+  D56 server-side layer 1.
+  (3) **Capture-time aliases (layer 3).** When a memory is saved, the
+  agent attaches up to 4 aliases — alternate phrasings, synonyms,
+  equivalents in the user's other language — stored in a new optional
+  frontmatter field `aliases` (additive; files without it parse
+  unchanged, `schema_version` stays 2) and indexed in their own FTS
+  column (index schema 6→7, rebuilt from markdown automatically).
+  Gated by a new `captureAliases` config flag (init asks once, default
+  on, `config set captureAliases off` opts out): when off, aliases
+  passed by agents are dropped and the alias guidance disappears from
+  the MCP handshake. Turning it off never rewrites existing memory
+  files — aliases already stored stay stored and searchable, and
+  supersede keeps carrying them forward; the flag gates new captures
+  only (no silent data destruction). Aliases pass through the same
+  secret redaction as memory content before they are stored, and a
+  malformed alias list (blanks, more than 4) is normalized silently —
+  never a tool-call error.
+  Keyword capture (no agent in the loop) leaves
+  aliases empty rather than inventing them; `supersede` carries
+  aliases forward unless the caller replaces them. Aliases are
+  normalized (trim, case-insensitive dedupe, cap 4) and bad ones cost
+  nothing — they rank as bm25 noise, never an error. Retrospective
+  distillation over host transcripts stays its own group; it will
+  reuse this rubric.
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

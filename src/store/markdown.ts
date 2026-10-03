@@ -53,6 +53,13 @@ export interface Frontmatter {
   importance: Importance;
   status: MemoryStatus;
   tags: string[];
+  /**
+   * D61: capture-time aliases — alternate phrasings / other-language
+   * equivalents of this memory, indexed alongside the body so a
+   * differently-worded question still matches (retrieval layer 3).
+   * Optional and additive: files without it parse unchanged.
+   */
+  aliases?: string[];
   source: string;
   created_at: string; // RFC 3339, never bare epoch (§3)
   updated_at: string; // RFC 3339
@@ -232,6 +239,14 @@ export function normalizeFrontmatter(
     tags: Array.isArray(raw.tags)
       ? raw.tags.filter((t): t is string => typeof t === "string")
       : [],
+    ...(Array.isArray(raw.aliases)
+      ? (() => {
+          const aliases = normalizeAliases(
+            raw.aliases.filter((a): a is string => typeof a === "string"),
+          );
+          return aliases.length > 0 ? { aliases } : {};
+        })()
+      : {}),
     source: typeof raw.source === "string" ? raw.source : "",
     created_at: msToRfc3339(timeToMs(raw.created_at)),
     updated_at: msToRfc3339(timeToMs(raw.updated_at)),
@@ -254,12 +269,41 @@ export function normalizeFrontmatter(
   };
 }
 
+/**
+ * D61: normalize capture-time aliases — trim, drop empties, dedupe
+ * (case-insensitive), cap at 4. Bad aliases are noise, never an error.
+ * Shared by the tool ops, the CLI, and frontmatter parsing.
+ */
+export function normalizeAliases(input?: string[]): string[] {
+  if (!input) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const a of input) {
+    const t = a.trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
 export function isTaxonomyType(t: string): boolean {
   return TAXONOMY.has(t);
 }
 
 export function serialize(fm: Frontmatter, body: string): string {
-  const yml = yaml.dump(fm, { lineWidth: -1, quotingType: '"' });
+  // D61: an empty aliases list is noise in the file — drop the key entirely
+  // rather than relying on the YAML dumper to skip an undefined value
+  // (parse only sets the field when non-empty; keep both ends consistent).
+  let out: Frontmatter = fm;
+  if (fm.aliases && fm.aliases.length === 0) {
+    out = { ...fm };
+    delete out.aliases;
+  }
+  const yml = yaml.dump(out, { lineWidth: -1, quotingType: '"' });
   return `---\n${yml}---\n\n${body.trimEnd()}\n`;
 }
 

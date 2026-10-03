@@ -870,6 +870,9 @@ export async function initProject(opts: {
   // D51: close the init→first-use gap — one concrete next step so a new user
   // sees what "it works" looks like instead of stopping at "it's wired".
   console.log(`  Next step: \`open-memex add "standup is at 9:30"\` — then ask your agent what it remembers.`);
+  // Privacy in one line, at the moment of maximum doubt (right after a tool
+  // just wrote into the user's editors): local-only, nothing uploaded.
+  console.log(`  Privacy: memories live only on this machine — personal ones never leave it, and nothing is uploaded anywhere.`);
   // D50: init completed — the bare-`open-memex` first-run offer won't ask again.
   markFirstRunDone("initialized");
 }

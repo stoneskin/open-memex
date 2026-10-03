@@ -1,5 +1,5 @@
 import { db } from "../store/db.ts";
-import { cjkQueryExpr, hasCjk } from "./cjk.ts";
+import { toFtsQuery } from "./query.ts";
 
 export interface SearchHit {
   id: string;
@@ -121,21 +121,10 @@ function resolveVisible(rows: RawRow[], limit: number): SearchHit[] {
 }
 
 /**
- * Convert free-text query into a safe FTS5 MATCH expression.
- * Latin tokens keep the old behavior (prefix match on content/tags/type).
- * CJK runs become an OR of bigrams against the `cjk` column (see cjk.ts).
- * Mixed queries OR the two parts together.
+ * FTS5 query construction lives in query.ts (pure, unit-tested): free-text
+ * questions are split into content terms (OR-ed; bm25 ranks), with
+ * function/question words filtered so they can't dilute the ranking.
  */
-function toFtsQuery(q: string): string {
-  const latin = (q.toLowerCase().match(/[a-z0-9_.\-]+/g) ?? [])
-    .map((t) => `"${t.replace(/"/g, '""')}"*`)
-    .join(" OR ");
-  const cjk = hasCjk(q) ? cjkQueryExpr(q) : "";
-  if (latin && cjk) return `(${latin}) OR {cjk}:(${cjk})`;
-  if (cjk) return `{cjk}:(${cjk})`;
-  return latin;
-}
-
 export function search(
   query: string,
   opts: { scopeKeys?: string[]; limit?: number; type?: string } = {},

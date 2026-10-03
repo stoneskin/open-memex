@@ -1134,6 +1134,23 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   tells agents to prefer MCP tools when available. *Lesson: don't ship two
   overlapping integrations for the same editor — the agent pays the
   duplication cost in chatter. Reported 2026-10-01.*
+- **D56** — question-shaped searches and host parity, said out loud
+  (0.6.1-alpha.1). Two-persona review (Stone 2026-10-03) converged on small,
+  honest fixes rather than new machinery. (1) Retrieval already OR-ed terms
+  and ranked with bm25, but fed whole questions ("how do we configure…",
+  "中文记忆怎么检索") straight into FTS — question words matched everything
+  and diluted ranking. Query construction now filters a small EN/CJK
+  function-word set, dedupes, and caps terms at 24 per side, with a
+  never-empty fallback (query.ts; partially answers the retrieval-robustness
+  open question — layers 2 agent-side expansion / 3 capture-time aliasing
+  remain open, embeddings stay reserved). (2) The plugin(5)/MCP(11) tool
+  asymmetry is now stated in the six MCP-only tool descriptions themselves,
+  with the CLI equivalent named, so an agent looking for `memory_status`
+  inside opencode finds the answer instead of assuming breakage (the
+  host-parity open question's "document it" option; true parity undecided).
+  (3) `init`'s closing lines gain a one-line privacy statement at the moment
+  of maximum doubt: memories live only on this machine, personal ones never
+  leave it, nothing is uploaded.
 
 ## Open Questions
 

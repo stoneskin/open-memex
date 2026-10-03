@@ -531,6 +531,8 @@ refresh the installed Agent Skill and instruction files with the latest wording.
 If you installed from source or moved the package, `--force` also re-points the
 opencode plugin path.
 
+What changed in each version: see the [CHANGELOG](CHANGELOG.md).
+
 ## Storage layout
 
 ```

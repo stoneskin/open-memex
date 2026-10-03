@@ -365,6 +365,8 @@ npm install -g open-memex@latest   # 或 @alpha
 
 编辑器配置指向已安装的 `open-memex` 命令，所以升级不需要重新接线。大版本升级后跑一次 `open-memex init --force`，把已装的 Agent Skill 和指令文件刷新到最新文案。如果你是从源码安装或挪过包的位置，`--force` 也会把 opencode 插件路径重新指好。
 
+每个版本具体变了什么：见 [CHANGELOG](CHANGELOG.md)（英文）。
+
 ## 存储布局
 
 ```

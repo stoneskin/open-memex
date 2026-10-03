@@ -501,7 +501,9 @@ the opencode plugin injects it directly on the first turn.
 Honest edges, so nothing surprises you:
 
 - **Keyword search, not semantic.** Retrieval is BM25 keyword matching: search
-  finds the words you saved, not paraphrases. No embedding model is ever
+  finds the words you saved, not paraphrases. (Plain questions are fine —
+  "how do we…" / "请问…" wording is filtered out before matching, so asking
+  naturally doesn't dilute the results.) No embedding model is ever
   downloaded without your explicit opt-in.
 - **One machine.** Editors on the same machine share memory; there is no
   cross-machine sync. `export` / `import` bundles (below) move memory between

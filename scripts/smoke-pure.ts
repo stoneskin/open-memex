@@ -7,6 +7,7 @@ import { detectKeywords } from "../src/capture/keywords.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
+import { toFtsQuery } from "../src/retrieve/query.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
 import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME, shouldInstallSkill } from "../src/init.ts";
 
@@ -242,6 +243,41 @@ ok(
 );
 ok("query single char", cjkQueryExpr("猫") === '"猫"', cjkQueryExpr("猫"));
 ok("query no cjk", cjkQueryExpr("hello") === "");
+
+console.log("== query construction ==");
+const fq1 = toFtsQuery("how do we configure the SSO login");
+ok(
+  "stopwords dropped",
+  !fq1.includes('"how"*') && !fq1.includes('"we"*') && !fq1.includes('"do"*'),
+  fq1,
+);
+ok(
+  "content terms kept",
+  fq1.includes('"configure"*') && fq1.includes('"sso"*') && fq1.includes('"login"*'),
+  fq1,
+);
+const fq2 = toFtsQuery("中文记忆怎么检索");
+ok(
+  "question bigrams dropped",
+  fq2.includes('"检索"') && !fq2.includes('"怎么"'),
+  fq2,
+);
+ok(
+  "filter never empties",
+  toFtsQuery("what is it") !== "" && toFtsQuery("怎么") !== "",
+  `${toFtsQuery("what is it")} / ${toFtsQuery("怎么")}`,
+);
+ok(
+  "tokens deduped",
+  toFtsQuery("deploy deploy deploy") === '"deploy"*',
+  toFtsQuery("deploy deploy deploy"),
+);
+const fq5 = toFtsQuery("auth 登录 sso 检索");
+ok(
+  "mixed query keeps both sides",
+  fq5.includes('"auth"*') && fq5.includes("{cjk}:"),
+  fq5,
+);
 
 console.log("== v2 times ==");
 ok("epoch 0 → rfc3339", msToRfc3339(0) === "1970-01-01T00:00:00Z", msToRfc3339(0));

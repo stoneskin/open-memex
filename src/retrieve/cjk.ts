@@ -46,8 +46,14 @@ function esc(t: string): string {
  * column. Multi-char runs become an OR of bigrams (recall-oriented; bm25
  * ranks docs matching more bigrams higher). Single chars stay unigrams.
  * Returns "" when the query has no CJK.
+ *
+ * Options: `dropBigrams` filters question bigrams (什么/怎么/…) when other
+ * terms remain; `maxTerms` caps the term count (applied after dedupe).
  */
-export function cjkQueryExpr(query: string): string {
+export function cjkQueryExpr(
+  query: string,
+  opts: { dropBigrams?: ReadonlySet<string>; maxTerms?: number } = {},
+): string {
   const parts: string[] = [];
   for (const m of query.matchAll(CJK_RUN_RE)) {
     const chars = [...m[0]];
@@ -59,5 +65,15 @@ export function cjkQueryExpr(query: string): string {
       }
     }
   }
-  return parts.join(" OR ");
+  let terms = [...new Set(parts)];
+  if (opts.dropBigrams && terms.length > 1) {
+    const kept = terms.filter(
+      (t) => !opts.dropBigrams!.has(t.slice(1, -1).replace(/""/g, '"')),
+    );
+    if (kept.length > 0) terms = kept;
+  }
+  if (opts.maxTerms && terms.length > opts.maxTerms) {
+    terms = terms.slice(0, opts.maxTerms);
+  }
+  return terms.join(" OR ");
 }

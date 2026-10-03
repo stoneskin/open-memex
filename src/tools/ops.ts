@@ -71,17 +71,17 @@ export const TOOL_DESCRIPTIONS = {
     "Replace an existing memory with a newer version. The old memory is kept as history (status: superseded) and retrieval returns the new one. Use when a saved fact becomes outdated and should be replaced rather than duplicated.",
   memory_forget: "Delete a memory by id. Use when the user asks to forget something.",
   memory_status:
-    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start, when the server reports drafts waiting for review, or when the user says 'sync memory' (or '同步记忆'); then ask the user which drafts to sync.",
+    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start, when the server reports drafts waiting for review, or when the user says 'sync memory' (or '同步记忆'); then ask the user which drafts to sync. (MCP server and the `open-memex sync-status` CLI; the opencode native plugin does not expose this tool.)",
   memory_submit:
-    "Move outbox drafts into the repo memory dir for review: copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically.",
+    "Move outbox drafts into the repo memory dir for review: copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically. (MCP server and the `open-memex submit` CLI; the opencode native plugin does not expose this tool.)",
   memory_propose:
-    "Copy personal memories into the project outbox as review drafts. The personal originals stay put.",
+    "Copy personal memories into the project outbox as review drafts. The personal originals stay put. (MCP server and the `open-memex propose` CLI; the opencode native plugin does not expose this tool.)",
   memory_promote:
-    "Advance a project memory one step up the review ladder (proposed → approved → published), or reject it with a note. Rejected memories are never deleted — they can be revised and resubmitted.",
+    "Advance a project memory one step up the review ladder (proposed → approved → published), or reject it with a note. Rejected memories are never deleted — they can be revised and resubmitted. (MCP server and the `open-memex promote` CLI; the opencode native plugin does not expose this tool.)",
   memory_resolve:
-    "List git-conflicted memory files, or attempt a field-level 3-way merge of one. Semantic conflicts are reported, never auto-resolved.",
+    "List git-conflicted memory files, or attempt a field-level 3-way merge of one. Semantic conflicts are reported, never auto-resolved. (MCP server and the `open-memex resolve` CLI; the opencode native plugin does not expose this tool.)",
   memory_pr_status:
-    "Read the current branch's GitHub PR and map its review state onto each in-repo memory: merged PR → published, PR approval → approved (approved_by = reviewer), changes-requested → suggestion only. Report by default; apply=true performs the mapped transitions locally (no push).",
+    "Read the current branch's GitHub PR and map its review state onto each in-repo memory: merged PR → published, PR approval → approved (approved_by = reviewer), changes-requested → suggestion only. Report by default; apply=true performs the mapped transitions locally (no push). (MCP server and the `open-memex pr-status` CLI; the opencode native plugin does not expose this tool.)",
 } as const;
 
 /** Shared zod input shapes (raw shape, not z.object — hosts wrap as needed). */

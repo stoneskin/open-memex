@@ -18,6 +18,8 @@ via `prepublishOnly` — Node refuses `--experimental-strip-types` for files und
 
 Tool logic is host-agnostic and lives in `src/tools/ops.ts` (plain functions + shared zod arg shapes + `TOOL_DESCRIPTIONS`). `src/tools/memory.ts` (opencode) and `src/mcp.ts` are thin adapters — when adding or changing a tool, change `ops.ts` once and both hosts pick it up.
 
+**Plugin code must not runtime-import `@opencode-ai/plugin`** (D58): it is a devDependency, and opencode does not resolve it for `file://` plugins loaded from a global npm install — the import fails and opencode silently skips the plugin (no error, no tools). Type-only imports are fine. `src/tools/memory.ts` carries a local stand-in for the SDK's `tool()` (a runtime identity) for exactly this reason.
+
 Consequences:
 - Imports **must** use explicit `.ts` extensions (`allowImportingTsExtensions: true`, `moduleResolution: "Bundler"`).
 - No transpile / bundle output. Do not add one; opencode loads the `.ts` file directly.
@@ -31,6 +33,7 @@ npm run typecheck                                    # tsc --noEmit — the only
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
 npm run cli -- <command> --help                          # per-command help (AI assistants discover flags this way)
 npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
+npm run cli -- audit [--scope project|personal|both]            # memory health: near-dup pairs, stale actives, broken chains, personal-in-repo (read-only)
 npm run cli -- pull                                          # fetch + fast-forward only (explicit; diverged = clean failure, never force-merge)
 npm run cli -- push                                          # push current branch to remote (explicit only; open-memex never auto-pushes)
 npm run cli -- export [--scope project|personal|both] [--all] [-o <file>]  # portable .tar.gz bundle (markdown + manifest); private excluded unless --all

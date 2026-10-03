@@ -124,6 +124,11 @@ export function db(): AnyDatabase {
   const Database = loadDatabase();
   const d = new Database(indexDb);
   d.exec("PRAGMA journal_mode = WAL;");
+  // Multiple processes share this index (CLI, one MCP server per editor,
+  // the opencode plugin). Without a busy timeout, bun:sqlite defaults to
+  // 0 — any overlapping write fails instantly. 5s matches the tolerance
+  // better-sqlite3 was already giving the CLI/MCP side (D57).
+  d.exec("PRAGMA busy_timeout = 5000;");
   d.exec("PRAGMA synchronous = NORMAL;");
   d.exec("PRAGMA foreign_keys = ON;");
   d.exec(TABLE_SCHEMA);

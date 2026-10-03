@@ -1,4 +1,5 @@
-import { tool } from "@opencode-ai/plugin/tool";
+import type { z } from "zod";
+import type { ToolContext, ToolResult } from "@opencode-ai/plugin";
 import type { Scope } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
 import {
@@ -15,6 +16,20 @@ import {
   TOOL_DESCRIPTIONS,
   withOutboxNote,
 } from "./ops.ts";
+
+// Local stand-in for the SDK's tool() helper — same signature, and the SDK
+// function is a runtime identity (`return input`). Do NOT import it from
+// @opencode-ai/plugin at runtime: that package is a devDependency, and when
+// opencode loads this plugin by file:// URL from a global npm install
+// nothing resolves the module — the import fails and opencode silently
+// skips the whole plugin: no error, no tools (D58).
+function tool<Args extends z.ZodRawShape>(input: {
+  description: string;
+  args: Args;
+  execute(args: z.infer<z.ZodObject<Args>>, context: ToolContext): Promise<ToolResult>;
+}): { description: string; args: Args; execute: typeof input.execute } {
+  return input;
+}
 
 export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
   const memory_add = tool({

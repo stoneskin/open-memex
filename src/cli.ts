@@ -50,12 +50,14 @@ Examples:
 
   search: `Search memories by keyword (BM25 full-text), best matches first.
 
-Usage: open-memex search "query" [--scope project|personal|both] [--type T] [--limit N]
+Usage: open-memex search "query" [--scope project|personal|both] [--type T] [--limit N] [--explain]
 
 Flags:
-  --scope   project (default), personal, or both
-  --type    filter by memory type
-  --limit   max results
+  --scope    project (default), personal, or both
+  --type     filter by memory type
+  --limit    max results
+  --explain  show the FTS expression, per-hit score, and how many matches
+             lifecycle hid (superseded / retracted / archived)
 
 Example:
   open-memex search "deploy checklist" --scope both`,
@@ -337,6 +339,19 @@ Usage: open-memex doctor
 
 Example:
   open-memex doctor`,
+
+  audit: `Memory health audit (read-only, reports never mutates): near-duplicate
+pairs among active memories, stale actives untouched for 90+ days, broken
+supersede chains, personal files found inside the repo memory dir, and
+index/file drift.
+
+Usage: open-memex audit [--scope project|personal|both]
+
+Flags:
+  --scope   project (default), personal, or both
+
+Example:
+  open-memex audit --scope both`,
 };
 
 function usage(exitCode = 1): never {
@@ -345,7 +360,7 @@ function usage(exitCode = 1): never {
 Usage:
   open-memex where
   open-memex list [--scope project|personal] [--type T] [--limit N]
-  open-memex search "query" [--scope project|personal|both] [--type T] [--limit N]
+  open-memex search "query" [--scope project|personal|both] [--type T] [--limit N] [--explain]
   open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2]
   open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
   open-memex status <id> active|deprecated|retracted|archived
@@ -362,6 +377,7 @@ Usage:
   open-memex submit <id...> [--branch <name>] [--base <branch>]
   open-memex pr-status [--apply]
   open-memex reindex
+  open-memex audit [--scope project|personal|both]
   open-memex scopes
   open-memex migrate [--from <key>] [--to <key>]
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
@@ -698,6 +714,39 @@ async function main() {
     return;
   }
 
+  if (cmd === "audit") {
+    const flags = parseFlags(rest);
+    syncScope(project.key, "cli");
+    syncScope(PERSONAL_SCOPE.key, "cli");
+    const keys =
+      flags.scope === "personal"
+        ? [PERSONAL_SCOPE.key]
+        : flags.scope === "both"
+          ? [project.key, PERSONAL_SCOPE.key]
+          : [project.key];
+    const { runAudit, STALE_DAYS } = await import("./store/audit.ts");
+    const r = runAudit(keys);
+    console.log(`audit: ${r.totalMemories} memories (${keys.length === 2 ? "project+personal" : keys[0] === PERSONAL_SCOPE.key ? "personal" : "project"})`);
+    console.log(`  near-duplicate active pairs: ${r.duplicatePairs.length}`);
+    for (const p of r.duplicatePairs.slice(0, 10)) {
+      console.log(`    ${p.a} ~ ${p.b} (similarity ${p.score.toFixed(2)}) — consider supersede`);
+    }
+    console.log(`  stale actives (>= ${STALE_DAYS} days untouched): ${r.stale.length}`);
+    for (const s of r.stale.slice(0, 10)) {
+      console.log(`    ${s.id} — ${s.ageDays} days`);
+    }
+    console.log(`  broken supersede chains: ${r.brokenChains.length}`);
+    for (const b of r.brokenChains) {
+      console.log(`    ${b.id} -> missing ${b.missingTarget}`);
+    }
+    console.log(`  personal files inside repo memory dir: ${r.personalInRepo.length}`);
+    for (const f of r.personalInRepo) console.log(`    ${f}`);
+    console.log(
+      `  index drift: ${r.drift.filesNotIndexed} files not indexed, ${r.drift.rowsMissingFiles} rows missing files`,
+    );
+    return;
+  }
+
   // `config` prints the effective configuration (defaults + file). No DB needed.
   // `config set <key> <value>` persists a setting to the config file.
   if (cmd === "config") {
@@ -831,11 +880,22 @@ async function main() {
         : flags.scope === "project"
           ? [project.key]
           : [project.key, PERSONAL_SCOPE.key];
+    const explain = flags.explain === "true";
+    const stats = explain
+      ? { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0 }
+      : undefined;
     const hits = search(query, {
       scopeKeys: keys,
       limit: flags.limit ? Number(flags.limit) : undefined,
       type: flags.type,
+      stats,
     });
+    if (explain && stats) {
+      console.log(`fts: ${stats.ftsQuery || "(empty query)"}`);
+      console.log(
+        `candidates: ${stats.candidates}, hidden by lifecycle: ${stats.hiddenSuperseded} superseded, ${stats.hiddenExcluded} retracted/archived`,
+      );
+    }
     if (hits.length === 0) {
       console.log("(no matches)");
       return;
@@ -844,7 +904,8 @@ async function main() {
       const tag = h.scope_key === PERSONAL_SCOPE.key ? "personal" : "project";
       const dep = h.status === "deprecated" ? " [deprecated]" : "";
       const rev = hitStateLabel(h);
-      console.log(`[${tag}/${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+      const sc = explain ? ` score=${h.score.toFixed(3)}` : "";
+      console.log(`[${tag}/${h.type}]${dep}${rev}${sc} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
     }
     return;
   }
@@ -1361,7 +1422,17 @@ function positionalArgs(argv: string[]): string[] {
 
 main()
   .catch((err) => {
-    console.error(err);
+    // D57: lock contention past the busy timeout should read as a transient
+    // condition, not a stack trace. The memory file is written before the
+    // index update, so a locked-out write still lands on the next sync.
+    const code = (err as { code?: string })?.code;
+    if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") {
+      console.error(
+        "open-memex: the memory store is busy (another open-memex process is writing). Wait a moment and retry — nothing was lost.",
+      );
+    } else {
+      console.error(err);
+    }
     process.exit(1);
   })
   .finally(() => {

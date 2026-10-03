@@ -294,7 +294,12 @@ export function writeMemoryFile(
   // Personal stays in appdata and never leaves the machine.
   const dir = memoriesDirFor(fm.scope_key);
   const filePath = path.join(dir, `${fm.id}.md`);
-  fs.writeFileSync(filePath, serialize(fm, body), "utf8");
+  // Atomic publish (D57): write a sibling tmp file and rename over the
+  // target, so a concurrent reader (another process mid-sync) never sees a
+  // torn half-written memory. Same-directory rename is atomic on one fs.
+  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  fs.writeFileSync(tmpPath, serialize(fm, body), "utf8");
+  fs.renameSync(tmpPath, filePath);
   const st = fs.statSync(filePath);
   return { filePath, mtimeMs: st.mtimeMs };
 }

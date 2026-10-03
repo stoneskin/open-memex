@@ -1152,6 +1152,51 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   of maximum doubt: memories live only on this machine, personal ones never
   leave it, nothing is uploaded.
 
+- **D57** — explainable search, a memory audit, and the concurrency posture
+  written down (0.6.1-alpha.2; addresses most of the retrieval-explainability
+  / memory-health open question and establishes the concurrent-sessions
+  behavior it asked for). (1) `open-memex search --explain` prints the
+  constructed FTS expression, per-hit bm25 score, and how many matches
+  lifecycle hid (superseded vs retracted/archived), so a miss is diagnosable
+  — bad query, stale memory, or chain-hidden — without reading the index.
+  (2) New `open-memex audit` (read-only; doctor checks the environment, this
+  checks the memories): near-duplicate active pairs (same ≥ 0.8 Jaccard as
+  write-time dedup), actives untouched for 90+ days, broken supersede chains,
+  personal files found inside the in-repo memory dir (iron-rule breach), and
+  index/file drift. Reports only; fixes stay with `supersede` / `forget` by
+  hand. (3) Concurrency, measured: every process opens its own connection to
+  one WAL index; memory files are per-memory ULIDs, so concurrent writes to
+  *different* memories never collide on disk. SQLite was the gap — no
+  `busy_timeout` was set, so better-sqlite3 silently tolerated 5s while
+  bun:sqlite (opencode plugin) timed out at 0 and failed instantly under any
+  overlapping write. Now unified at `PRAGMA busy_timeout = 5000` in `db()`.
+  Past the timeout the CLI prints one plain line ("store is busy … nothing
+  was lost") instead of a stack trace — and nothing *is* lost: the memory
+  file is written before the index update, so the next sync reconciles it
+  (verified end-to-end: a write blocked 8s still lands once the lock frees).
+  Memory file writes are tmp+rename, so a concurrent reader never sees a
+  torn file. Same-memory concurrent edits remain last-writer-wins (accepted:
+  different processes editing the same memory simultaneously is a human
+  conflict, not a storage one). `doctor` reports the live locking settings.
+
+- **D58** — the opencode plugin must never runtime-import the host SDK
+  (0.6.1-alpha.3). Field report: after a global `npm i -g open-memex`, the
+  plugin was configured in `~/.config/opencode/opencode.jsonc` but silently
+  inactive — no memory tools, no error, nothing in opencode's log. Bisected
+  with the real host (opencode 1.18.34) and a minimal plugin: a bare
+  `file://` entry loads fine; adding `import { tool } from
+  "@opencode-ai/plugin/tool"` makes opencode skip the plugin without a
+  trace. That import only ever resolved from a source checkout (where
+  `npm install` provides the devDependency); from a global install's
+  location nothing provides the module and the host does not resolve it
+  for file:// plugins. The helper is a runtime identity (`return input`),
+  so the fix is a local same-signature stand-in in `tools/memory.ts` —
+  types still come from the SDK (type-only imports erase at runtime), and
+  the plugin now depends only on real runtime dependencies. Verified in
+  the real host against a global-install-shaped tree: all five tools
+  register. Rule going forward: plugin code imports host SDK types only;
+  runtime imports must resolve from the package's own dependencies.
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

@@ -9,6 +9,16 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-03
+
+## Doctor patrols the plugin entry (D59)
+
+- `open-memex doctor` gains an `opencode plugin` check: it reads the user-level opencode configs, attributes the open-memex plugin entry, and fails when the target file no longer exists (naming the `open-memex init --client opencode --global --force` re-point command) or when the plugin's import closure runtime-imports the host SDK. That second failure is exactly what silently killed the plugin in D58 — it now shows up in a check instead of surfacing as missing tools.
+
+## Notes
+
+- 0.6.1 contained D56–D58 but was published before this check landed; 0.6.2 is the recommended upgrade for everyone on the 0.6.x line.
+
 ## [0.6.1] - 2026-10-03
 
 ## Question-shaped search, host parity said out loud (D56)
@@ -130,7 +140,8 @@ Install: `npm install -g open-memex`
 
 - First public release under the open-memex name (renamed from my-o-memory): local-first memory for AI coding agents — Markdown files as the source of truth, SQLite FTS5 index, opencode plugin + MCP server + CLI.
 
-[Unreleased]: https://github.com/stoneskin/open-memex/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/stoneskin/open-memex/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/stoneskin/open-memex/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/stoneskin/open-memex/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/stoneskin/open-memex/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/stoneskin/open-memex/compare/v0.5.0...v0.5.1

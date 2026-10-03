@@ -1179,6 +1179,24 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   different processes editing the same memory simultaneously is a human
   conflict, not a storage one). `doctor` reports the live locking settings.
 
+- **D58** — the opencode plugin must never runtime-import the host SDK
+  (0.6.1-alpha.3). Field report: after a global `npm i -g open-memex`, the
+  plugin was configured in `~/.config/opencode/opencode.jsonc` but silently
+  inactive — no memory tools, no error, nothing in opencode's log. Bisected
+  with the real host (opencode 1.18.34) and a minimal plugin: a bare
+  `file://` entry loads fine; adding `import { tool } from
+  "@opencode-ai/plugin/tool"` makes opencode skip the plugin without a
+  trace. That import only ever resolved from a source checkout (where
+  `npm install` provides the devDependency); from a global install's
+  location nothing provides the module and the host does not resolve it
+  for file:// plugins. The helper is a runtime identity (`return input`),
+  so the fix is a local same-signature stand-in in `tools/memory.ts` —
+  types still come from the SDK (type-only imports erase at runtime), and
+  the plugin now depends only on real runtime dependencies. Verified in
+  the real host against a global-install-shaped tree: all five tools
+  register. Rule going forward: plugin code imports host SDK types only;
+  runtime imports must resolve from the package's own dependencies.
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

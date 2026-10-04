@@ -9,6 +9,16 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Keyword capture gaps (D65)
+
+The most natural phrasings were the ones that fell through:
+
+- `帮我记住…` / `帮我记一下…` now capture (personal scope, same 我-rule as 替我记； `帮我们记住…` still routes project).
+- A leading `请` no longer defeats capture: `请记住我…`, `请记住（个人）…`, and `请记住：…` all work.
+- English `remember to …` no longer leaves a stray "to" at the front of the captured body.
+
+Patterns are code defaults, so these apply automatically on upgrade — unless you hand-customized `keywordPatterns` / `keywordPersonalPatterns` in your config, in which case your lists win and you can port the additions by hand.
+
 ## P1 fixes: stale answers and stranded files (D64)
 
 Second batch from the whole-project review — the index, the files, and the guidance can no longer quietly disagree:

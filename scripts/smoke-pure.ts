@@ -259,6 +259,28 @@ ok("no false positive", hits3.length === 0);
 const hits4 = detectKeywords("Please note that FTS5 needs prefix matches", DEFAULT_CONFIG);
 ok("please-note matched", hits4.length === 1);
 
+console.log("== keywords: capture gaps (D65) ==");
+// "帮我记…" is the most natural Chinese phrasing and used to match nothing.
+// Routes personal, mirroring 替我记 (the 我-rule), unlike 帮我们记 (project).
+const g1 = detectKeywords("帮我记住：这个项目用 pnpm", DEFAULT_CONFIG);
+ok("帮我记住 matched", g1.length === 1, JSON.stringify(g1));
+ok("帮我记住 → personal", g1[0]?.personal === true);
+ok("帮我记住 body clean", g1[0]?.content === "这个项目用 pnpm", g1[0]?.content);
+// A leading 请 defeated every 记住-led pattern ("请记住我…", "请记住：…").
+const g2 = detectKeywords("请记住我不喜欢周五发布", DEFAULT_CONFIG);
+ok("请记住我 matched personal", g2.length === 1 && g2[0]?.personal === true, JSON.stringify(g2));
+const g3 = detectKeywords("请记住：周五不发布", DEFAULT_CONFIG);
+ok("请记住 matched project", g3.length === 1 && g3[0]?.personal === false, JSON.stringify(g3));
+// English: "remember to …" captured a stray leading "to" in the body.
+const g4 = detectKeywords("Remember to run the tests before merging", DEFAULT_CONFIG);
+ok("remember-to body has no stray 'to'", g4.length === 1 && g4[0]?.content === "run the tests before merging", g4[0]?.content);
+// …but the optional "to" must not eat a word that merely starts with it.
+const g5 = detectKeywords("remember Toronto is where the office is", DEFAULT_CONFIG);
+ok("remember Toronto… body intact", g5.length === 1 && g5[0]?.content === "Toronto is where the office is", g5[0]?.content);
+// 帮我们记 still routes project (the 们-rule survives the new 帮我记 pattern).
+const g6 = detectKeywords("帮我们记住：周五不发布", DEFAULT_CONFIG);
+ok("帮我们记住 → project", g6.length === 1 && g6[0]?.personal === false, JSON.stringify(g6));
+
 console.log("== scope ==");
 const s = resolveProjectScope(process.cwd());
 ok("kind=project", s.kind === "project");

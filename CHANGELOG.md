@@ -9,8 +9,12 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
-- Release runbook: commands are now given one per step with explicit stop-and-check gates, including "wait for npm to propagate before mcp-publisher publish".
+## [0.7.2] - 2026-10-04
 
+## Listed in the official MCP Registry
+
+- **Added: open-memex is now published in the official MCP Registry** as `io.github.stoneskin/open-memex`, so MCP clients and directories can discover and install it from the registry. The npm package declares the matching `mcpName` in `package.json` (the registry verifies package ownership against it), and the repo carries `server.json` with the registry metadata; its version fields move in step with package releases.
+- Release runbook: commands are now given one per step with explicit stop-and-check gates, including "wait for npm to propagate before mcp-publisher publish".
 - Added `docs/release-runbook.md`: the maintainer release checklist (version sync points, preflight, npm alpha/stable publish, MCP Registry publish, Node 22.14 floor notes).
 
 ## [0.7.1] - 2026-10-04

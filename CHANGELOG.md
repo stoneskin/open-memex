@@ -9,6 +9,10 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Non-git folders shared one scope bucket (D71)
+
+- **Fixed: every non-git folder on a drive shared a single project scope.** OpenCode v1 reports the filesystem root (`C:\`, `/`) as the project `worktree` when the opened folder is not a git repo, and the plugin seeded its scope on that root — so unrelated folders like `C:\temp` and `C:\scratch` all wrote to one `project__workspace__…` bucket. The scope now seeds on the folder actually opened (`pickScopeRoot` in `src/scope.ts`); real repo worktrees are unchanged. Memories already saved under the shared bucket are not moved automatically: run `open-memex scopes` to spot it, then `open-memex migrate --from <old-key>`.
+
 ## Memory visibility: see it, hide it, delete it (D68)
 
 Group 3-C — the surface a user reads to learn what the store actually remembers:

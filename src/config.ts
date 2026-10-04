@@ -74,13 +74,58 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   sync: { autoPull: false },
 };
 
-function stripJsonComments(raw: string): string {
-  // Line comments
-  let out = raw.replace(/^\s*\/\/.*$/gm, "");
-  // Block comments (non-greedy)
-  out = out.replace(/\/\*[\s\S]*?\*\//g, "");
-  // Trailing commas before closing brackets
-  out = out.replace(/,(\s*[}\]])/g, "$1");
+/**
+ * Strip JSONC comments and trailing commas with a string-aware scanner.
+ * The previous regex version was not string-aware: a config value like
+ * "src/**\/secrets" had its `/**…*\/` eaten as a block comment, silently
+ * corrupting the user's redact pattern (P0 review, 2026-10-03). Shared
+ * with doctor.ts — one parser, not two.
+ */
+export function stripJsonComments(raw: string): string {
+  let out = "";
+  let i = 0;
+  let inStr = false;
+  let esc = false;
+  while (i < raw.length) {
+    const c = raw[i]!;
+    const n = raw[i + 1];
+    if (inStr) {
+      out += c;
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inStr = true;
+      out += c;
+      i++;
+      continue;
+    }
+    if (c === "/" && n === "/") {
+      while (i < raw.length && raw[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && n === "*") {
+      i += 2;
+      while (i < raw.length && !(raw[i] === "*" && raw[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    if (c === ",") {
+      // Trailing comma: drop it when the next significant char closes a
+      // container. Whitespace/comments between are tolerated.
+      let j = i + 1;
+      while (j < raw.length && /\s/.test(raw[j]!)) j++;
+      if (raw[j] === "}" || raw[j] === "]") {
+        i++;
+        continue;
+      }
+    }
+    out += c;
+    i++;
+  }
   return out;
 }
 
@@ -177,7 +222,20 @@ export function loadConfig(): MyOMemoryConfig {
     try {
       const raw = fs.readFileSync(p, "utf8");
       const parsed = JSON.parse(stripJsonComments(raw)) as Partial<MyOMemoryConfig>;
-      return { ...DEFAULT_CONFIG, ...parsed };
+      const merged = { ...DEFAULT_CONFIG, ...parsed };
+      // The config file is hand-editable, so the load path must enforce
+      // the same invariants `config set` does (P0 review, 2026-10-03):
+      // an unvalidated memoryDir like "../../shared" would put
+      // committed project memories outside the repo.
+      try {
+        merged.memoryDir = toRelativeDir(merged.memoryDir);
+      } catch {
+        console.error(
+          `[open-memex] invalid memoryDir "${merged.memoryDir}" in ${p} — using default "${DEFAULT_CONFIG.memoryDir}"`,
+        );
+        merged.memoryDir = DEFAULT_CONFIG.memoryDir;
+      }
+      return merged;
     } catch (err) {
       console.error(`[open-memex] failed to parse ${p}:`, err);
     }

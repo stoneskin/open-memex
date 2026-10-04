@@ -13,7 +13,41 @@ import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePlugi
 import { z } from "zod";
 import { memoryAddArgs } from "../src/tools/ops.ts";
 import { dataRootPath, homeOverride } from "../src/paths.ts";
-import { configFilePath } from "../src/config.ts";
+import { configFilePath, loadConfig, stripJsonComments } from "../src/config.ts";
+
+console.log("== jsonc parsing + config invariants (P0) ==");
+{
+  // The pre-fix regex stripper ate "src/**/secrets" as a block comment,
+  // silently disabling the user's redact rule.
+  const doc = JSON.parse(stripJsonComments(`{
+    // a line comment with a "quote
+    "redactPatterns": ["src/**/secrets", "a /* not a comment */ b"],
+    /* a real block comment */
+    "memoryDir": ".ai/open-memex",
+  }`)) as { redactPatterns: string[] };
+  ok("redact pattern with ** survives comment stripping",
+    doc.redactPatterns[0] === "src/**/secrets" && doc.redactPatterns[1] === "a /* not a comment */ b",
+    JSON.stringify(doc.redactPatterns));
+}
+{
+  // loadConfig must enforce the memoryDir invariant on hand-edited files.
+  const saved = process.env.OPEN_MEMEX_CONFIG;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "om-cfg-"));
+  const file = path.join(dir, "c.jsonc");
+  fs.writeFileSync(file, JSON.stringify({ memoryDir: "../../shared" }));
+  const errs: unknown[] = [];
+  const origErr = console.error;
+  console.error = (...a: unknown[]) => errs.push(a);
+  try {
+    process.env.OPEN_MEMEX_CONFIG = file;
+    ok("escaping memoryDir falls back to default", loadConfig().memoryDir === ".ai/open-memex");
+  } finally {
+    console.error = origErr;
+    if (saved === undefined) delete process.env.OPEN_MEMEX_CONFIG;
+    else process.env.OPEN_MEMEX_CONFIG = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 let fails = 0;
 function ok(name: string, cond: boolean, info?: unknown) {

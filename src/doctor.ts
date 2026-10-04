@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { loadConfig, configSource, DEFAULT_CONFIG } from "./config.ts";
+import { loadConfig, configSource, DEFAULT_CONFIG, stripJsonComments } from "./config.ts";
 import { paths, homeOverride } from "./paths.ts";
 import { resolveCwdScope } from "./scope.ts";
 import { db, backendName } from "./store/db.ts";
@@ -429,49 +429,15 @@ function mcpCheck(): Promise<Check> {
 }
 
 /** Parse JSON tolerating line/block comments plus trailing commas
- * (VS Code's settings.json is JSONC). Health-check grade, not a full parser. */
+ * (VS Code's settings.json is JSONC). Uses config.ts's string-aware
+ * stripper — one parser, not two (P0 review, 2026-10-03). */
 function parseLenientJson(raw: string): Record<string, unknown> {
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     /* fall through to comment stripping */
   }
-  let out = "";
-  let i = 0;
-  let inStr = false;
-  let esc = false;
-  while (i < raw.length) {
-    const c = raw[i];
-    const n = raw[i + 1];
-    if (inStr) {
-      out += c;
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === '"') inStr = false;
-      i++;
-      continue;
-    }
-    if (c === '"') {
-      inStr = true;
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === "/" && n === "/") {
-      while (i < raw.length && raw[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && n === "*") {
-      i += 2;
-      while (i < raw.length && !(raw[i] === "*" && raw[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  out = out.replace(/,\s*([}\]])/g, "$1");
-  return JSON.parse(out) as Record<string, unknown>;
+  return JSON.parse(stripJsonComments(raw)) as Record<string, unknown>;
 }
 
 function vscodeSettingsPath(): string | null {

@@ -1316,6 +1316,24 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   variable, and its pre-rename-dir leftovers check reads whichever
   variable is in effect.
 
+- **D63 — correctness fixes from a whole-project external review.** Six
+  verified silent-wrong-answer bugs, fixed as one batch: (1) VS init
+  dropped the parsed `.mcp.json` instead of merging it, wiping other
+  servers; (2) forget reported success when unlink failed — only ENOENT
+  is success now, both in the tool op and the CLI; (3) the config
+  loader's regex comment-stripper was not string-aware and corrupted
+  redact patterns (`src/**/secrets` → `srcsecrets`) — replaced with a
+  string-aware scanner now shared with doctor (one parser, not two);
+  (4) `loadConfig` enforces the `memoryDir` no-escape invariant on
+  hand-edited files, falling back to the default with a warning;
+  (5) `migrate` rewrites `scope`/`visibility` with the key, and
+  conflict resolution compares parsed timestamps (lexicographic
+  RFC-3339 order breaks at fractional seconds); (6) bundle import
+  enforces staging-dir containment (resolve + realpath), rejecting
+  `../` and symlink escapes. Rule going forward: any behavior that can
+  fail must fail loudly in its return value; "already gone" is the only
+  swallowed delete error.
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

@@ -176,6 +176,40 @@ ok("forget deletes", r.code === 0 && /delet/i.test(r.out), r.out.slice(0, 120));
 r = cli(["list"], PROJ);
 ok("forgotten id gone from list", !r.out.includes(idDecision));
 
+// P0: forget must not report success when the file cannot be deleted —
+// the file is the source of truth and would be re-indexed on next sync.
+// (Simulated by putting a directory where the file belongs: unlink fails
+// with EISDIR even for root, unlike permission bits.)
+{
+  const idF = addMem(["fulltest forget failure"], PROJ);
+  const memRoot = path.join(TESTENV.MY_O_MEMORY_HOME as string, "memories");
+  let memFile = "";
+  const findFile = (d: string) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p2 = path.join(d, e.name);
+      if (e.isDirectory()) findFile(p2);
+      else if (e.name === idF + ".md") memFile = p2;
+    }
+  };
+  findFile(memRoot);
+  ok("forget-failure setup found the file", !!memFile);
+  const backup = fs.readFileSync(memFile, "utf8");
+  fs.rmSync(memFile);
+  fs.mkdirSync(memFile);
+  try {
+    r = cli(["forget", idF], PROJ);
+    ok("forget reports failure when unlink fails",
+      r.code !== 0 && /could not delete/i.test(r.err + r.out),
+      (r.err || r.out).slice(0, 150));
+  } finally {
+    fs.rmSync(memFile, { recursive: true });
+    fs.writeFileSync(memFile, backup);
+  }
+  r = cli(["list"], PROJ);
+  ok("memory survives failed forget", r.out.includes(idF), r.out.slice(0, 150));
+  r = cli(["forget", idF], PROJ);
+  ok("forget succeeds once the file is deletable again", r.code === 0, (r.err || r.out).slice(0, 150));
+}
 // ---------- 4. propose / submit / promote / sync-status ----------
 console.log("== review workflow: propose / submit / promote ==");
 const idProp = addMem(["fulltest proposal candidate", "--scope", "personal"], PROJ);
@@ -231,6 +265,26 @@ const cfile = path.join(T, "conflict.tar.gz");
 execFileSync("tar", ["-czf", cfile, "-C", cstage, "manifest.json", "memories"], { env: TESTENV });
 r = cli2Retry(["import", cfile], PROJ2);
 ok("import conflict reported, never overwritten", /conflict/.test(r.out) && /imported 0/.test(r.out), r.out.slice(0, 160));
+// P0: a bundle manifest pointing outside the bundle must be rejected —
+// it otherwise imports arbitrary local .md files into the store. The
+// secret is planted next to the import staging dir (os.tmpdir()), which
+// is where "../" from a manifest entry lands.
+{
+  const secretName = `outside-secret-${process.pid}.md`;
+  const secretFile = path.join(os.tmpdir(), secretName);
+  const secretId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+  fs.writeFileSync(secretFile, `---\nid: ${secretId}\nscope: personal\nscope_key: personal\nvisibility: private\ntype: fact\nstatus: active\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n---\n\nfulltest traversal secret\n`);
+  const tstage = path.join(T, "tstage");
+  fs.mkdirSync(tstage, { recursive: true });
+  fs.writeFileSync(path.join(tstage, "manifest.json"), JSON.stringify({ format: "open-memex-export/1", exported_at: "2026-01-01T00:00:00Z", open_memex_version: "t", include_private: true, filters: {}, memories: [{ id: secretId, scope: "personal", file: `../${secretName}` }] }));
+  const tfile = path.join(T, "traversal.tar.gz");
+  execFileSync("tar", ["-czf", tfile, "-C", tstage, "manifest.json"], { env: TESTENV });
+  r = cli2Retry(["import", tfile], PROJ2);
+  ok("import rejects path outside bundle", /imported 0/.test(r.out) && /rejected/.test(r.out), r.out.slice(0, 160));
+  r = cli2(["search", "traversal", "--scope", "personal"], PROJ2);
+  ok("traversed file never landed in store", !/traversal secret/.test(r.out), r.out.slice(0, 160));
+  fs.rmSync(secretFile, { force: true });
+}
 
 // ---------- 6. distill-agents ----------
 console.log("== distill-agents ==");
@@ -279,6 +333,24 @@ try { dbOk = fs.existsSync(dbPath) && fs.statSync(dbPath).mtimeMs >= beforeReind
 ok("reindex rebuilds", dbOk, `db exists: ${fs.existsSync(dbPath)}`);
 r = cli(["list", "--scope", "personal"], PROJ);
 ok("list works after reindex", r.out.includes(idMig) || r.out.includes(idPersonal));
+// P0: a real migrate must re-scope the file, not just re-key it — a
+// personal memory migrated to the project key must become submittable
+// project memory (scope: project in its frontmatter).
+r = cli(["migrate", "--from", "personal", "--to", "project"], PROJ);
+ok("migrate personal→project runs", r.code === 0, (r.err || r.out).slice(0, 150));
+{
+  const memRoot = path.join(TESTENV.MY_O_MEMORY_HOME as string, "memories");
+  let moved = "";
+  const walk = (d: string) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name === idMig + ".md") moved = fs.readFileSync(p, "utf8");
+    }
+  };
+  walk(memRoot);
+  ok("migrated file is now scope: project", /^scope: project$/m.test(moved), moved.slice(0, 200));
+}
 
 // ---------- 9. capture / doctor / mcp --print-config / init ----------
 console.log("== capture / doctor / mcp / init ==");
@@ -290,6 +362,17 @@ for (const c of ["vscode", "cursor", "claude", "opencode", "visualstudio"]) {
 }
 r = cli(["init", "--client", "vscode", "--yes"], PROJ);
 ok("init --client vscode --yes", r.code === 0 && fs.existsSync(path.join(PROJ, ".vscode", "mcp.json")), (r.err || r.out).slice(0, 150));
+// P0: VS init must merge into an existing .mcp.json, not replace it —
+// the parsed doc used to be dropped, wiping other MCP servers.
+{
+  const mcpFile = path.join(PROJ, ".mcp.json");
+  fs.writeFileSync(mcpFile, JSON.stringify({ servers: { "other-server": { type: "stdio", command: "other" } } }));
+  r = cli(["init", "--client", "visualstudio", "--yes"], PROJ);
+  const after = JSON.parse(fs.readFileSync(mcpFile, "utf8")) as { servers?: Record<string, unknown> };
+  ok("VS init preserves other servers in .mcp.json",
+    r.code === 0 && !!after.servers?.["other-server"] && !!after.servers?.["open-memex"],
+    JSON.stringify(after).slice(0, 160));
+}
 r = cliRetry(["doctor"], PROJ);
 ok("doctor", r.code === 0 && /All checks passed/.test(r.out), (r.err || r.out).slice(0, 200));
 

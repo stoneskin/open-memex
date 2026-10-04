@@ -1059,11 +1059,17 @@ async function main() {
       process.exit(1);
     }
     // Delete by indexed file_path — location-agnostic (appdata or in-repo, 2B/D24).
+    // Only ENOENT = success; anything else means the file survives and
+    // would be re-indexed — fail loudly (P0 review, 2026-10-03).
     if (row.file_path) {
       try {
         fs.unlinkSync(row.file_path);
-      } catch {
-        /* already gone */
+      } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT") {
+          console.error(`could not delete ${row.file_path} (${code ?? "error"}) — memory not forgotten`);
+          process.exit(1);
+        }
       }
     }
     deleteFromIndex(id);
@@ -1281,6 +1287,9 @@ function positionalArgs(argv: string[]): string[] {
       console.log(
         `${dryRun ? "DRY RUN: " : ""}imported ${r.imported}, skipped ${r.skippedIdentical} identical`,
       );
+      for (const rp of r.rejectedPaths) {
+        console.log(`  rejected: ${rp} (path outside the bundle)`);
+      }
       for (const c of r.skippedConflict) {
         console.log(`  conflict (kept existing): ${c.id} from ${c.file}`);
       }

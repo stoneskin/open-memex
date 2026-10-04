@@ -508,6 +508,7 @@ function writeVisualStudioMcpJson(root: string, force: boolean): string | null {
       });
       return null;
     }
+    doc = parsed;
   }
   const section = ((doc["servers"] ??= {}) as Record<string, unknown>);
   // F30: drop the pre-rename server entry — it points at the OLD data dir.

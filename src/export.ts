@@ -152,6 +152,8 @@ export interface ImportResult {
   imported: number;
   skippedIdentical: number;
   skippedConflict: { id: string; file: string }[];
+  /** Manifest entries refused for pointing outside the bundle. */
+  rejectedPaths: string[];
 }
 
 export function importBundle(bundlePath: string, opts: ImportOptions): ImportResult {
@@ -172,10 +174,20 @@ export function importBundle(bundlePath: string, opts: ImportOptions): ImportRes
       fail(`unsupported bundle format: ${manifest.format} (expected ${EXPORT_FORMAT})`);
     }
 
-    const result: ImportResult = { imported: 0, skippedIdentical: 0, skippedConflict: [] };
+    const result: ImportResult = { imported: 0, skippedIdentical: 0, skippedConflict: [], rejectedPaths: [] };
     const existingStmt = db().prepare(`SELECT content_hash FROM memories WHERE id = ?`);
+    // The manifest comes from whoever sent the bundle: entry.file must
+    // stay inside the staging dir (P0 review, 2026-10-03 — "../" entries
+    // otherwise read arbitrary .md files into the store). realpath also
+    // catches symlinks planted by the tarball.
+    const stageRoot = fs.realpathSync(stage);
     for (const entry of manifest.memories ?? []) {
-      const src = path.join(stage, entry.file);
+      const joined = path.resolve(path.join(stage, entry.file));
+      const src = fs.existsSync(joined) ? fs.realpathSync(joined) : joined;
+      if (!src.startsWith(stageRoot + path.sep)) {
+        result.rejectedPaths.push(entry.file);
+        continue;
+      }
       const mf = readMemoryFile(src);
       if (!mf) continue;
       const fm = normalizeFrontmatter({ ...mf.fm } as unknown as Record<string, unknown>);

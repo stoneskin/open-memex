@@ -388,11 +388,20 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
     return { title: "memory: not found", output: `No memory with id ${args.id}.` };
   }
   // Delete by indexed file_path — location-agnostic (appdata or in-repo, 2B/D24).
+  // Only ENOENT counts as "deleted": on any other unlink failure the file
+  // is still the source of truth and would be re-indexed on next sync, so
+  // report failure instead of lying (P0 review, 2026-10-03).
   if (row.file_path) {
     try {
       fs.unlinkSync(row.file_path);
-    } catch {
-      /* already gone */
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        return {
+          title: "memory: forget failed",
+          output: `Could not delete ${row.file_path} (${code ?? "error"}) — the memory was NOT forgotten and is still in the index. Close anything holding the file and retry.`,
+        };
+      }
     }
   }
   deleteFromIndex(args.id);

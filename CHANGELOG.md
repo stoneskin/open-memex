@@ -9,6 +9,17 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Correctness fixes from the whole-project review (D63)
+
+Six silent-wrong-answer bugs found by an external three-lens review, each fixed with a regression test:
+
+- `init --client visualstudio` no longer wipes other servers from an existing `.mcp.json` (the parsed config was dropped instead of merged).
+- `memory_forget` / `forget` tell the truth: when the memory file can't be deleted (locked, in use), they report failure and keep the index entry, instead of claiming success while the file — the source of truth — brings the memory back on next sync.
+- Config parsing is string-aware: a redact pattern like `src/**/secrets` is no longer eaten as a block comment and silently disabled. `doctor` and the config loader now share one parser.
+- `loadConfig` enforces the `memoryDir` invariant on hand-edited configs; an escaping value (`../../shared`) falls back to the default with a warning instead of writing project memories outside the repo.
+- `migrate` re-scopes as well as re-keys: migrated files get the destination's `scope`/`visibility`, so personal→project migrations are submittable and project→personal memories stay private in exports. Conflict resolution compares parsed timestamps, not RFC-3339 strings.
+- `import` rejects bundle entries whose paths escape the bundle (`../` or symlinks) instead of reading arbitrary local files into the store; rejected paths are printed.
+
 ## Environment variable names (D62)
 
 - The override variables now answer to `OPEN_MEMEX_HOME` (storage root) and `OPEN_MEMEX_CONFIG` (config path). The pre-rename `MY_O_MEMORY_HOME` / `MY_O_MEMORY_CONFIG` names keep working as fallbacks — nothing to migrate, the data root itself does not move. `doctor` notes when the storage root came from the legacy variable.

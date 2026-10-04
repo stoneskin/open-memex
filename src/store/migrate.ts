@@ -6,9 +6,11 @@ import {
   iterMemoryFiles,
   readMemoryFile,
   serialize,
+  timeToMs,
   type Frontmatter,
 } from "./markdown.ts";
 import { syncScope } from "./sync.ts";
+import { PERSONAL_SCOPE } from "../scope.ts";
 
 export type ConflictStrategy = "newer" | "overwrite" | "skip";
 
@@ -90,7 +92,10 @@ export function migrateScope(
         log(`conflict: kept destination (--on-conflict=skip): ${dstPath}`);
       } else if (strategy === "overwrite") {
         log(`conflict: overwriting destination (--on-conflict=overwrite): ${dstPath}`);
-      } else if (dst.fm.updated_at >= mf.fm.updated_at) {
+      } else if (timeToMs(dst.fm.updated_at) >= timeToMs(mf.fm.updated_at)) {
+        // Compare parsed instants, not RFC-3339 strings: lexicographic
+        // order breaks around fractional seconds ("…:00Z" > "…:00.005Z"),
+        // letting the older file win.
         action = "skip";
         log(`conflict: kept destination (newer updated_at): ${dstPath}`);
       } else {
@@ -103,9 +108,16 @@ export function migrateScope(
       continue;
     }
 
+    // Re-key AND re-scope: scope/visibility must follow the destination
+    // (P0 review, 2026-10-03). Rewriting only scope_key produced files
+    // submit rejects ("scope is personal") or personal memories carrying
+    // visibility: internal into exports.
+    const toPersonal = toKey === PERSONAL_SCOPE.key;
     const newFm: Frontmatter = {
       ...mf.fm,
       scope_key: toKey,
+      scope: toPersonal ? "personal" : "project",
+      visibility: toPersonal ? "private" : "internal",
       project_name: opts.toProjectName ?? mf.fm.project_name,
     };
     const raw = serialize(newFm, mf.body);

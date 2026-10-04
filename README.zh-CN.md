@@ -610,6 +610,9 @@ Windows 上已加载的 DLL 是锁定的：如果 open-memex 的 MCP 服务器�
 **VS Code——`init` 跑一次还是每个项目跑？**
 跑一次就够。直接 `open-memex init` 会自动检测 VS Code 并把 MCP 服务器条目写进 VS Code 的用户级 `mcp.json`（Windows 在 `%APPDATA%/Code/User/mcp.json`，macOS 在 `~/Library/Application Support/Code/User/mcp.json`，Linux 在 `~/.config/Code/User/mcp.json`），服务器在每个项目都会启动。项目里有项目级 `.vscode/mcp.json` 时仍以它优先，而该条目保留 `cwd=${workspaceFolder}`，所以项目作用域按窗口各自解析。如果你的 用户级 `mcp.json` 里有注释（VS Code 接受 JSONC），`init` 不动它，会打印确切片段让你手动添加。空文件会被当作空白，直接写入。
 
+**我升级了 Node，或者用 nvm 切换了版本，需要重装 open-memex 吗？**
+包本身不用：它的 SQLite 驱动是 Node-API 预编译的，在任何受支持的 Node（≥ 22.14）上都能直接加载、不需要重新编译；你的记忆也不在安装目录里。但 nvm 这类版本管理器会给每个 Node 版本留一份独立的全局包目录，切换之后 `open-memex` 可能就"找不到"了。在新 Node 下跑一次 `npm install -g open-memex`，再用 `open-memex doctor` 确认驱动能正常加载。
+
 **怎么移除编辑器接线？**
 `open-memex uninstall` 撤销 `init`：移除 MCP 服务器条目、opencode 插件行、Agent Skill 目录，以及 Copilot 指令里的 open-memex 段落。不带 `--client` 时清理所有检测到的编辑器；`--global` 把清理限制在用户级接线。你的记忆永不被动。
 

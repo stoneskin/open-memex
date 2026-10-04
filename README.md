@@ -929,6 +929,14 @@ the Copilot instructions. With no `--client` it cleans up every detected
 editor; `--global` limits the cleanup to user-level wiring. Your memories are
 never touched.
 
+**I upgraded Node, or switched versions with nvm. Do I need to reinstall?**
+The package itself doesn't care: its SQLite driver is a Node-API prebuild, so
+it loads on any supported Node (≥ 22.14) with no recompiling, and your
+memories live outside the install. But version managers (nvm and friends)
+keep a separate global package folder per Node version, so after a switch
+`open-memex` may simply be "not found". Run `npm install -g open-memex` once
+under the new Node, then `open-memex doctor` to confirm the driver loads.
+
 ## Project status
 
 open-memex is stable and in daily use; the current stable line is published on

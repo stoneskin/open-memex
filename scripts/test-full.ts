@@ -11,11 +11,28 @@ import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI = path.join(REPO, "dist", "cli.js");
 const MCP_TS = path.join(REPO, "src", "mcp.ts");
+
+// Freshness guard: the CLI under test is the built dist/cli.js. A stale
+// build turns src fixes into phantom product failures, so refuse to run
+// against one (run `npm run build` first).
+{
+  const newestSrc = (dir: string): number =>
+    fs.readdirSync(dir, { withFileTypes: true }).reduce((max, e) => {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) return Math.max(max, newestSrc(p));
+      return e.name.endsWith(".ts") ? Math.max(max, fs.statSync(p).mtimeMs) : max;
+    }, 0);
+  const distMtime = fs.existsSync(CLI) ? fs.statSync(CLI).mtimeMs : 0;
+  if (newestSrc(path.join(REPO, "src")) > distMtime) {
+    console.error("dist/ is older than src/ — run `npm run build` before scripts/test-full.ts");
+    process.exit(1);
+  }
+}
 
 const T = fs.mkdtempSync(path.join(os.tmpdir(), "om-full-"));
 const TESTENV = {
@@ -496,9 +513,10 @@ console.log("== D64: p1 fixes (propose visibility / supersede published / status
   fs.rmSync(path.join(TESTENV.MY_O_MEMORY_HOME as string, "index.db-shm"), { force: true });
   const probe = path.join(T, "p1-plugin-probe.ts");
   fs.writeFileSync(probe, [
-    `import { makeTools } from ${JSON.stringify(path.join(REPO, "src", "tools", "memory.ts"))};`,
-    `import { PERSONAL_SCOPE } from ${JSON.stringify(path.join(REPO, "src", "scope.ts"))};`,
-    `import { loadConfig } from ${JSON.stringify(path.join(REPO, "src", "config.ts"))};`,
+    // file:// URLs, not raw paths — Windows rejects drive-letter specifiers.
+    `import { makeTools } from ${JSON.stringify(pathToFileURL(path.join(REPO, "src", "tools", "memory.ts")).href)};`,
+    `import { PERSONAL_SCOPE } from ${JSON.stringify(pathToFileURL(path.join(REPO, "src", "scope.ts")).href)};`,
+    `import { loadConfig } from ${JSON.stringify(pathToFileURL(path.join(REPO, "src", "config.ts")).href)};`,
     `const tools = makeTools(() => PERSONAL_SCOPE, loadConfig());`,
     `const r = await tools.memory_search.execute({ query: ${JSON.stringify(marker)} });`,
     `console.log(r.output);`,
@@ -518,8 +536,10 @@ console.log("== D64: p1 fixes (propose visibility / supersede published / status
   }
   cli(["reindex"], PROJ);
   r = cli(["sync-status"], PROJ);
-  const statusLines = r.out.split("\n").length;
-  ok("sync-status caps long sections", /… and \d+ more/.test(r.out) && statusLines < 50, `lines=${statusLines} ${r.out.slice(0, 120)}`);
+  // CLI shows the full list (the 20-line cap applies to agent tool
+  // results, whose "… and N more" line points back here).
+  const fillerShown = (r.out.match(/zzq cap filler/g) ?? []).length;
+  ok("sync-status shows the full list", fillerShown === 21 && !/… and \d+ more/.test(r.out), `shown=${fillerShown}`);
   for (let i = 0; i < 21; i++) fs.rmSync(path.join(outboxDir, `01P1CAP${String(i).padStart(19, "0")}.md`), { force: true });
 
   // doctor: v1 memories left under memories/user/ must be flagged.
@@ -537,7 +557,8 @@ console.log("== D64: p1 fixes (propose visibility / supersede published / status
   fs.mkdirSync(ocDir, { recursive: true });
   const jsoncFile = path.join(ocDir, "opencode.jsonc");
   fs.writeFileSync(jsoncFile, JSON.stringify({ plugin: ["file:///plugins/open-memex/src/index.ts"] }, null, 2));
-  r = cliRaw(["uninstall", "--client", "opencode", "--global", "--yes"], PROJ, { ...TESTENV, HOME: home2 });
+  // USERPROFILE too: os.homedir() ignores HOME on Windows.
+  r = cliRaw(["uninstall", "--client", "opencode", "--global", "--yes"], PROJ, { ...TESTENV, HOME: home2, USERPROFILE: home2 });
   const afterText = fs.readFileSync(jsoncFile, "utf8");
   ok("uninstall finds and cleans .jsonc global config", r.code === 0 && !/open-memex/.test(afterText), (r.out + r.err).slice(0, 160) + " || " + afterText.slice(0, 120));
 }

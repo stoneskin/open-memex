@@ -9,6 +9,15 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Review follow-ups (D66)
+
+Fixes from the follow-up review of the D63–D65 stack:
+
+- Keyword patterns: `请帮我记住…` works (the D65 pattern had missed its `请` prefix), `帮我记录一下：…` / `替我记录一下：…` capture cleanly instead of saving mid-word garbage, `帮我记得…` no longer fires, and `help me remember: …` routes personal like `remember for me`.
+- `open-memex sync-status` (the CLI) shows the full list again — the 20-per-section cap now applies only to agent tool results, whose "… and N more" line points at the CLI. `open-memex list --scope both` matches the `memory_list` tool.
+- `open-memex status --help` documents that retraction is one-way.
+- The full test suite is Windows-safe now (file:// probe imports, USERPROFILE-aware uninstall test) and refuses to run against a stale `dist/` build.
+
 ## Keyword capture gaps (D65)
 
 The most natural phrasings were the ones that fell through:

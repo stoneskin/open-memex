@@ -44,9 +44,14 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     try {
       syncScope(getScope().key, "request");
       syncScope(PERSONAL_SCOPE.key, "request");
-    } catch {
-      // A failed sync must not take the tools down with it; the index
-      // may be stale for this call but the tool still answers.
+    } catch (err) {
+      // Deliberate asymmetry with the MCP adapter (which lets sync errors
+      // propagate as tool errors): a failed sync must not take the plugin
+      // tools down — the index may be stale for this call but the tool
+      // still answers. Loud at debug, silent otherwise.
+      if (cfg.logLevel === "debug") {
+        console.error("[open-memex] pre-tool sync failed:", err);
+      }
     }
   };
 

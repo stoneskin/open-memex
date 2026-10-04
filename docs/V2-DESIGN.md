@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D64 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D66 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -569,8 +569,10 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 - Times: epoch ms → RFC 3339. `priority: N` → `importance: low|normal|high` (1–3 low, 4–7 normal, 8–10 high).
 - `type: instruction` (if any v1 memory used it) → `type: <content-kind>` + `role: instruction`.
 - Index is discarded and rebuilt from markdown files. `open-memex migrate --dry-run` previews everything.
-- Legacy paths: v1 `.my-o-memory/` repo dirs and `~/.my-o-memory/` config are moved to `.open-memex/` /
-  `~/.open-memex/` during migration (originals kept as backup until the user confirms).
+- Legacy paths: v1 `.my-o-memory/` repo dirs and `~/.my-o-memory/` config are moved to the
+  v2 locations (in-repo `.ai/open-memex/`; data root per §4/paths — `OPEN_MEMEX_HOME`, else
+  `%APPDATA%\open-memex` or `$XDG_DATA_HOME/open-memex`) by `open-memex migrate --to-v2`,
+  with the pre-migration tree kept as a dated backup.
 
 ---
 
@@ -1382,6 +1384,29 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   pattern lists. Deliberately NOT changed: multi-line paste triggering
   and the secret-masking windows stay as they are — narrowing them is a
   capture-recall tradeoff that needs an explicit decision, not a drive-by.
+
+- **D66 — follow-up review of the D63–D65 stack.** (1) The 帮/替
+  keyword family is rebuilt around full verb phrases: an optional `请`,
+  `记` + optional `住|录` + optional `一下`, then a separator boundary —
+  `请帮我记住：…` captures (D65's new pattern lacked its own `请`),
+  `帮我记录一下：…` saves `周五不发布` instead of the mid-word garbage
+  `录一下：…`, and `帮我记得…` does not fire. `help me remember: …`
+  joins the personal patterns. Still deliberately unchanged: shortening
+  the ≥3-char content floor (it eats `记一下这个`-type captures, but
+  lowering it invites junk) and adding narrative triggers like `记得…` /
+  `remind me to…` (imperative-vs-narration ambiguity) — both need an
+  explicit decision. (2) `sync-status` CLI shows the full list; the
+  20-line cap binds only agent renders, whose "… and N more" line names
+  the CLI. `list --scope both` reaches CLI parity with the tool, and
+  `status --help` documents the retracted one-way door. (3) The test
+  suite is Windows-safe (probe imports are `file://` URLs, the uninstall
+  test sets `USERPROFILE` since `os.homedir()` ignores `HOME` there)
+  and refuses to run against a stale `dist/`. (4) Sync-error posture is
+  now a stated asymmetry: the MCP adapter lets pre-call sync errors
+  propagate as tool errors; the plugin adapter logs them at debug and
+  answers from a possibly-stale index rather than taking the tools
+  down. (5) §19's legacy-paths text now names the shipped locations;
+  historical decision entries keep their as-decided wording.
 
 ## Open Questions
 

@@ -38,10 +38,10 @@ Example:
 
   list: `List memories in a scope, newest first.
 
-Usage: open-memex list [--scope project|personal] [--type T] [--limit N]
+Usage: open-memex list [--scope project|personal|both] [--type T] [--limit N]
 
 Flags:
-  --scope   project (default) or personal
+  --scope   project (default), personal, or both
   --type    filter by memory type
   --limit   max results
 
@@ -92,6 +92,9 @@ Example:
   status: `Change a memory's lifecycle status.
 
 Usage: open-memex status <id> active|deprecated|retracted|archived
+
+Retraction is one-way: a retracted memory cannot be set back to active
+(it was withdrawn on purpose). Save the content as a new memory instead.
 
 Example:
   open-memex status 01ABC deprecated`,
@@ -859,20 +862,26 @@ async function main() {
 
   if (cmd === "list") {
     const flags = parseFlags(rest);
-    const s = resolveCliScope(flags, project);
-    syncScope(s.key, "cli");
-    const hits = list(s.key, {
-      type: flags.type,
-      limit: flags.limit ? Number(flags.limit) : undefined,
-    });
-    if (hits.length === 0) {
-      console.log(`(no memories in ${s.key})`);
-      return;
-    }
-    for (const h of hits) {
-      const dep = h.status === "deprecated" ? " [deprecated]" : "";
-      const rev = hitStateLabel(h);
-      console.log(`[${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+    // D66: --scope both, on par with the memory_list tool — prints each
+    // scope's newest under its own header.
+    const scopes =
+      flags.scope === "both" ? [project, PERSONAL_SCOPE] : [resolveCliScope(flags, project)];
+    for (const s of scopes) {
+      syncScope(s.key, "cli");
+      const hits = list(s.key, {
+        type: flags.type,
+        limit: flags.limit ? Number(flags.limit) : undefined,
+      });
+      if (scopes.length > 1) console.log(`## ${s.kind} (${s.key})`);
+      if (hits.length === 0) {
+        console.log(`(no memories in ${s.key})`);
+        continue;
+      }
+      for (const h of hits) {
+        const dep = h.status === "deprecated" ? " [deprecated]" : "";
+        const rev = hitStateLabel(h);
+        console.log(`[${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+      }
     }
     return;
   }
@@ -1189,7 +1198,7 @@ function positionalArgs(argv: string[]): string[] {
     syncScope(project.key, "cli");
     syncScope(PERSONAL_SCOPE.key, "cli");
     try {
-      console.log(formatSyncStatus(getSyncStatus()));
+      console.log(formatSyncStatus(getSyncStatus(), { cap: Number.POSITIVE_INFINITY }));
     } catch (e) {
       console.error(`sync-status failed: ${(e as Error).message}`);
       process.exit(2);

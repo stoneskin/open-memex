@@ -281,6 +281,24 @@ ok("remember Toronto… body intact", g5.length === 1 && g5[0]?.content === "Tor
 const g6 = detectKeywords("帮我们记住：周五不发布", DEFAULT_CONFIG);
 ok("帮我们记住 → project", g6.length === 1 && g6[0]?.personal === false, JSON.stringify(g6));
 
+console.log("== keywords: review follow-ups (D66) ==");
+// The new 帮我记 pattern initially shipped without the (?:请)? its siblings
+// got in D65 — 请帮我记住 fell through again.
+const f1 = detectKeywords("请帮我记住：这个项目用 pnpm", DEFAULT_CONFIG);
+ok("请帮我记住 → personal", f1.length === 1 && f1[0]?.personal === true && f1[0]?.content === "这个项目用 pnpm", JSON.stringify(f1));
+// 帮我记录一下 used to capture mid-word garbage ("录一下：…"). The verb
+// phrase now includes 记录/记录一下 and must end at a separator boundary.
+const f2 = detectKeywords("帮我记录一下：周五不发布", DEFAULT_CONFIG);
+ok("帮我记录一下 body clean", f2.length === 1 && f2[0]?.content === "周五不发布", JSON.stringify(f2));
+const f3 = detectKeywords("替我记录一下：护照在抽屉里", DEFAULT_CONFIG);
+ok("替我记录一下 body clean", f3.length === 1 && f3[0]?.content === "护照在抽屉里", JSON.stringify(f3));
+// The boundary guard: 帮我记得… is not a capture form and must not fire.
+const f4 = detectKeywords("帮我记得带伞", DEFAULT_CONFIG);
+ok("帮我记得 → no capture", f4.length === 0, JSON.stringify(f4));
+// English personal phrasing on par with "remember for me".
+const f5 = detectKeywords("Help me remember: the wifi is on the fridge note", DEFAULT_CONFIG);
+ok("help me remember → personal", f5.length === 1 && f5[0]?.personal === true, JSON.stringify(f5));
+
 console.log("== scope ==");
 const s = resolveProjectScope(process.cwd());
 ok("kind=project", s.kind === "project");

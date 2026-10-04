@@ -116,6 +116,15 @@ memory_resolve, memory_pr_status — always call them by these full names.
   question into its concepts and try 2–3 phrasings per concept (synonyms, the
   user's other language, shorter keyword forms), and check the other scope too,
   before concluding nothing is stored.
+- When the user asks what you remember (about them, or in this project),
+  call memory_list with scope=both and present it conversationally — turn
+  the structured fields into plain words (source=user → "you told me
+  this"; source=inference → "I inferred this, check me"), and don't read
+  raw ids aloud. If they ask to remove or hide an entry, re-run
+  memory_list first (numbers from an older listing may have shifted),
+  read the candidate back in full, and get a confirmation before calling
+  memory_forget: deletion is permanent. If they hesitate, offer soft=true
+  (hide it instead — still one-way, but the file survives).
 - Memories default to this project's scope; use the personal scope for facts
   about the user that hold across all projects. When a saved fact becomes
   outdated, call memory_supersede (find the old memory's id with memory_search

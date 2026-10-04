@@ -14,6 +14,9 @@ export interface SearchHit {
   updated_at: number;
   status: string;
   review_state: string;
+  /** D68: provenance + creation time for the plain-language inventory. */
+  source: string;
+  created_at: number;
 }
 
 interface RawRow {
@@ -29,6 +32,8 @@ interface RawRow {
   status: string;
   superseded_by: string | null;
   review_state: string;
+  source?: string;
+  created_at?: number;
 }
 
 function toHit(r: RawRow): SearchHit {
@@ -52,6 +57,8 @@ function toHit(r: RawRow): SearchHit {
     updated_at: r.updated_at,
     status: r.status,
     review_state: r.review_state ?? "draft",
+    source: r.source ?? "",
+    created_at: r.created_at ?? r.updated_at ?? 0,
   };
 }
 
@@ -99,7 +106,7 @@ function resolveVisible(rows: RawRow[], limit: number, stats?: SearchStats): Sea
     const r = db()
       .prepare(
         `SELECT id, scope_key, project_name, type, tags, updated_at, status,
-                superseded_by, review_state, substr(content, 1, 240) AS snippet
+                superseded_by, review_state, source, created_at, substr(content, 1, 240) AS snippet
          FROM memories WHERE id = ?`,
       )
       .get(id) as
@@ -174,7 +181,7 @@ export function search(
 
   const sql = `
     SELECT m.id, m.scope_key, m.project_name, m.type, m.tags, m.aliases, m.updated_at,
-           m.status, m.superseded_by, m.review_state,
+           m.status, m.superseded_by, m.review_state, m.source, m.created_at,
            snippet(memories_fts, 0, '[', ']', ' ... ', 12) AS snippet,
            bm25(memories_fts) AS score
     FROM memories_fts
@@ -200,6 +207,8 @@ export function search(
     status: string;
     superseded_by: string | null;
     review_state: string;
+    source: string;
+    created_at: number;
     snippet: string;
     score: number;
   }>;
@@ -212,14 +221,14 @@ export function search(
 
 export function list(
   scopeKey: string,
-  opts: { type?: string; limit?: number } = {},
+  opts: { type?: string; limit?: number; include?: "active" | "all" } = {},
 ): SearchHit[] {
   const limit = Math.max(1, Math.min(opts.limit ?? 20, 100));
   const fetchLimit = Math.min(limit * 3 + 10, 150);
   const typeFilter = opts.type ? ` AND type = ?` : "";
   const sql = `
     SELECT id, scope_key, project_name, type, tags, updated_at, status,
-           superseded_by, review_state, substr(content, 1, 240) AS snippet
+           superseded_by, review_state, source, created_at, substr(content, 1, 240) AS snippet
     FROM memories
     WHERE scope_key = ?${typeFilter}
     ORDER BY updated_at DESC
@@ -241,9 +250,39 @@ export function list(
     status: string;
     superseded_by: string | null;
     review_state: string;
+    source: string;
+    created_at: number;
     snippet: string;
   }>;
 
   const raw: RawRow[] = rows.map((r) => ({ ...r, score: 1 }));
+  if (opts.include === "all") {
+    // D68: the audit view — every row as stored (superseded versions,
+    // retracted, archived), no chain collapsing, capped at limit.
+    return raw.slice(0, limit).map(toHit);
+  }
   return resolveVisible(raw, limit);
+}
+
+/**
+ * True totals for the inventory's truncation disclosure (D68). Under
+ * `active` the visible set is the newest of each chain — which is
+ * exactly the rows whose status is active/deprecated, so a plain count
+ * matches what resolveVisible would return unbounded.
+ */
+export function countList(
+  scopeKey: string,
+  opts: { type?: string; include?: "active" | "all" } = {},
+): number {
+  const typeFilter = opts.type ? ` AND type = ?` : "";
+  const statusFilter =
+    opts.include === "all" ? "" : ` AND status IN ('active', 'deprecated')`;
+  const params: unknown[] = [scopeKey];
+  if (opts.type) params.push(opts.type);
+  const row = db()
+    .prepare(
+      `SELECT COUNT(*) AS n FROM memories WHERE scope_key = ?${statusFilter}${typeFilter}`,
+    )
+    .get(...(params as any[])) as { n: number };
+  return row.n;
 }

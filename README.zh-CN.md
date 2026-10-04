@@ -275,9 +275,9 @@ MCP 服务器暴露十一个工具；opencode 原生插件暴露其中五个核�
 |---|---|
 | ● `memory_add`       | 保存一条事实、偏好、决策、笔记 |
 | ● `memory_search`    | 关键词搜索（BM25），横跨项目 + 个人记忆 |
-| ● `memory_list`      | 列出某个作用域（`project`、`personal` 或 `both`）的记忆，最新在前 |
+| ● `memory_list`      | 以编号清单列出某个作用域（`project`、`personal` 或 `both`）的记忆；`include=all` 是审计视图 |
 | ● `memory_supersede` | 用新版本替换一条记忆（保留 supersede 链） |
-| ● `memory_forget`    | 按 id 删除一条记忆 |
+| ● `memory_forget`    | 按 id 删除一条记忆（`soft=true` 改为隐藏——retracted，单向） |
 | `memory_status`      | 显示同步队列：outbox 草稿、仓库评审状态、未提交文件 |
 | `memory_submit`      | 把指定的草稿移进仓库记忆目录（本地分支 + 提交） |
 | `memory_propose`     | 把个人记忆复制到项目作用域，作为评审候选 |
@@ -443,9 +443,16 @@ open-memex search "auth flow"
 open-memex search "auth flow" --explain   # 显示 FTS 表达式、分数、被生命周期藏掉的计数
 open-memex list --scope project
 open-memex list --scope both       # 两个作用域各自最新的，各带一个标题
+open-memex list --include all      # 审计视图：被替换的版本、已撤回、已归档
 open-memex supersede <id> "Updated content"
 open-memex status <id> deprecated
 open-memex forget <id>
+open-memex forget <id> --soft      # 隐藏而不是删除（retracted，单向）
+
+open-memex inventory                        # 记住的一切，纯文本清单
+open-memex inventory --format json          # 同一份数据，JSON 格式给 agent 用
+# 个人 + 当前项目，outbox 草稿单独成节，被藏起的历史只计数。含个人内容的
+# 报告拒绝写进 git 工作树，除非显式 --allow-personal。
 ```
 
 团队评审工作流（两个家，一个阶段一个）：

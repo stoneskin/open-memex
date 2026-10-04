@@ -92,6 +92,13 @@ export function distillAgentsMarkdown(opts: DistillAgentsOptions): string {
     // stated them ("tool"). Keep the rubric one voice across surfaces.
     `- Mark captures you infer (rather than the user stating) with`,
     `  \`source: "inference"\` — provenance matters more than polish.`,
+    // D68: same voice for the visibility surface — opencode agents reading
+    // this footer never see the MCP handshake either.
+    `- When the user asks what you remember, list it conversationally`,
+    `  (\`memory_list\` with scope both, or \`open-memex inventory\`) — plain`,
+    `  words, not raw ids. Before deleting an entry they point at, read it`,
+    `  back in full and confirm; deletion is permanent. Offer hiding`,
+    `  (\`memory_forget\` soft / \`forget --soft\`) when they hesitate.`,
   );
   lines.push(``);
   return lines.join("\n");

@@ -120,7 +120,37 @@ try {
   check("memory_search output masked", !searchText.includes("sk-test-FAKESECRET1234567890abcdef"));
 
   const list = await req("tools/call", { name: "memory_list", arguments: {} });
-  check("memory_list works", (list.result?.content?.[0]?.text ?? "").includes(savedId));
+  const listText = list.result?.content?.[0]?.text ?? "";
+  check("memory_list works", listText.includes(savedId));
+  // D68: the list is the user's inventory — numbered, plain language,
+  // with provenance and age, not the raw developer format.
+  check("memory_list is numbered structured lines (D68)", /^\d+\. \[fact\] id=/m.test(listText), listText.slice(0, 120));
+  check("memory_list keeps raw provenance field (D68)", listText.includes("source=tool"), listText.slice(0, 160));
+  check("memory_list shows age token (D68)", /created=(now|\d+[mhd])/.test(listText), listText.slice(0, 160));
+  const listBoth = await req("tools/call", { name: "memory_list", arguments: { scope: "both" } });
+  check("memory_list both scopes (D68)", (listBoth.result?.content?.[0]?.text ?? "").includes("About you"));
+
+  // D68: truncation is disclosed, never silent — one shown, total stated.
+  const add2 = await req("tools/call", {
+    name: "memory_add",
+    arguments: { content: "mcp e2e probe: second memory for truncation", type: "fact" },
+  });
+  const savedId2 = ((add2.result?.content?.[0]?.text ?? "").match(/id=([A-Za-z0-9_]+)/) ?? [])[1];
+  const listLim = await req("tools/call", { name: "memory_list", arguments: { limit: 1 } });
+  const listLimText = listLim.result?.content?.[0]?.text ?? "";
+  check("memory_list discloses truncation (D68)", /and \d+ more not shown/.test(listLimText), listLimText.slice(0, 200));
+
+  // D68: soft forget hides (retracted) — gone from the active list,
+  // visible in the audit view, hard forget still removes it everywhere.
+  const soft = await req("tools/call", { name: "memory_forget", arguments: { id: savedId2, soft: true } });
+  check("memory_forget soft works (D68)", (soft.result?.content?.[0]?.text ?? "").includes("Hidden"), (soft.result?.content?.[0]?.text ?? "").slice(0, 120));
+  const listAfterSoft = await req("tools/call", { name: "memory_list", arguments: {} });
+  check("hidden memory out of active list (D68)", !(listAfterSoft.result?.content?.[0]?.text ?? "").includes(savedId2));
+  const listAll = await req("tools/call", { name: "memory_list", arguments: { include: "all" } });
+  const listAllText = listAll.result?.content?.[0]?.text ?? "";
+  check("hidden memory visible in audit view (D68)", listAllText.includes(savedId2) && listAllText.includes("[retracted]"), listAllText.slice(0, 200));
+  const forget2 = await req("tools/call", { name: "memory_forget", arguments: { id: savedId2 } });
+  check("memory_forget still deletes a hidden memory (D68)", (forget2.result?.content?.[0]?.text ?? "").toLowerCase().includes("deleted"));
 
   const forget = await req("tools/call", { name: "memory_forget", arguments: { id: savedId } });
   check("memory_forget works", (forget.result?.content?.[0]?.text ?? "").includes("Deleted"));

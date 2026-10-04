@@ -752,5 +752,27 @@ ok("opencode per-project keeps skill fallback", shouldInstallSkill("opencode", f
 ok("vscode keeps skill", shouldInstallSkill("vscode", true) === true);
 ok("cursor keeps skill", shouldInstallSkill("cursor", false) === true);
 
+// D68: display helpers — age tokens, structured lines, truncation notes.
+{
+  const { ageToken, formatInventoryLine, truncationNote } = await import("../src/retrieve/display.ts");
+  const now = Date.UTC(2026, 9, 3, 12, 0, 0);
+  ok("ageToken now", ageToken(now - 30_000, now) === "now");
+  ok("ageToken days", ageToken(now - 3 * 86_400_000, now) === "3d");
+  ok("ageToken old falls back to a date", /^\d{4}-\d{2}-\d{2}$/.test(ageToken(now - 90 * 86_400_000, now)));
+  const line = formatInventoryLine(2, {
+    id: "01K6AB", type: "fact", snippet: "likes  concise diffs", source: "user",
+    created_at: now - 3 * 86_400_000, updated_at: now - 3 * 86_400_000,
+    status: "active", review_state: "draft", scope_key: "personal",
+  }, "personal", now);
+  ok("inventory line is structured", line === "3. [fact] id=01K6AB created=3d source=user — likes concise diffs", line);
+  const proj = formatInventoryLine(0, {
+    id: "01K6CD", type: "decision", snippet: "ship on fridays", source: "keyword",
+    created_at: now - 2 * 86_400_000, updated_at: now - 3_600_000,
+    status: "active", review_state: "draft", scope_key: "project__x",
+  }, "personal", now);
+  ok("inventory line shows project state + late update", proj.includes("[draft]") && proj.includes("updated=1h"), proj);
+  ok("truncation note speaks only when cut", truncationNote(20, 54)?.includes("34 more") === true && truncationNote(20, 20) === null);
+}
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

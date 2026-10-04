@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D67 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D68 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -1444,6 +1444,32 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   "full list: open-memex sync-status" pointer) after D66's CLI-parity test
   had dropped that coverage.
 
+- **D68 — memory visibility: the inventory is a protocol surface.** Group 3-C
+  (design: `docs/memory-visibility-design.md` v2). `memory_list` output
+  becomes a numbered, structured inventory (`[type] id=… created=…
+  source=…`, state tags for project scopes; `created=` is when the fact
+  was learned, `updated=` shown only when it moved materially later). The
+  raw enums stay in the data; plain-language renderings live in the
+  guidance surfaces (tool descriptions, MCP handshake, SKILL.md,
+  distill-agents footer) so agents rephrase in the conversation's
+  language. New input `include: "active" | "all"` (default `active`) —
+  a deliberate behavior change: superseded versions and retracted /
+  archived memories leave the default listing (audit view via `all`).
+  Every listing states its true total; truncation is disclosed, never
+  silent (the D66 lesson applied to this surface). `open-memex
+  inventory` renders the same data layer as text (default) or JSON
+  (`open-memex-inventory/1`); a report containing personal memories
+  refuses to be written inside a git working tree without
+  `--allow-personal`. `memory_forget` gains `soft` (CLI `forget
+  --soft`): retraction as a first-class tool action — hidden from lists
+  and search, file kept, still one-way per D64 (restoring the fact means
+  saving it again; no un-hide, no undo, no recycle bin). Deletion stays
+  a confirmed conversation: agents re-list before acting on a number
+  (numbers are only valid for the listing just produced) and read the
+  entry back before deleting. The HTML rendering of the same data layer
+  follows as a separate change; auto-draft stays gated on the unlock
+  conditions in the design doc.
+
 ## Open Questions
 
 _Some early questions are resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull). The entries below are open unless marked decided._
@@ -1463,7 +1489,7 @@ _Some early questions are resolved — see D10 (rename), D11 (type/role split), 
 
 - **Novice experience: first success and plain language (open, 2026-10-03):** from an AI-novice review. The install ends with instructions, not an experience: candidate fix is a 60-second magic moment — init offers to save one sample memory and immediately has the user's agent answer a question using it, so the user *sees* recall work before being asked to trust it. Same screen should state the privacy model in plain words (personal never leaves this machine, no cloud, detected secrets are masked — all already true, all currently buried in docs), and the first time a suspected secret is masked, the capture path should say so. Underneath: a plain-language layer over the state machine ("saved on this computer" / "shared with the team") with outbox/submit/promote vocabulary becoming the advanced view — this is the same vocabulary wall the PM/BA question above hits from the other side. **Status (2026-10-03): partially addressed** — `init` now states the privacy model in plain words (D56); the 60-second magic moment and the plain-language layer remain open.
 
-- **Memory visibility and correctability (open, 2026-10-03):** also from the novice review, and arguably the trust foundation for every other feature. A non-CLI user currently cannot answer "what does my assistant remember about me?" without reading Markdown files. Candidate directions: a human-readable inventory (local HTML export or equivalent) listing memories in plain language with provenance shown the way a person asks for it ("saved 3 days ago while you were discussing deploys in project X") and one-step forget/undo from the same view. Provenance fields already exist in frontmatter; this is presentation, not schema. Without it, proactive capture (above) will read to novices as surveillance rather than help — so this question probably gates the auto-draft posture decision in the capture question.
+- **Memory visibility and correctability (open, 2026-10-03):** also from the novice review, and arguably the trust foundation for every other feature. A non-CLI user currently cannot answer "what does my assistant remember about me?" without reading Markdown files. Candidate directions: a human-readable inventory (local HTML export or equivalent) listing memories in plain language with provenance shown the way a person asks for it ("saved 3 days ago while you were discussing deploys in project X") and one-step forget/undo from the same view. Provenance fields already exist in frontmatter; this is presentation, not schema. Without it, proactive capture (above) will read to novices as surveillance rather than help — so this question probably gates the auto-draft posture decision in the capture question. **Status (2026-10-03): decided (D68)** — the inventory ships as structured list + text/JSON report with conversational rendering taught to agents; "one-step forget/undo from the view" was deliberately not built (deletion stays a confirmed conversation; soft-hide added instead); the HTML rendering follows separately. Auto-draft remains gated on the unlock conditions in `docs/memory-visibility-design.md`.
 
 ---
 

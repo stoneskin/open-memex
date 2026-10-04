@@ -24,7 +24,22 @@ import { redact } from "./redact.ts";
 import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+
+/** True when `target` sits inside a git working tree (D68 guard). */
+function isInsideWorkTree(target: string): boolean {
+  try {
+    const dir = path.dirname(path.resolve(target));
+    const out = execFileSync("git", ["-C", dir, "rev-parse", "--is-inside-work-tree"], {
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+    });
+    return out.trim() === "true";
+  } catch {
+    return false;
+  }
+}
 
 /** Per-command help, printed by `open-memex <command> --help`.
     AI assistants discover the CLI through --help, so every command needs one. */
@@ -38,12 +53,14 @@ Example:
 
   list: `List memories in a scope, newest first.
 
-Usage: open-memex list [--scope project|personal|both] [--type T] [--limit N]
+Usage: open-memex list [--scope project|personal|both] [--type T] [--limit N] [--include active|all]
 
 Flags:
-  --scope   project (default), personal, or both
-  --type    filter by memory type
-  --limit   max results
+  --scope    project (default), personal, or both
+  --type     filter by memory type
+  --limit    max results
+  --include  active (default: what is currently remembered) or all (audit
+             view: superseded versions, retracted and archived included)
 
 Examples:
   open-memex list
@@ -99,12 +116,15 @@ Retraction is one-way: a retracted memory cannot be set back to active
 Example:
   open-memex status 01ABC deprecated`,
 
-  forget: `Delete a memory by id.
+  forget: `Delete a memory by id. With --soft, hide it instead: the memory
+is retracted (out of lists and search, file kept). Retraction is one-way —
+save the content as a new memory to bring it back.
 
-Usage: open-memex forget <id>
+Usage: open-memex forget <id> [--soft]
 
 Example:
-  open-memex forget 01ABC`,
+  open-memex forget 01ABC
+  open-memex forget 01ABC --soft`,
 
   propose: `Copy personal memories into the project outbox as review drafts.
 The personal originals stay put. Nothing enters git at this step.
@@ -155,6 +175,20 @@ Usage: open-memex sync-status
 
 Example:
   open-memex sync-status`,
+
+  inventory: `Show everything remembered — personal + this project — in the
+open: what each memory says, where it came from, and whether it has reached
+the repo yet. Read-only; deleting stays a confirmed conversation with your
+agent. Formats: text (default, diffable) and json (for agents).
+
+Usage: open-memex inventory [--format text|json] [--scope project|personal|both] [--out <path>] [--allow-personal]
+
+Default scope: both. Without --out the report goes to stdout. A report that
+includes personal memories is refused inside a git working tree unless
+--allow-personal is passed — personal content must not ride a commit.
+
+Example:
+  open-memex inventory --format json --out ~/inventory.json`,
 
   pull: `Pull shared project memories from the git remote: fetch + fast-forward
 only. Never auto-merges — a diverged branch fails with a clear message and is
@@ -370,16 +404,17 @@ function usage(exitCode = 1): never {
 
 Usage:
   open-memex where
-  open-memex list [--scope project|personal] [--type T] [--limit N]
+  open-memex list [--scope project|personal|both] [--type T] [--limit N] [--include active|all]
   open-memex search "query" [--scope project|personal|both] [--type T] [--limit N] [--explain]
   open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2]
   open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
   open-memex status <id> active|deprecated|retracted|archived
-  open-memex forget <id>
+  open-memex forget <id> [--soft]
   open-memex propose <id...> --to project [--local-approve]
   open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
   open-memex resolve [id-or-path]
   open-memex sync-status
+  open-memex inventory [--format text|json] [--scope project|personal|both] [--out <path>] [--allow-personal]
   open-memex pull
   open-memex push
   open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
@@ -881,6 +916,7 @@ async function main() {
       const hits = list(s.key, {
         type: flags.type,
         limit: flags.limit ? Number(flags.limit) : undefined,
+        include: flags.include === "all" ? "all" : "active",
       });
       if (scopes.length > 1) console.log(`## ${s.kind} (${s.key})`);
       if (hits.length === 0) {
@@ -888,7 +924,7 @@ async function main() {
         continue;
       }
       for (const h of hits) {
-        const dep = h.status === "deprecated" ? " [deprecated]" : "";
+        const dep = h.status !== "active" ? ` [${h.status}]` : "";
         const rev = hitStateLabel(h);
         console.log(`[${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
       }
@@ -1071,6 +1107,19 @@ async function main() {
   if (cmd === "forget") {
     const id = rest[0];
     if (!id) usage();
+    // D68: --soft hides (retracts) instead of deleting — same action as
+    // the memory_forget tool's soft flag. One-way (D64).
+    if (rest.includes("--soft")) {
+      try {
+        const mf = setStatus(id, "retracted");
+        upsertFromFile(mf);
+        console.log(`hidden ${id} (retracted — out of lists and search; save it again as a new memory to bring it back)`);
+      } catch (e) {
+        console.error(`hide failed: ${(e as Error).message}`);
+        process.exit(1);
+      }
+      return;
+    }
     const row = db().prepare(`SELECT file_path FROM memories WHERE id = ?`).get(id) as
       | { file_path: string }
       | undefined;
@@ -1199,6 +1248,56 @@ function positionalArgs(argv: string[]): string[] {
       console.log(`  next: git add ${path.relative(process.cwd(), outcome.filePath)}`);
     } catch (e) {
       console.error(`resolve failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "inventory") {
+    // D68: refresh both scopes first so the report matches the markdown
+    // on disk. Default scope: personal + this project.
+    syncScope(project.key, "cli");
+    syncScope(PERSONAL_SCOPE.key, "cli");
+    const flags = parseFlags(rest);
+    const format = flags.format ?? "text";
+    if (format !== "text" && format !== "json") {
+      console.error(`inventory: unknown --format '${format}' (text|json; html arrives separately)`);
+      process.exit(2);
+    }
+    const scopeKeys =
+      flags.scope === "personal"
+        ? [PERSONAL_SCOPE.key]
+        : flags.scope === "project"
+          ? [project.key]
+          : [PERSONAL_SCOPE.key, project.key];
+    const outPath = flags["out"] ?? flags["output"];
+    // D68/3-C v2: the report contains personal content. Writing it into
+    // a git working tree would ride the next commit off this machine —
+    // refuse unless the user explicitly accepts that.
+    if (
+      outPath &&
+      scopeKeys.includes(PERSONAL_SCOPE.key) &&
+      flags["allow-personal"] !== "true" &&
+      isInsideWorkTree(outPath)
+    ) {
+      console.error(
+        `inventory: ${outPath} is inside a git working tree and this report includes personal memories. ` +
+          `Refusing to write it there. Pass --allow-personal if you really want that, or write outside the repo.`,
+      );
+      process.exit(2);
+    }
+    try {
+      const { loadInventory, renderInventoryText, renderInventoryJson } = await import("./inventory.ts");
+      const data = loadInventory(scopeKeys);
+      const rendered = format === "json" ? renderInventoryJson(data) : renderInventoryText(data);
+      if (outPath) {
+        fs.writeFileSync(outPath, rendered, "utf8");
+        console.log(`inventory: ${data.total} memories → ${outPath}`);
+      } else {
+        process.stdout.write(rendered);
+      }
+    } catch (e) {
+      console.error(`inventory failed: ${(e as Error).message}`);
       process.exit(2);
     }
     return;

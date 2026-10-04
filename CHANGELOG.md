@@ -13,6 +13,21 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 - **Fixed: every non-git folder on a drive shared a single project scope.** OpenCode v1 reports the filesystem root (`C:\`, `/`) as the project `worktree` when the opened folder is not a git repo, and the plugin seeded its scope on that root — so unrelated folders like `C:\temp` and `C:\scratch` all wrote to one `project__workspace__…` bucket. The scope now seeds on the folder actually opened (`pickScopeRoot` in `src/scope.ts`); real repo worktrees are unchanged. Memories already saved under the shared bucket are not moved automatically: run `open-memex scopes` to spot it, then `open-memex migrate --from <old-key>`.
 
+## Visibility follow-ups: one number, one guard, one truth (D70)
+
+Review of the D68/D69 inventory surfaces — each was honest on its own, and they disagreed with each other:
+
+- `open-memex list` no longer truncates silently: it renders the same structured line the agent sees and says how many entries it left out (20 of 25 used to look like all 25).
+- Numbers are unique within one listing. `memory_list(scope: both)` and the text report restarted the counter per scope, so a single listing held two `#1`s and "delete #3" was a guess.
+- Hiding an in-repo memory now says what the delete path already said: the retraction is a local working-tree edit until you commit and push it — until then the team still sees the memory.
+- The report's worktree guard fails closed (it used to skip the check when the output directory did not exist yet), explains a missing directory instead of dying with a raw `ENOENT`, and is shared by all three formats instead of existing twice.
+- `inventory --format json` is now `open-memex-inventory/2`: the absolute `file` path is gone — that artifact is meant for an agent, and it carried your home directory with it.
+- An empty scope is reported as `(0)` rather than disappearing; only the HTML audit view loads the hidden rows themselves; the page enforces its "no network requests" promise with a `default-src 'none'` CSP.
+
+## Inventory HTML report (D68 follow-up)
+
+- **`open-memex inventory --format html`** renders the same data layer as the text/JSON formats into a single local page: current memories grouped by scope, outbox drafts in their own section, and the replaced/hidden history folded at the bottom with supersede-chain pointers. All content is escaped; the filter box is local show/hide only. Default output is `<data dir>/inventory.html`; the worktree refusal (`--allow-personal`) applies here too. Sections fold when the store grows past 50 current entries.
+
 ## Memory visibility: see it, hide it, delete it (D68)
 
 Group 3-C — the surface a user reads to learn what the store actually remembers:

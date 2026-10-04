@@ -266,9 +266,15 @@ export function list(
 
 /**
  * True totals for the inventory's truncation disclosure (D68). Under
- * `active` the visible set is the newest of each chain — which is
- * exactly the rows whose status is active/deprecated, so a plain count
- * matches what resolveVisible would return unbounded.
+ * `active` the visible set is the newest of each chain, which in a
+ * consistent store is exactly the rows whose status is active/deprecated.
+ *
+ * D70: one deliberate exception — a `superseded` row whose chain target is
+ * missing (a dangling pointer, which the read path self-heals with a
+ * warning) is returned as a visible hit by resolveVisible but is not
+ * counted here, so the total can read one low in that state. Not worth
+ * widening the query for a self-healing case; the disclosure stays honest
+ * in every state a user can reach deliberately.
  */
 export function countList(
   scopeKey: string,

@@ -7,7 +7,6 @@
  * result; each host adapts that to its own tool-result shape.
  */
 import fs from "node:fs";
-import path from "node:path";
 import { z } from "zod";
 import type { Scope } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
@@ -29,7 +28,7 @@ import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "../github.ts";
-import { paths } from "../paths.ts";
+import { isInRepoMemoryFile } from "../paths.ts";
 import {
   proposeMemories,
   promoteMemory,
@@ -357,10 +356,13 @@ export async function listMemories(
   // every section reports its true total — a truncated list says so
   // instead of quietly looking complete (the D66 sync-status lesson).
   const include = args.include ?? "active";
+  // D70: numbering runs across every section of THIS listing, so "delete
+  // #3" names exactly one memory. A per-section counter emitted two "#1"s.
+  let seq = 0;
   const render = (scopeKey: string) => {
     const hits = list(scopeKey, { type: args.type, limit: args.limit, include });
     const total = countList(scopeKey, { type: args.type, include });
-    const lines = hits.map((h, i) => formatInventoryLine(i, h, PERSONAL_SCOPE.key));
+    const lines = hits.map((h) => formatInventoryLine(seq++, h, PERSONAL_SCOPE.key));
     const note = truncationNote(hits.length, total);
     if (note) lines.push(note);
     return lines;
@@ -455,7 +457,14 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
       upsertFromFile(mf);
       return {
         title: "memory: hidden",
-        output: `Hidden ${args.id} (retracted). It no longer appears in lists or search, but the file is kept. This is one-way — to bring the fact back, save it again as a new memory.`,
+        output:
+          `Hidden ${args.id} (retracted). It no longer appears in lists or search, but the file is kept. This is one-way — to bring the fact back, save it again as a new memory.` +
+          // D70: a retraction of an in-repo memory is a local working-tree
+          // edit like the delete — without a commit (and a push) the memory
+          // stands on every teammate's clone, so "hidden" would be a lie.
+          (isInRepoMemoryFile(row.file_path)
+            ? ` Note: this memory lives in the repo (.ai/open-memex/), so the retraction is only local until you commit and push it — until then the team still sees it.`
+            : ""),
       };
     } catch (e) {
       return { title: "memory: hide failed", output: (e as Error).message };
@@ -482,9 +491,7 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
   // D64: forgetting an in-repo memory deletes a file inside the user's
   // git working tree. Say so — the deletion should ride a commit, or the
   // file silently diverges from what teammates have.
-  const inRepo =
-    row.file_path.includes(`${path.sep}.ai${path.sep}`) &&
-    !row.file_path.startsWith(paths().root);
+  const inRepo = isInRepoMemoryFile(row.file_path);
   return {
     title: "memory: forgotten",
     output: inRepo

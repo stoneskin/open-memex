@@ -1486,6 +1486,38 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   `open-memex migrate --from <old-key>` moves them. The v2 adapter already
   seeded on the opened directory and is unaffected.
 
+- **D70 — visibility follow-ups: one number, one guard, one truth.** The
+  3-C review of D68/D69 found the surfaces honest individually and
+  inconsistent with each other. (1) **Every visibility surface discloses
+  truncation.** `memory_list` did; `open-memex list` — the command a
+  sceptical user runs first — silently showed 20 of 25. It now renders
+  the same structured line as the tool and states how many entries it
+  dropped, naming the command that shows everything. (2) **Numbers are
+  unique within a listing.** Ordinals ran per scope, so a single
+  `scope: both` output contained two `#1`s and "delete #3" was a guess;
+  the counter now runs across every section of one listing (tool, CLI and
+  the text report). (3) **A correction that touches the repo says so.**
+  The hard delete already did (D64); the soft hide did not, so a
+  retraction of an in-repo memory read as "hidden" while it was only a
+  local working-tree edit — the team still had the memory. Both surfaces
+  now name the commit and push. (4) **The report guard fails closed and
+  exists once.** `isInsideWorkTree` ran `git -C` on the output's parent
+  directory, so a not-yet-created directory made the check throw and
+  report "not in a worktree" — a fail-open on the one path where personal
+  memories would ride a commit; it now resolves the nearest existing
+  ancestor, reports a missing directory as itself, and both formats share
+  a single refusal helper instead of two copies. (5) **`open-memex-inventory/2`**
+  drops the absolute `file` path: the JSON renderer exists to be handed to
+  an agent, i.e. pasted into a cloud conversation, and it carried the
+  user's home directory. (6) Smaller honesty fixes: an empty scope is
+  reported as `(0)` instead of vanishing; only the HTML audit view loads
+  the hidden rows themselves (text/json pay for counts); the page's
+  "no network requests" claim is now enforced by a `default-src 'none'`
+  CSP rather than asserted; and `countList`'s comment states its one known
+  divergence (a self-healed dangling chain pointer) instead of claiming
+  equivalence. Deliberately NOT done, pending a decision: HTML i18n and a
+  size cap for very large stores.
+
 ## Open Questions
 
 _Some early questions are resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull). The entries below are open unless marked decided._

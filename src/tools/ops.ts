@@ -231,9 +231,9 @@ export type MemoryPrStatusArgs = z.infer<z.ZodObject<typeof memoryPrStatusArgs>>
 
 function resolveScope(
   getScope: () => Scope,
-  kind?: "project" | "personal" | "user",
+  kind?: "project" | "personal",
 ): Scope {
-  return kind === "personal" || kind === "user" ? PERSONAL_SCOPE : getScope();
+  return kind === "personal" ? PERSONAL_SCOPE : getScope();
 }
 
 function buildFrontmatter(
@@ -346,7 +346,7 @@ export async function searchMemories(
 ): Promise<ToolResult> {
   const project = getScope();
   const scopeKeys =
-    args.scope === "personal" || args.scope === "user"
+    args.scope === "personal"
       ? [PERSONAL_SCOPE.key]
       : args.scope === "project"
         ? [project.key]
@@ -407,7 +407,7 @@ export async function listMemories(
   }
   const s = resolveScope(
     getScope,
-    args.scope === "project" || args.scope === "personal" || args.scope === "user"
+    args.scope === "project" || args.scope === "personal"
       ? args.scope
       : undefined,
   );

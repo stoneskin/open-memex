@@ -10,6 +10,12 @@ import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
 import {
+  MIN_NODE_VERSION,
+  nativeDriverFloorMessage,
+  nodeSupportsNativeDriver,
+  parseNodeVersion,
+} from "../src/runtime-floor.ts";
+import {
   TURN_ECHO_THRESHOLD,
   TURN_ECHO_WINDOW_MS,
   isTurnEcho,
@@ -607,6 +613,31 @@ console.log("== env var names (D62) ==");
     restore();
   }
 }
+
+console.log("== runtime floor (native driver, D74) ==");
+// better-sqlite3 13 is built against Node-API 10, which Node gained in 22.14.0.
+// Below that floor `require` succeeds and `new Database()` segfaults the
+// process with no diagnostic, so the version gate is the only thing standing
+// between an old Node and a silent crash. The 22.12.0 / 22.23.3 boundary is
+// the measured one (win32-x64, WiseLibs/better-sqlite3#1514).
+ok("floor is 22.14.0", MIN_NODE_VERSION === "22.14.0");
+ok("22.12.0 is below the floor (segfaults)", !nodeSupportsNativeDriver("22.12.0"));
+ok("22.13.9 is below the floor", !nodeSupportsNativeDriver("22.13.9"));
+ok("22.14.0 is exactly the floor", nodeSupportsNativeDriver("22.14.0"));
+ok("22.14.1 is above", nodeSupportsNativeDriver("22.14.1"));
+ok("22.23.3 is above (measured working)", nodeSupportsNativeDriver("22.23.3"));
+ok("24.20.0 is above (measured working)", nodeSupportsNativeDriver("24.20.0"));
+ok("25.x is above", nodeSupportsNativeDriver("25.3.0"));
+ok("20.x is below (Node-API 10 never landed on 20)", !nodeSupportsNativeDriver("20.19.6"));
+ok("v-prefix tolerated", nodeSupportsNativeDriver("v22.14.0"));
+ok("prerelease suffix tolerated", nodeSupportsNativeDriver("23.1.0-nightly20260101"));
+ok("garbage is below, not a crash", !nodeSupportsNativeDriver("not-a-version"));
+ok("parses major/minor/patch", JSON.stringify(parseNodeVersion("22.14.3")) === '{"major":22,"minor":14,"patch":3}');
+const floorMsg = nativeDriverFloorMessage("22.12.0");
+ok("message names the floor", floorMsg.includes("22.14.0"));
+ok("message names the running version", floorMsg.includes("22.12.0"));
+ok("message offers a fix (upgrade or downgrade)", /Upgrade Node/.test(floorMsg) && /better-sqlite3@\^12/.test(floorMsg));
+ok("message explains the segfault", /segfaults/.test(floorMsg));
 
 console.log("== lifecycle pure: contentHash / similarity ==");
 ok("hash deterministic + whitespace-insensitive", contentHash("hello   world\n") === contentHash("hello world"));

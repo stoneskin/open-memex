@@ -9,6 +9,13 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## The Node floor is 22.14, because the driver says so (D74)
+
+- **Fixed: every command could die with no output on Node older than 22.14.** `better-sqlite3` 13 (the D72 N-API line) is compiled against Node-API 10, which Node only gained in **22.14.0**. Below that, `require()` succeeds and the first `new Database()` segfaults the process - no message, no stack, exit 139 on macOS/Linux and `0xC0000005` on Windows. Reproduced on win32-x64 with Node 22.12.0; Node 22.23.3 and 24.20.0 are fine, and Node 20 can never work with v13 (upstream [WiseLibs/better-sqlite3#1514](https://github.com/WiseLibs/better-sqlite3/issues/1514), open). open-memex now refuses to load the driver below the floor and says exactly what to do (upgrade Node, or pin `better-sqlite3@^12.11.1`) instead of dying.
+- **`engines.node` corrected to `>=22.14.0`.** It claimed `>=22.6`, which was the `--experimental-strip-types` floor - a different constraint that predates the driver bump, and wrong for the driver.
+- **`open-memex doctor` gained a `sqlite driver` check** that loads the driver and opens an in-memory database in a **child process** (a segfault cannot be caught in-process) and reports the exit code or signal. It resolves the driver from this package's own directory, so it works when `doctor` runs with cwd set to a user project.
+- Both READMEs gained a troubleshooting entry for the crash signature (`exit 139` / `0xC0000005` / "Segmentation fault"). No protocol, schema, or data change.
+
 ## [0.7.0] - 2026-10-04
 
 ## One thing you said is one memory (D73)

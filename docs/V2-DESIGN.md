@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D73 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D74 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -1469,6 +1469,36 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   entry back before deleting. The HTML rendering of the same data layer
   follows as a separate change; auto-draft stays gated on the unlock
   conditions in the design doc.
+- **D74 — the Node floor is 22.14, because the driver sets it, not us.** D72
+  moved the Node driver to `better-sqlite3` 13 (the N-API rewrite) to stop the
+  Node 24.19+ exit-path abort. That upgrade carried an unstated requirement:
+  v13 is compiled against **Node-API 10**, and Node only gained Node-API 10 in
+  **22.14.0**. Below that floor `require("better-sqlite3")` succeeds and then
+  `new Database()` segfaults the process — no message, no stack, exit 139 on
+  macOS/Linux, `0xC0000005` on Windows. Measured on win32-x64: Node 22.12.0
+  dies on the first open, Node 22.23.3 and 24.20.0 work; Node 20 can never work
+  with v13, since Node-API 10 never landed on that line (EoL regardless). This
+  is upstream and still open — WiseLibs/better-sqlite3#1514, plus #1516 for the
+  separate `npm ci` gyp problem on Windows, where `gypfile: false` does not stop
+  npm from shelling out to node-gyp. `engines.node` had been `>=22.6`, which was
+  the `--experimental-strip-types` floor — a real but *different* constraint
+  that predated the driver bump; leaving it would have shipped a package whose
+  declared support window crashes on its own dependency. Three changes:
+  (1) `engines.node` is `>=22.14.0`, and the two floors are documented as two
+  floors rather than merged into one number; (2) `loadDatabase` refuses below
+  the new floor and throws the actionable message (upgrade Node, or pin
+  `better-sqlite3@^12.11.1` — v12 is unaffected), because a crash no in-process
+  `try`/`catch` can report is the worst possible failure mode for a CLI;
+  (3) `doctor` reports the floor *and* probes the driver in a **child process**,
+  since a segfault cannot be caught in-process — the probe resolves the driver
+  from this package's own directory, because `doctor` routinely runs with cwd
+  set to a user project where a bare `require` finds nothing. The version
+  comparison lives in `src/runtime-floor.ts`, pure and unit-tested, because the
+  boundary is a fact to be tested (22.13.9 below, 22.14.0 exactly at, 22.23.3
+  and 24.20.0 above) rather than a constant to be trusted. Deliberately NOT
+  done: pinning back to v12 (that re-opens D72's Node 24 abort), or attempting
+  to fix either upstream bug here.
+
 - **D73 — one user statement, one memory: the keyword hook hands off to the
   agent.** The keyword hook and the agent are two writers for one user turn,
   and only one of them knows the sentence is already stored. Observed

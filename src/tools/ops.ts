@@ -91,10 +91,10 @@ export const TOOL_DESCRIPTIONS = {
 
 /** Shared zod input shapes (raw shape, not z.object — hosts wrap as needed). */
 export const scopeArg = z
-  .enum(["project", "personal", "user"])
+  .enum(["project", "personal"])
   .optional()
   .describe(
-    "Memory scope. `project` = tied to this repo. `personal` = global across all your projects. `user` is a deprecated alias of `personal`. Default: project.",
+    "Memory scope. `project` = tied to this repo. `personal` = global across all your projects. Default: project.",
   );
 
 export const aliasesArg = z
@@ -128,7 +128,7 @@ export const memorySearchArgs = {
     .min(1)
     .describe("Free-text query. File paths, error strings, identifiers work well."),
   scope: z
-    .enum(["project", "personal", "user", "both"])
+    .enum(["project", "personal", "both"])
     .optional()
     .describe("Which scope(s) to search. Default: both."),
   type: z.string().optional().describe("Restrict to memories of this type."),
@@ -138,7 +138,7 @@ export type MemorySearchArgs = z.infer<z.ZodObject<typeof memorySearchArgs>>;
 
 export const memoryListArgs = {
   scope: z
-    .enum(["project", "personal", "user", "both"])
+    .enum(["project", "personal", "both"])
     .optional()
     .describe(
       "Which scope(s) to list. `project` = tied to this repo. `personal` = global across all your projects. `both` lists each scope's newest. Default: project.",
@@ -231,9 +231,9 @@ export type MemoryPrStatusArgs = z.infer<z.ZodObject<typeof memoryPrStatusArgs>>
 
 function resolveScope(
   getScope: () => Scope,
-  kind?: "project" | "personal" | "user",
+  kind?: "project" | "personal",
 ): Scope {
-  return kind === "personal" || kind === "user" ? PERSONAL_SCOPE : getScope();
+  return kind === "personal" ? PERSONAL_SCOPE : getScope();
 }
 
 function buildFrontmatter(
@@ -346,7 +346,7 @@ export async function searchMemories(
 ): Promise<ToolResult> {
   const project = getScope();
   const scopeKeys =
-    args.scope === "personal" || args.scope === "user"
+    args.scope === "personal"
       ? [PERSONAL_SCOPE.key]
       : args.scope === "project"
         ? [project.key]
@@ -407,7 +407,7 @@ export async function listMemories(
   }
   const s = resolveScope(
     getScope,
-    args.scope === "project" || args.scope === "personal" || args.scope === "user"
+    args.scope === "project" || args.scope === "personal"
       ? args.scope
       : undefined,
   );

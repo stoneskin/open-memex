@@ -78,7 +78,9 @@ plain words (who the words came from, when it was saved, project or
 personal) instead of reading raw ids. If the user asks to remove one,
 read the entry back in full and get a confirmation before deleting —
 deletion is permanent, there is no undo. If they hesitate, offer hiding
-instead (`--soft`): it leaves lists and search but the file survives.
+instead (`--soft`): it disappears from lists and search, but the file
+survives. Either way, if the memory lives in the repo, the change is only
+yours until you commit and push it.
 
 ```sh
 open-memex forget <id>          # delete (permanent)

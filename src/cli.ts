@@ -9,7 +9,8 @@ import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
 import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatReviewHistory } from "./review.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
-import { search, list, hitStateLabel } from "./retrieve/search.ts";
+import { search, list, countList, hitStateLabel } from "./retrieve/search.ts";
+import { formatInventoryLine, truncationNote } from "./retrieve/display.ts";
 import {
   writeMemoryFile,
   readMemoryFile,
@@ -19,7 +20,7 @@ import {
   type Frontmatter,
 } from "./store/markdown.ts";
 import { loadConfig, configSource } from "./config.ts";
-import { paths, projectRoot } from "./paths.ts";
+import { paths, projectRoot, isInRepoMemoryFile } from "./paths.ts";
 import { redact } from "./redact.ts";
 import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
@@ -27,10 +28,22 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-/** True when `target` sits inside a git working tree (D68 guard). */
+/**
+ * True when `target` sits inside a git working tree (D68 guard).
+ *
+ * D70: resolve the nearest EXISTING ancestor first. `git -C` on a
+ * directory that does not exist throws, and the old code turned that
+ * into "not in a worktree" — a fail-open guard on the one path where
+ * personal memories would ride a commit.
+ */
 function isInsideWorkTree(target: string): boolean {
   try {
-    const dir = path.dirname(path.resolve(target));
+    let dir = path.dirname(path.resolve(target));
+    while (!fs.existsSync(dir)) {
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
     const out = execFileSync("git", ["-C", dir, "rev-parse", "--is-inside-work-tree"], {
       stdio: ["ignore", "pipe", "ignore"],
       encoding: "utf8",
@@ -39,6 +52,31 @@ function isInsideWorkTree(target: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * D70: the one place that decides where a report may be written, for
+ * every `inventory` format. Returns an error message to print, or null
+ * when the path is safe. Kept single so the text/json/html paths cannot
+ * drift apart (they already had two copies, D68).
+ */
+function inventoryWriteRefusal(
+  target: string,
+  includesPersonal: boolean,
+  allowPersonal: boolean,
+): string | null {
+  // Personal content must not ride a commit (the design's hardest rule).
+  if (includesPersonal && !allowPersonal && isInsideWorkTree(target)) {
+    return (
+      `inventory: ${target} is inside a git working tree and this report includes personal memories. ` +
+      `Refusing to write it there. Pass --allow-personal if you really want that, or write outside the repo.`
+    );
+  }
+  const parent = path.dirname(path.resolve(target));
+  if (!fs.existsSync(parent)) {
+    return `inventory: the directory ${parent} does not exist — create it first, or choose another --out path.`;
+  }
+  return null;
 }
 
 /** Per-command help, printed by `open-memex <command> --help`.
@@ -51,16 +89,20 @@ Usage: open-memex where
 Example:
   open-memex where`,
 
-  list: `List memories in a scope, newest first.
+  list: `List memories in a scope, newest first, as a numbered inventory.
 
 Usage: open-memex list [--scope project|personal|both] [--type T] [--limit N] [--include active|all]
 
 Flags:
   --scope    project (default), personal, or both
   --type     filter by memory type
-  --limit    max results
+  --limit    max results (default 20, max 100)
   --include  active (default: what is currently remembered) or all (audit
              view: superseded versions, retracted and archived included)
+
+A cut list says how many entries it left out. Numbers are unique within one
+listing, so "the third one" names exactly one memory - but they are only
+valid for the listing you just ran.
 
 Examples:
   open-memex list
@@ -118,7 +160,8 @@ Example:
 
   forget: `Delete a memory by id. With --soft, hide it instead: the memory
 is retracted (out of lists and search, file kept). Retraction is one-way —
-save the content as a new memory to bring it back.
+save the content as a new memory to bring it back. If the memory lives in
+the repo, either action is only local until you commit and push it.
 
 Usage: open-memex forget <id> [--soft]
 
@@ -912,24 +955,41 @@ async function main() {
     // D66: --scope both, on par with the memory_list tool — prints each
     // scope's newest under its own header.
     const scopes =
-      flags.scope === "both" ? [project, PERSONAL_SCOPE] : [resolveCliScope(flags, project)];
+      flags.scope === "both" ? [PERSONAL_SCOPE, project] : [resolveCliScope(flags, project)];
+    const include = flags.include === "all" ? "all" : "active";
+    // D70: the CLI renders the SAME structured inventory the agent sees,
+    // numbering runs across the whole listing, and a cut list says how
+    // many entries it dropped — `open-memex list` is the surface a
+    // sceptical user runs first, so it may not look complete when it isn't.
+    let seq = 0;
     for (const s of scopes) {
       syncScope(s.key, "cli");
       const hits = list(s.key, {
         type: flags.type,
         limit: flags.limit ? Number(flags.limit) : undefined,
-        include: flags.include === "all" ? "all" : "active",
+        include,
       });
-      if (scopes.length > 1) console.log(`## ${s.kind} (${s.key})`);
+      const total = countList(s.key, { type: flags.type, include });
+      if (scopes.length > 1) {
+        console.log(
+          s.key === PERSONAL_SCOPE.key
+            ? "## About you (personal — stays on this machine, applies everywhere)"
+            : `## This project (${s.projectName || s.key})`,
+        );
+      }
       if (hits.length === 0) {
-        console.log(`(no memories in ${s.key})`);
+        console.log(
+          scopes.length > 1
+            ? "(nothing remembered in this scope yet)"
+            : `(no memories in ${s.key})`,
+        );
         continue;
       }
       for (const h of hits) {
-        const dep = h.status !== "active" ? ` [${h.status}]` : "";
-        const rev = hitStateLabel(h);
-        console.log(`[${h.type}]${dep}${rev} ${h.id}  ${h.snippet.replace(/\s+/g, " ").trim()}`);
+        console.log(formatInventoryLine(seq++, h, PERSONAL_SCOPE.key));
       }
+      const note = truncationNote(hits.length, total);
+      if (note) console.log(note);
     }
     return;
   }
@@ -1112,10 +1172,20 @@ async function main() {
     // D68: --soft hides (retracts) instead of deleting — same action as
     // the memory_forget tool's soft flag. One-way (D64).
     if (rest.includes("--soft")) {
+      const target = db().prepare(`SELECT file_path FROM memories WHERE id = ?`).get(id) as
+        | { file_path: string }
+        | undefined;
       try {
         const mf = setStatus(id, "retracted");
         upsertFromFile(mf);
         console.log(`hidden ${id} (retracted — out of lists and search; save it again as a new memory to bring it back)`);
+        // D70: same honesty as the hard delete — a retraction of an in-repo
+        // memory is a local working-tree edit until it is committed and pushed.
+        if (target && isInRepoMemoryFile(target.file_path)) {
+          console.log(
+            `note: that memory lives in the repo (.ai/open-memex/) — the retraction is only local until you commit and push it; until then the team still sees it.`,
+          );
+        }
       } catch (e) {
         console.error(`hide failed: ${(e as Error).message}`);
         process.exit(1);
@@ -1273,45 +1343,38 @@ function positionalArgs(argv: string[]): string[] {
           ? [project.key]
           : [PERSONAL_SCOPE.key, project.key];
     const outPath = flags["out"] ?? flags["output"];
-    // D68/3-C v2: the report contains personal content. Writing it into
-    // a git working tree would ride the next commit off this machine —
-    // refuse unless the user explicitly accepts that.
-    if (
-      outPath &&
-      scopeKeys.includes(PERSONAL_SCOPE.key) &&
-      flags["allow-personal"] !== "true" &&
-      isInsideWorkTree(outPath)
-    ) {
-      console.error(
-        `inventory: ${outPath} is inside a git working tree and this report includes personal memories. ` +
-          `Refusing to write it there. Pass --allow-personal if you really want that, or write outside the repo.`,
-      );
-      process.exit(2);
-    }
+    const includesPersonal = scopeKeys.includes(PERSONAL_SCOPE.key);
+    const allowPersonal = flags["allow-personal"] === "true";
     try {
       const { loadInventory, renderInventoryText, renderInventoryJson } = await import("./inventory.ts");
-      const data = loadInventory(scopeKeys);
       if (format === "html") {
         const { renderInventoryHtml, defaultHtmlOutPath } = await import("./inventory-html.ts");
         const target = outPath ?? defaultHtmlOutPath(paths().root);
-        if (
-          scopeKeys.includes(PERSONAL_SCOPE.key) &&
-          flags["allow-personal"] !== "true" &&
-          isInsideWorkTree(target)
-        ) {
-          console.error(
-            `inventory: ${target} is inside a git working tree and this report includes personal memories. ` +
-              `Refusing to write it there. Pass --allow-personal if you really want that, or write outside the repo.`,
-          );
+        // D70: one guard for every format (this path had its own copy).
+        const refusal = inventoryWriteRefusal(target, includesPersonal, allowPersonal);
+        if (refusal) {
+          console.error(refusal);
           process.exit(2);
         }
+        // D70: only the audit surface needs the hidden rows themselves;
+        // text/json report counts, so they must not pay to load them.
+        const data = loadInventory(scopeKeys, { hidden: "entries" });
         fs.writeFileSync(target, renderInventoryHtml(data), "utf8");
         console.log(`inventory: ${data.total} memories → ${target}`);
         console.log(`open it in any browser; the report is read-only.`);
         return;
       }
+      const data = loadInventory(scopeKeys);
       const rendered = format === "json" ? renderInventoryJson(data) : renderInventoryText(data);
       if (outPath) {
+        // D68/3-C v2: the report contains personal content. Writing it into
+        // a git working tree would ride the next commit off this machine —
+        // refuse unless the user explicitly accepts that.
+        const refusal = inventoryWriteRefusal(outPath, includesPersonal, allowPersonal);
+        if (refusal) {
+          console.error(refusal);
+          process.exit(2);
+        }
         fs.writeFileSync(outPath, rendered, "utf8");
         console.log(`inventory: ${data.total} memories → ${outPath}`);
       } else {

@@ -128,7 +128,23 @@ try {
   check("memory_list keeps raw provenance field (D68)", listText.includes("source=tool"), listText.slice(0, 160));
   check("memory_list shows age token (D68)", /created=(now|\d+[mhd])/.test(listText), listText.slice(0, 160));
   const listBoth = await req("tools/call", { name: "memory_list", arguments: { scope: "both" } });
-  check("memory_list both scopes (D68)", (listBoth.result?.content?.[0]?.text ?? "").includes("About you"));
+  const listBothText = listBoth.result?.content?.[0]?.text ?? "";
+  check("memory_list both scopes (D68)", listBothText.includes("About you"));
+  // D70: numbers run across the whole listing, so "delete #3" names one memory.
+  // Needs a personal entry too, or there is only one section to number.
+  const personalAdd = await req("tools/call", {
+    name: "memory_add",
+    arguments: { content: "mcp e2e probe: a personal note for the both-scopes listing", type: "fact", scope: "personal" },
+  });
+  check("personal memory added for the both-scopes probe", (personalAdd.result?.content?.[0]?.text ?? "").includes("id="), (personalAdd.result?.content?.[0]?.text ?? "").slice(0, 120));
+  const listBoth2 = await req("tools/call", { name: "memory_list", arguments: { scope: "both" } });
+  const listBothText2 = listBoth2.result?.content?.[0]?.text ?? "";
+  const bothNums = [...listBothText2.matchAll(/^(\d+)\. \[/gm)].map((m) => Number(m[1]));
+  check(
+    "memory_list numbers are unique across scopes (D70)",
+    bothNums.length > 1 && new Set(bothNums).size === bothNums.length && bothNums[0] === 1,
+    JSON.stringify(bothNums),
+  );
 
   // D68: truncation is disclosed, never silent — one shown, total stated.
   const add2 = await req("tools/call", {

@@ -655,6 +655,7 @@ open-memex inventory --format html          # the same data as a local page (wri
 # Personal + current project, outbox drafts in their own section, hidden
 # history counted. Refuses to write a personal-bearing report inside a
 # git working tree unless you pass --allow-personal.
+# `list` numbers every entry in one listing and says how many it left out.
 ```
 
 Team review workflow (two homes, one per stage):

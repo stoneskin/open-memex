@@ -154,6 +154,7 @@ AGENTS.md hygiene footer, the MCP handshake, and the tool descriptions.
 - Never hand-write `status: superseded` or half a chain. Use the `supersede` code path (`src/store/lifecycle.ts`): the old record keeps its file, flips to `superseded`, and both sides get `supersedes`/`superseded_by`. Only `active` memories can be superseded.
 - Superseding a memory that had entered review (proposed/approved/published/rejected) starts the replacement at `review_state: proposed` so `promote` can advance it (D64). Never reset it to `draft` — a draft in the repo dir is stranded (submit only moves outbox files).
 - `setStatus` refuses `retracted → active` (D64): retracted content must not silently return to recall. Save a new memory instead.
+- **Visibility surfaces share one contract (D70).** `memory_list`, `cli list` and `inventory` render the same `formatInventoryLine`; numbering is a running counter across every section of one listing (never per scope), and a cut list discloses how many entries it dropped. Any *correction* that touches an in-repo memory (`memory_forget`, `soft=true`, `forget --soft`) must say the change is local until committed and pushed — use `isInRepoMemoryFile` (`src/paths.ts`). Report output paths go through `inventoryWriteRefusal` (`src/cli.ts`), which fails closed on an unresolvable directory.
 - **Every memory-file write goes through `atomicWriteTextSync`** (markdown.ts; tmp + rename). The create path, supersede flips, review transitions, submit landings, migrate/v2migrate rewrites — no direct `fs.writeFileSync` on a memory file. A torn read mid-rewrite parses as a deletion and drops the memory from the index.
 - Chain integrity is self-healing: on read, a missing counterpart is auto-completed with a warning; a dangling pointer warns but is never fabricated. Don't "fix" chains by editing frontmatter directly — let the read path do it.
 - Frontmatter is `schema_version: 2`. The SQLite index schema is versioned separately and rebuilds automatically on version change — never hand-edit `index.db`.
@@ -168,7 +169,7 @@ Context injection happens exactly once per session in `experimental.chat.system.
 
 `docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D69; open questions tracked at the end of the doc). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
-built this way" (principles, iron rules, the append-only decision log, currently D1–D69). Before changing
+built this way" (principles, iron rules, the append-only decision log, currently D1–D70). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
 schema, MCP tools, CLI contract), read the relevant design section — the decision
 log records what was already considered and rejected.

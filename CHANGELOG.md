@@ -9,6 +9,17 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Visibility follow-ups: one number, one guard, one truth (D70)
+
+Review of the D68/D69 inventory surfaces — each was honest on its own, and they disagreed with each other:
+
+- `open-memex list` no longer truncates silently: it renders the same structured line the agent sees and says how many entries it left out (20 of 25 used to look like all 25).
+- Numbers are unique within one listing. `memory_list(scope: both)` and the text report restarted the counter per scope, so a single listing held two `#1`s and "delete #3" was a guess.
+- Hiding an in-repo memory now says what the delete path already said: the retraction is a local working-tree edit until you commit and push it — until then the team still sees the memory.
+- The report's worktree guard fails closed (it used to skip the check when the output directory did not exist yet), explains a missing directory instead of dying with a raw `ENOENT`, and is shared by all three formats instead of existing twice.
+- `inventory --format json` is now `open-memex-inventory/2`: the absolute `file` path is gone — that artifact is meant for an agent, and it carried your home directory with it.
+- An empty scope is reported as `(0)` rather than disappearing; only the HTML audit view loads the hidden rows themselves; the page enforces its "no network requests" promise with a `default-src 'none'` CSP.
+
 ## Inventory HTML report (D68 follow-up)
 
 - **`open-memex inventory --format html`** renders the same data layer as the text/JSON formats into a single local page: current memories grouped by scope, outbox drafts in their own section, and the replaced/hidden history folded at the bottom with supersede-chain pointers. All content is escaped; the filter box is local show/hide only. Default output is `<data dir>/inventory.html`; the worktree refusal (`--allow-personal`) applies here too. Sections fold when the store grows past 50 current entries.
@@ -18,7 +29,7 @@ the `@alpha` tag are development snapshots and are not listed individually.
 Group 3-C — the surface a user reads to learn what the store actually remembers:
 
 - **`memory_list` is now a numbered inventory.** Lines are structured (`[type] id=… created=… source=…`), keep the raw provenance, and every listing states its true total — a truncated list says how many entries it is not showing instead of quietly looking complete. New input `include: "active" | "all"` (default `active`): **behavior change** — superseded versions, retracted and archived memories no longer appear unless you pass `include=all` (the audit view). The CLI gains the matching `list --include` flag.
-- **`open-memex inventory`** renders the same data as readable text (default) or JSON (`--format json`, format `open-memex-inventory/1`) — personal plus the current project, outbox drafts in their own section, hidden history counted rather than silently dropped. A report containing personal memories refuses to be written inside a git working tree without `--allow-personal`.
+- **`open-memex inventory`** renders the same data as readable text (default) or JSON (`--format json`, format `open-memex-inventory/2` — bumped from `/1` in D70, which dropped the absolute file path) — personal plus the current project, outbox drafts in their own section, hidden history counted rather than silently dropped. A report containing personal memories refuses to be written inside a git working tree without `--allow-personal`.
 - **Hide instead of delete:** `memory_forget` gains `soft=true` (CLI: `forget --soft`) — the memory is retracted: out of lists and search, file kept. Still one-way (D64): bringing the fact back means saving it again.
 - **Guidance kept in one voice:** the tool descriptions, the MCP session-start instructions, SKILL.md and the `distill-agents` AGENTS.md snippet all teach the same flow — answer "what do you remember?" conversationally from the inventory, re-list before acting on a number, read an entry back before deleting it.
 

@@ -454,6 +454,7 @@ open-memex inventory --format json          # 同一份数据，JSON 格式给 a
 open-memex inventory --format html          # 同一份数据的本地网页（写到 <数据目录>/inventory.html)
 # 个人 + 当前项目，outbox 草稿单独成节，被藏起的历史只计数。含个人内容的
 # 报告拒绝写进 git 工作树，除非显式 --allow-personal。
+# `list` 在同一份清单里连续编号，并说明自己少显示了哪些条目。
 ```
 
 团队评审工作流（两个家，一个阶段一个）：

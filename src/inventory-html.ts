@@ -71,7 +71,6 @@ function sectionHtml(
   fold: boolean,
   open: boolean,
 ): string {
-  const head = `<h2>${escapeHtml(title)} <span class="count">${count}</span></h2>\n    <p class="blurb">${escapeHtml(blurb)}</p>`;
   if (fold) {
     return `  <details${open ? " open" : ""}>
     <summary>${escapeHtml(title)} <span class="count">${count}</span></summary>
@@ -80,7 +79,8 @@ ${entries}
   </details>`;
   }
   return `  <section>
-    ${head}
+    <h2>${escapeHtml(title)} <span class="count">${count}</span></h2>
+    <p class="blurb">${escapeHtml(blurb)}</p>
 ${entries || '    <p class="empty">(nothing here yet)</p>'}
   </section>`;
 }
@@ -134,6 +134,10 @@ ${h}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- D70: the page claims it makes no network requests - enforce it. Inline
+     style/script are the only allowances; anything else (a stray <img
+     src>, a remote font) is blocked by the browser, not just by our promise. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <title>What OpenMemex remembers</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 44rem; padding: 0 1rem; color: #1a1a1a; background: #fdfdfb; }

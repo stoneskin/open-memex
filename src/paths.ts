@@ -96,6 +96,25 @@ export function inRepoMemoriesDir(root: string, memoryDir: string): string {
 }
 
 /** Same as `inRepoMemoriesDir` but never creates the directory. */
+/**
+ * True when a memory file lives inside the user's git working tree (the
+ * in-repo `.ai/open-memex/` copy) rather than in the local data root.
+ *
+ * D70: both destructive/corrective surfaces need this — the hard delete
+ * already said "commit the deletion so the team sees it" (D64), and the
+ * soft hide has to say the same, because a retraction that never gets
+ * committed leaves the memory standing on every teammate's clone.
+ */
+export function isInRepoMemoryFile(filePath: string): boolean {
+  if (!filePath) return false;
+  const normalized = filePath.replace(/\\/g, "/");
+  return normalized.includes("/.ai/open-memex/") && !normalized.startsWith(root());
+}
+
+function root(): string {
+  return paths().root.replace(/\\/g, "/");
+}
+
 export function inRepoMemoriesDirPath(root: string, memoryDir: string): string {
   return path.join(root, memoryDir);
 }

@@ -42,7 +42,11 @@ export interface InventoryData {
   outbox: InventoryRow[];
   /** History that exists but is not "remembered": counted, not listed. */
   hidden: { superseded: number; retracted: number; archived: number };
-  /** The hidden rows themselves (audit surfaces only: HTML report). */
+  /**
+   * The hidden rows themselves — audit surfaces only. D70: loaded when
+   * the caller asks for `hidden: "entries"` (the HTML report); text/json
+   * report the counts and must not pay to load every retired body.
+   */
   hiddenEntries: InventoryRow[];
   total: number;
 }
@@ -51,10 +55,17 @@ const BASE_COLS = `id, scope_key, project_name, type, status, review_state,
   source, created_at, updated_at, content, file_path`;
 
 /**
- * Load the inventory for the given scopes. `projectScopeKey` separates
- * the outbox drafts (they belong to that scope's draft rows).
+ * Load the inventory for the given scopes. `projectScopeKey` separates the
+ * outbox drafts (they belong to that scope's draft rows).
+ *
+ * D70: `hidden: "entries"` fetches the hidden rows themselves (HTML audit
+ * view); the default keeps the cheap COUNT query, because pulling every
+ * superseded body for a text report nobody reads is pure waste.
  */
-export function loadInventory(scopeKeys: string[]): InventoryData {
+export function loadInventory(
+  scopeKeys: string[],
+  opts: { hidden?: "counts" | "entries" } = {},
+): InventoryData {
   const inList = scopeKeys.map(() => "?").join(",");
   const current = db()
     .prepare(
@@ -63,19 +74,36 @@ export function loadInventory(scopeKeys: string[]): InventoryData {
        ORDER BY scope_key, updated_at DESC`,
     )
     .all(...scopeKeys) as unknown as InventoryRow[];
-  const hiddenEntries = db()
-    .prepare(
-      `SELECT ${BASE_COLS}, superseded_by FROM memories
-       WHERE scope_key IN (${inList}) AND status IN ('superseded', 'retracted', 'archived')
-       ORDER BY updated_at DESC`,
-    )
-    .all(...scopeKeys) as unknown as InventoryRow[];
-
+  const hiddenEntries: InventoryRow[] =
+    opts.hidden === "entries"
+      ? (db()
+          .prepare(
+            `SELECT ${BASE_COLS}, superseded_by FROM memories
+             WHERE scope_key IN (${inList}) AND status IN ('superseded', 'retracted', 'archived')
+             ORDER BY updated_at DESC`,
+          )
+          .all(...scopeKeys) as unknown as InventoryRow[])
+      : [];
   const hidden = { superseded: 0, retracted: 0, archived: 0 };
-  for (const r of hiddenEntries) {
-    if (r.status === "superseded") hidden.superseded++;
-    if (r.status === "retracted") hidden.retracted++;
-    if (r.status === "archived") hidden.archived++;
+  if (hiddenEntries.length > 0) {
+    for (const r of hiddenEntries) {
+      if (r.status === "superseded") hidden.superseded++;
+      if (r.status === "retracted") hidden.retracted++;
+      if (r.status === "archived") hidden.archived++;
+    }
+  } else {
+    const counted = db()
+      .prepare(
+        `SELECT status, COUNT(*) AS n FROM memories
+         WHERE scope_key IN (${inList}) AND status IN ('superseded', 'retracted', 'archived')
+         GROUP BY status`,
+      )
+      .all(...scopeKeys) as unknown as Array<{ status: string; n: number }>;
+    for (const r of counted) {
+      if (r.status === "superseded") hidden.superseded = r.n;
+      if (r.status === "retracted") hidden.retracted = r.n;
+      if (r.status === "archived") hidden.archived = r.n;
+    }
   }
 
   const outbox = current.filter(
@@ -91,20 +119,21 @@ export function loadInventory(scopeKeys: string[]): InventoryData {
     byScope.set(r.scope_key, arr);
   }
   // Personal first, then project scopes by key for a stable order.
+  // D70: every requested scope appears, including one with nothing in it —
+  // "this project has no memories" is part of the answer, and dropping the
+  // section made the report look like the project was never looked at.
   const orderedKeys = [
     ...scopeKeys.filter((k) => k === PERSONAL_SCOPE.key),
-    ...[...byScope.keys()].filter((k) => k !== PERSONAL_SCOPE.key).sort(),
+    ...scopeKeys.filter((k) => k !== PERSONAL_SCOPE.key).sort(),
   ];
-  const scopes = orderedKeys
-    .filter((k) => byScope.has(k))
-    .map((k) => {
-      const rows = byScope.get(k)!;
-      return {
-        scopeKey: k,
-        projectName: rows[0]?.project_name || k,
-        rows,
-      };
-    });
+  const scopes = orderedKeys.map((k) => {
+    const rows = byScope.get(k) ?? [];
+    return {
+      scopeKey: k,
+      projectName: rows[0]?.project_name || k,
+      rows,
+    };
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -122,11 +151,12 @@ function hiddenLine(data: InventoryData): string {
   return `Not shown: ${superseded} superseded version(s), ${retracted} retracted, ${archived} archived — inspect with \`open-memex list --include all\`.`;
 }
 
-function entriesText(rows: InventoryRow[]): string {
+function entriesText(rows: InventoryRow[], startAt = 0): string {
+  if (rows.length === 0) return "(nothing remembered in this scope yet)";
   return rows
     .map((r, i) =>
       formatInventoryLine(
-        i,
+        startAt + i,
         { ...r, snippet: r.content },
         PERSONAL_SCOPE.key,
       ),
@@ -141,20 +171,25 @@ export function renderInventoryText(data: InventoryData): string {
   out.push(
     `${data.total} memories (${data.scopes.reduce((n, s) => n + (s.scopeKey === PERSONAL_SCOPE.key ? s.rows.length : 0), 0)} personal, ${data.outbox.length} in the outbox).`,
   );
+  // D70: one running counter across every section, so a number quoted back
+  // ("delete #3") names exactly one entry in this report.
+  let seq = 0;
   for (const s of data.scopes) {
     const title =
       s.scopeKey === PERSONAL_SCOPE.key
         ? "About you — personal (never leaves this machine)"
         : `Project: ${s.projectName}`;
-    out.push("", `## ${title} (${s.rows.length})`, entriesText(s.rows));
+    out.push("", `## ${title} (${s.rows.length})`, entriesText(s.rows, seq));
+    seq += s.rows.length;
   }
   if (data.outbox.length > 0) {
     out.push(
       "",
       `## Not in the repo yet — outbox drafts (${data.outbox.length})`,
       "These exist only on this machine. They reach the repo through review (submit → promote), never automatically.",
-      entriesText(data.outbox),
+      entriesText(data.outbox, seq),
     );
+    seq += data.outbox.length;
   }
   const hidden = hiddenLine(data);
   if (hidden) out.push("", hidden);
@@ -165,7 +200,14 @@ export function renderInventoryText(data: InventoryData): string {
   return out.join("\n") + "\n";
 }
 
-/** JSON rendering: same data, for agents. Mirrors the export field names. */
+/**
+ * JSON rendering: same data, for agents. Mirrors the export field names.
+ *
+ * D70: format `/2` drops the absolute `file` path. This artifact is meant
+ * to be handed to an agent — i.e. pasted into a cloud conversation — and it
+ * carried the user's home directory and name with it. The id locates the
+ * file (`open-memex where` prints the data root).
+ */
 export function renderInventoryJson(data: InventoryData): string {
   const entry = (r: InventoryRow) => ({
     id: r.id,
@@ -178,12 +220,11 @@ export function renderInventoryJson(data: InventoryData): string {
     created_at: new Date(r.created_at).toISOString(),
     updated_at: new Date(r.updated_at).toISOString(),
     content: r.content,
-    file: r.file_path,
   });
   return (
     JSON.stringify(
       {
-        format: "open-memex-inventory/1",
+        format: "open-memex-inventory/2",
         generated_at: data.generatedAt,
         total: data.total,
         scopes: data.scopes.map((s) => ({

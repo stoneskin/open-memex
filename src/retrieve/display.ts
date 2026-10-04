@@ -132,6 +132,10 @@ export interface InventoryHit {
  * mouth ("delete #3"), the id is the machine contract. `created=` is
  * when the memory was learned; `updated=` appears only when it moved
  * materially later (supersede/promote touch updated_at).
+ *
+ * D70: `index` must be a running counter across every section of one
+ * listing — a per-section counter produces two "#1"s in a single
+ * `scope: both` output, which makes "delete #3" a guess.
  */
 export function formatInventoryLine(
   index: number,
@@ -159,8 +163,12 @@ export function formatInventoryLine(
   return `${parts.join(" ")} — ${body}`;
 }
 
-/** Truncation disclosure (D68): a cut list always says so. */
-export function truncationNote(shown: number, total: number): string | null {
+/**
+ * Truncation disclosure (D68): a cut list always says so.
+ * D70: the wording names the surface that can show everything — the CLI —
+ * so a hidden entry is always reachable.
+ */
+export function truncationNote(shown: number, total: number, cli = "open-memex"): string | null {
   if (total <= shown) return null;
-  return `… and ${total - shown} more not shown (raise limit up to 100, or use memory_search to find something specific).`;
+  return `… and ${total - shown} more not shown (raise limit up to 100, run \`${cli} list --limit 100\`, or use memory_search to find something specific).`;
 }

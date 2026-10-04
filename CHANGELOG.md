@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- Both READMEs now open the Core concepts section with an architecture diagram (English and Chinese versions in `docs/assets/`).
+
 ## [0.7.2] - 2026-10-04
 
 ## Listed in the official MCP Registry

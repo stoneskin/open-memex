@@ -275,7 +275,7 @@ MCP 服务器暴露十一个工具；opencode 原生插件暴露其中五个核�
 |---|---|
 | ● `memory_add`       | 保存一条事实、偏好、决策、笔记 |
 | ● `memory_search`    | 关键词搜索（BM25），横跨项目 + 个人记忆 |
-| ● `memory_list`      | 列出某个作用域的记忆，最新在前 |
+| ● `memory_list`      | 列出某个作用域（`project`、`personal` 或 `both`）的记忆，最新在前 |
 | ● `memory_supersede` | 用新版本替换一条记忆（保留 supersede 链） |
 | ● `memory_forget`    | 按 id 删除一条记忆 |
 | `memory_status`      | 显示同步队列：outbox 草稿、仓库评审状态、未提交文件 |

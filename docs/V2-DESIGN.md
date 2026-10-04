@@ -1334,6 +1334,38 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   fail must fail loudly in its return value; "already gone" is the only
   swallowed delete error.
 
+- **D64 — second batch from the same review: stale answers, stranded
+  files, and holes between surfaces.** (1) The opencode plugin hosts
+  synced the index only at bootstrap, so memories written by the CLI or
+  another client stayed invisible all session (and exact duplicates
+  accumulated); plugin tool calls now reconcile from disk first,
+  mirroring the MCP server's per-call sync. (2) Superseding a published
+  memory reset `review_state` to `draft` in the repo, where submit
+  could not reach it and promote refuses drafts — the replacement now
+  re-enters at `proposed` whenever the old memory had entered review.
+  (3) Every memory-file rewrite now goes through the atomic
+  tmp+rename helper (D57 covered creates only); a torn read mid-rewrite
+  previously parsed as a deletion. (4) `setStatus` refuses
+  `retracted → active`: retraction is one-way through this path, or
+  withdrawn content silently returns to recall. (5) Propose copies get
+  `visibility: internal` instead of inheriting `private`, which export
+  excludes by default — the team copy no longer vanishes from bundles.
+  (6) `opencodeGlobalConfigPath` resolves whichever of `.json`/`.jsonc`
+  actually exists, as init's writer does; uninstall no longer reports
+  "nothing to remove" while leaving the plugin entry behind.
+  (7) `doctor` now checks all eleven MCP tool names (it checked the
+  plugin's five) and flags v1 memories stranded under `memories/user/`,
+  which v2 read paths cannot see. (8) `memory_status` output is capped
+  per section with an "… and N more" line; `memory_list` accepts
+  `scope: both`; `forget` says when the deleted file lived in the repo
+  (commit the deletion); the Copilot instructions and the MCP handshake
+  now tell the agent the same thing about when to call
+  `memory_status`; the AGENTS.md distillation footer teaches
+  `source: "inference"` like every other surface; `where` prints the
+  config path it always promised. Standing rule reinforced: any surface
+  that answers a question must be reading current truth, and every
+  workflow state must have a next step.
+
 ## Open Questions
 
 _All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._

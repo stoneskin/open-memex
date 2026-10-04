@@ -19,12 +19,20 @@ interface Check {
   detail: string;
 }
 
+// D64: the MCP server exposes eleven tools; checking only the five the
+// opencode plugin carries let a half-registered server pass as healthy.
 const EXPECTED_TOOLS = [
   "memory_add",
   "memory_search",
   "memory_list",
   "memory_supersede",
   "memory_forget",
+  "memory_status",
+  "memory_submit",
+  "memory_propose",
+  "memory_promote",
+  "memory_resolve",
+  "memory_pr_status",
 ];
 
 function nodeCheck(): Check {
@@ -563,6 +571,22 @@ function legacyCheck(): Check {
   const legacyDir = path.join(path.dirname(root), LEGACY_PACKAGE_NAME);
   if (fs.existsSync(legacyDir) && fs.statSync(legacyDir).isDirectory())
     found.push(`legacy data dir ${legacyDir} — merge it with \`open-memex migrate --to-v2\``);
+  // D64: v1 stored personal memories under the scope dir "user"; v2 reads
+  // only "personal". Files left there are invisible to every read path —
+  // an upgrader silently sees an empty personal scope. Surface them here;
+  // the migration itself stays explicit (no silent moves).
+  try {
+    const userDir = path.join(root, "memories", "user");
+    if (
+      fs.existsSync(userDir) &&
+      fs.readdirSync(userDir).some((f) => f.endsWith(".md"))
+    )
+      found.push(
+        "v1 personal memories under " + userDir + " are invisible to v2 reads — convert them with `open-memex migrate --to-v2` (it moves them to the personal scope; preview with --dry-run)",
+      );
+  } catch {
+    /* unreadable — not this check's problem */
+  }
   for (const f of [opencodeGlobalConfigPath(), userMcpConfigPath("vscode"), userMcpConfigPath("cursor")]) {
     try {
       if (fs.existsSync(f) && fs.readFileSync(f, "utf8").includes(LEGACY_PACKAGE_NAME))

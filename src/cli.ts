@@ -18,7 +18,7 @@ import {
   normalizeAliases,
   type Frontmatter,
 } from "./store/markdown.ts";
-import { loadConfig } from "./config.ts";
+import { loadConfig, configSource } from "./config.ts";
 import { paths, projectRoot } from "./paths.ts";
 import { redact } from "./redact.ts";
 import { resolveMcpCommand } from "./init.ts";
@@ -840,6 +840,7 @@ async function main() {
   if (cmd === "where") {
     const p = paths();
     console.log(`root:      ${p.root}`);
+    console.log(`config:    ${configSource() ?? "(built-in defaults)"}`);
     console.log(`memories:  ${p.memories}`);
     console.log(`index:     ${p.indexDb}`);
     console.log(`project:   ${project.key}`);

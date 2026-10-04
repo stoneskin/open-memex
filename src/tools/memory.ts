@@ -1,7 +1,9 @@
 import type { z } from "zod";
 import type { ToolContext, ToolResult } from "@opencode-ai/plugin";
 import type { Scope } from "../scope.ts";
+import { PERSONAL_SCOPE } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
+import { syncScope } from "../store/sync.ts";
 import {
   addMemory,
   searchMemories,
@@ -32,10 +34,27 @@ function tool<Args extends z.ZodRawShape>(input: {
 }
 
 export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
+  // D64: the plugin host syncs only at bootstrap, so without this the
+  // index goes stale for the whole session — memories added through the
+  // CLI or another client stay invisible to the agent, and same-content
+  // duplicates accumulate. Mirror the MCP server: reconcile from disk
+  // before every tool call. syncScope is mtime-based, so the steady-state
+  // cost is one directory scan.
+  const syncFirst = () => {
+    try {
+      syncScope(getScope().key, "request");
+      syncScope(PERSONAL_SCOPE.key, "request");
+    } catch {
+      // A failed sync must not take the tools down with it; the index
+      // may be stale for this call but the tool still answers.
+    }
+  };
+
   const memory_add = tool({
     description: TOOL_DESCRIPTIONS.memory_add,
     args: memoryAddArgs,
     async execute(args) {
+      syncFirst();
       return withOutboxNote(getScope().key, addMemory(getScope, cfg, args));
     },
   });
@@ -44,6 +63,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     description: TOOL_DESCRIPTIONS.memory_search,
     args: memorySearchArgs,
     async execute(args) {
+      syncFirst();
       return searchMemories(getScope, args);
     },
   });
@@ -52,6 +72,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     description: TOOL_DESCRIPTIONS.memory_list,
     args: memoryListArgs,
     async execute(args) {
+      syncFirst();
       return listMemories(getScope, args);
     },
   });
@@ -60,6 +81,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     description: TOOL_DESCRIPTIONS.memory_supersede,
     args: memorySupersedeArgs,
     async execute(args) {
+      syncFirst();
       return withOutboxNote(getScope().key, supersedeMemory(cfg, args));
     },
   });
@@ -68,6 +90,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     description: TOOL_DESCRIPTIONS.memory_forget,
     args: memoryForgetArgs,
     async execute(args) {
+      syncFirst();
       return withOutboxNote(getScope().key, forgetMemory(args));
     },
   });

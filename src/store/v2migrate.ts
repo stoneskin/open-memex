@@ -6,6 +6,7 @@ import {
   normalizeFrontmatter,
   isTaxonomyType,
   serialize,
+  atomicWriteTextSync,
   type Frontmatter,
 } from "./markdown.ts";
 
@@ -211,7 +212,7 @@ function planDir(
 function applyPlans(result: MigrateV2Result): void {
   for (const plan of result.plans) {
     fs.mkdirSync(path.dirname(plan.toPath), { recursive: true });
-    fs.writeFileSync(plan.toPath, serialize(plan.fm, plan.body), "utf8");
+    atomicWriteTextSync(plan.toPath, serialize(plan.fm, plan.body));
     if (plan.toPath !== plan.fromPath) fs.unlinkSync(plan.fromPath);
   }
 }

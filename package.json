@@ -1,6 +1,6 @@
 {
   "name": "open-memex",
-  "version": "0.7.0-alpha.4",
+  "version": "0.7.0-alpha.5",
   "description": "Local-first memory layer and protocol for AI coding agents. Markdown source of truth, SQLite FTS5 index, zero cloud.",
   "type": "module",
   "license": "Apache-2.0",

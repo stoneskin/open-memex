@@ -409,7 +409,7 @@ they only matter once you share memories through Git.
 |---|---|
 | ● `memory_add`       | Save a fact, preference, decision, note |
 | ● `memory_search`    | Keyword search (BM25) across project + personal memories |
-| ● `memory_list`      | List memories in a scope, newest first |
+| ● `memory_list`      | List memories in a scope (`project`, `personal`, or `both`), newest first |
 | ● `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
 | ● `memory_forget`    | Delete a memory by id |
 | `memory_status`      | Show the sync queue: outbox drafts, repo review states, uncommitted files |

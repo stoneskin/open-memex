@@ -7,6 +7,7 @@ import {
   readMemoryFile,
   serialize,
   timeToMs,
+  atomicWriteTextSync,
   type Frontmatter,
 } from "./markdown.ts";
 import { syncScope } from "./sync.ts";
@@ -122,7 +123,7 @@ export function migrateScope(
     };
     const raw = serialize(newFm, mf.body);
     if (!dryRun) {
-      fs.writeFileSync(dstPath, raw, "utf8");
+      atomicWriteTextSync(dstPath, raw);
       // Only unlink source if it's a different path (paths differ because
       // scope dir differs; belt-and-suspenders check).
       if (path.resolve(srcPath) !== path.resolve(dstPath)) {

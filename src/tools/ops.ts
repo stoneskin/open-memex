@@ -7,6 +7,7 @@
  * result; each host adapts that to its own tool-result shape.
  */
 import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import type { Scope } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
@@ -27,6 +28,7 @@ import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "../github.ts";
+import { paths } from "../paths.ts";
 import {
   proposeMemories,
   promoteMemory,
@@ -133,7 +135,12 @@ export const memorySearchArgs = {
 export type MemorySearchArgs = z.infer<z.ZodObject<typeof memorySearchArgs>>;
 
 export const memoryListArgs = {
-  scope: scopeArg,
+  scope: z
+    .enum(["project", "personal", "user", "both"])
+    .optional()
+    .describe(
+      "Which scope(s) to list. `project` = tied to this repo. `personal` = global across all your projects. `both` lists each scope's newest. Default: project.",
+    ),
   type: z.string().optional(),
   limit: z.number().int().min(1).max(100).optional(),
 };
@@ -331,7 +338,31 @@ export async function listMemories(
   getScope: () => Scope,
   args: MemoryListArgs,
 ): Promise<ToolResult> {
-  const s = resolveScope(getScope, args.scope);
+  if (args.scope === "both") {
+    // D64: "what do you remember about me" spans both stores; search
+    // already defaults to both, list now matches. Each scope lists its
+    // own newest (the limit applies per scope).
+    const project = getScope();
+    const sections: string[] = [];
+    for (const s of [project, PERSONAL_SCOPE]) {
+      const hits = list(s.key, { type: args.type, limit: args.limit });
+      if (hits.length === 0) {
+        sections.push(`## ${s.kind} (${s.key})\n  (none)`);
+        continue;
+      }
+      const lines = hits.map(
+        (h) => `- [${h.type}]${hitStateLabel(h)} id=${h.id} — ${h.snippet.replace(/\s+/g, " ").trim()}`,
+      );
+      sections.push(`## ${s.kind} (${s.key})\n${lines.join("\n")}`);
+    }
+    return { title: "memory: list (both scopes)", output: sections.join("\n") };
+  }
+  const s = resolveScope(
+    getScope,
+    args.scope === "project" || args.scope === "personal" || args.scope === "user"
+      ? args.scope
+      : undefined,
+  );
   const hits = list(s.key, { type: args.type, limit: args.limit });
   if (hits.length === 0) {
     return { title: "memory: empty", output: `No memories in scope ${s.key}.` };
@@ -405,7 +436,18 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
     }
   }
   deleteFromIndex(args.id);
-  return { title: "memory: forgotten", output: `Deleted ${args.id}.` };
+  // D64: forgetting an in-repo memory deletes a file inside the user's
+  // git working tree. Say so — the deletion should ride a commit, or the
+  // file silently diverges from what teammates have.
+  const inRepo =
+    row.file_path.includes(`${path.sep}.ai${path.sep}`) &&
+    !row.file_path.startsWith(paths().root);
+  return {
+    title: "memory: forgotten",
+    output: inRepo
+      ? `Deleted ${args.id}. Note: the file lived in the repo (.ai/open-memex/) — commit the deletion so the team sees it too.`
+      : `Deleted ${args.id}.`,
+  };
 }
 
 // ---------------------------------------------------------------------------

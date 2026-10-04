@@ -31,6 +31,7 @@ import {
   parse as parseMemory,
   readMemoryFile,
   serialize,
+  atomicWriteTextSync,
   type ReviewState,
 } from "./store/markdown.ts";
 import { upsertFromFile, recordSync, readSyncState } from "./store/sync.ts";
@@ -181,18 +182,21 @@ export function formatSyncStatus(st: SyncStatus): string {
   } else {
     lines.push(`last sync: never`);
   }
+  const CAP = 20;
   lines.push(`outbox (appdata, pending sync): ${st.outbox.length}`);
-  for (const e of st.outbox) {
+  for (const e of st.outbox.slice(0, CAP)) {
     lines.push(`  ${e.id}  [${e.reviewState}] ${e.title}`);
   }
+  if (st.outbox.length > CAP) lines.push(`  … and ${st.outbox.length - CAP} more`);
   const byState = new Map<string, number>();
   for (const e of st.inRepo) byState.set(e.reviewState, (byState.get(e.reviewState) ?? 0) + 1);
   const breakdown = [...byState.entries()].map(([s, n]) => `${n} ${s}`).join(", ") || "none";
   lines.push(`repo .ai/open-memex: ${st.inRepo.length} (${breakdown})`);
-  for (const e of st.inRepo) {
+  for (const e of st.inRepo.slice(0, CAP)) {
     const u = e.gitState === "uncommitted" ? " (uncommitted)" : "";
     lines.push(`  ${e.id}  [${e.reviewState}]${u} ${e.title}`);
   }
+  if (st.inRepo.length > CAP) lines.push(`  … and ${st.inRepo.length - CAP} more`);
   if (st.uncommitted.length > 0) {
     lines.push(`note: ${st.uncommitted.length} repo file(s) not yet committed — they ride with the working tree until you commit.`);
   }
@@ -357,7 +361,7 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
       ],
     };
     const text = serialize(fm, parsed.body);
-    fs.writeFileSync(destPath, text, "utf8");
+    atomicWriteTextSync(destPath, text);
     written.push({ id: v.id, srcPath: v.srcPath, destPath, hash: contentHash(parsed.body) });
     submitted.push({ id: v.id, filePath: destPath, reviewState: destState });
   }

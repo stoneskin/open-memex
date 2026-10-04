@@ -68,11 +68,12 @@ You have a local memory MCP server (\`open-memex\`). Its tools are
 these full names.
 
 - The server tells you when project outbox drafts are waiting for review — in
-  tool results. At session start, call \`memory_status\` once to check. When
-  drafts are waiting, summarize them (one line each) and ask the user which
-  ones to sync into the repo; sync NOTHING the user did not name. If you
-  already asked about these drafts this session, don't ask again. When the
-  server reports none waiting, do nothing.
+  tool results. When it does (or when the user asks), call \`memory_status\`
+  to see them; don't call it blindly at session start. When drafts are
+  waiting, summarize them (one line each) and ask the user which ones to
+  sync into the repo; sync NOTHING the user did not name. If you already
+  asked about these drafts this session, don't ask again. When the server
+  reports none waiting, do nothing.
 - BE PROACTIVE about facts the user states directly: when the user shares a
   decision, preference, project convention, or fix-and-cause worth remembering
   across sessions, call \`memory_add\` without being asked. Keep each memory to
@@ -316,7 +317,16 @@ function opencodePluginDir(): string {
  * loads open-memex in every project with no per-project init.
  */
 export function opencodeGlobalConfigPath(home: string = os.homedir()): string {
-  return path.join(opencodeConfigDir(home, process.env.XDG_CONFIG_HOME), "opencode.json");
+  const dir = opencodeConfigDir(home, process.env.XDG_CONFIG_HOME);
+  // D64: init writes into whichever of .json/.jsonc already exists
+  // (writeOpencodeGlobalPlugin), so readers must resolve the same file.
+  // Hardcoding .json made uninstall report "nothing to remove" on
+  // .jsonc-only setups and left the plugin entry behind.
+  for (const name of ["opencode.jsonc", "opencode.json"]) {
+    const candidate = path.join(dir, name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.join(dir, "opencode.json");
 }
 
 /**

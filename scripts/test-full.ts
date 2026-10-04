@@ -450,6 +450,98 @@ console.log("== MCP tools ==");
   child.kill();
 }
 
+// ---------- 11. D64: P1 review-flow honesty fixes ----------
+console.log("== D64: p1 fixes (propose visibility / supersede published / status door / plugin sync / status cap / doctor v1 / uninstall jsonc) ==");
+{
+  r = cli(["where"], PROJ);
+  const pkey = (/project:\s*(\S+)/.exec(r.out) || [])[1] ?? "";
+
+  // propose: the project copy must not inherit visibility: private, or
+  // export would silently drop it from every team bundle.
+  const seedId = addMem(["zzq p1 visible fact for the team", "--scope", "personal"], PROJ);
+  const copyId = proposeMem(seedId, PROJ);
+  const copyFile = path.join(TESTENV.MY_O_MEMORY_HOME as string, "memories", pkey, `${copyId}.md`);
+  const copyText = fs.existsSync(copyFile) ? fs.readFileSync(copyFile, "utf8") : "";
+  ok("propose copy is internal, not private", /visibility: internal/.test(copyText), copyText.slice(0, 160));
+
+  // supersede a published memory: the replacement must re-enter review
+  // at "proposed" (promotable), not land as a stranded repo draft.
+  const did = addMem(["zzq p1 publish flow fact"], PROJ);
+  cli(["submit", did], PROJ);
+  cli(["promote", did], PROJ);
+  r = cli(["promote", did], PROJ);
+  const pubFile = path.join(PROJ, ".ai", "open-memex", `${did}.md`);
+  ok("setup: promoted to published", r.code === 0 && /review_state: published/.test(fs.readFileSync(pubFile, "utf8")), (r.err || r.out).slice(0, 150));
+  r = cli(["supersede", did, "zzq p1 publish flow fact v2"], PROJ);
+  const nid = grabArrowId(r.out);
+  const newFile = nid ? path.join(PROJ, ".ai", "open-memex", `${nid}.md`) : "";
+  const newText = newFile && fs.existsSync(newFile) ? fs.readFileSync(newFile, "utf8") : "";
+  ok("supersede of published → proposed (not stranded draft)", /review_state: proposed/.test(newText), (r.out + newText).slice(0, 200));
+  r = cli(["promote", nid], PROJ);
+  ok("promote advances the replacement", r.code === 0 && /approved/.test(r.out + (fs.existsSync(newFile) ? fs.readFileSync(newFile, "utf8") : "")), (r.err || r.out).slice(0, 150));
+
+  // status: retracted cannot silently return to active.
+  const sid = addMem(["zzq p1 retract flow fact"], PROJ);
+  r = cli(["status", sid, "retracted"], PROJ);
+  ok("status → retracted", r.code === 0, (r.err || r.out).slice(0, 120));
+  r = cli(["status", sid, "active"], PROJ);
+  ok("retracted → active is refused", r.code !== 0 && /retracted/.test(r.err), (r.out + r.err).slice(0, 160));
+
+  // plugin host: per-call sync — wipe the (rebuildable) index and the
+  // opencode tools must still see memories written by other processes.
+  const marker = `zzqp1sync${Date.now()}`;
+  const pmid = addMem([`${marker} plugin freshness fact`, "--scope", "personal"], PROJ);
+  fs.rmSync(path.join(TESTENV.MY_O_MEMORY_HOME as string, "index.db"), { force: true });
+  fs.rmSync(path.join(TESTENV.MY_O_MEMORY_HOME as string, "index.db-wal"), { force: true });
+  fs.rmSync(path.join(TESTENV.MY_O_MEMORY_HOME as string, "index.db-shm"), { force: true });
+  const probe = path.join(T, "p1-plugin-probe.ts");
+  fs.writeFileSync(probe, [
+    `import { makeTools } from ${JSON.stringify(path.join(REPO, "src", "tools", "memory.ts"))};`,
+    `import { PERSONAL_SCOPE } from ${JSON.stringify(path.join(REPO, "src", "scope.ts"))};`,
+    `import { loadConfig } from ${JSON.stringify(path.join(REPO, "src", "config.ts"))};`,
+    `const tools = makeTools(() => PERSONAL_SCOPE, loadConfig());`,
+    `const r = await tools.memory_search.execute({ query: ${JSON.stringify(marker)} });`,
+    `console.log(r.output);`,
+  ].join("\n"));
+  let probeOut = "";
+  try {
+    probeOut = execFileSync("node", ["--experimental-strip-types", probe], { cwd: PROJ, env: TESTENV, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (e: any) { probeOut = (e.stdout ?? "") + (e.stderr ?? ""); }
+  ok("plugin tools sync before answering (index rebuilt)", probeOut.includes(pmid) || probeOut.includes(marker), probeOut.slice(0, 200));
+
+  // sync-status: long sections are capped with an "and N more" line.
+  const outboxDir = path.join(TESTENV.MY_O_MEMORY_HOME as string, "memories", pkey);
+  const template = fs.readFileSync(copyFile, "utf8");
+  for (let i = 0; i < 21; i++) {
+    const cid = `01P1CAP${String(i).padStart(19, "0")}`;
+    fs.writeFileSync(path.join(outboxDir, `${cid}.md`), template.replace(copyId, cid).replace("zzq p1 visible fact for the team", `zzq cap filler ${i}`));
+  }
+  cli(["reindex"], PROJ);
+  r = cli(["sync-status"], PROJ);
+  const statusLines = r.out.split("\n").length;
+  ok("sync-status caps long sections", /… and \d+ more/.test(r.out) && statusLines < 50, `lines=${statusLines} ${r.out.slice(0, 120)}`);
+  for (let i = 0; i < 21; i++) fs.rmSync(path.join(outboxDir, `01P1CAP${String(i).padStart(19, "0")}.md`), { force: true });
+
+  // doctor: v1 memories left under memories/user/ must be flagged.
+  const userDir = path.join(TESTENV.MY_O_MEMORY_HOME as string, "memories", "user");
+  fs.mkdirSync(userDir, { recursive: true });
+  fs.writeFileSync(path.join(userDir, "legacy-one.md"), "---\nid: legacy\n---\nold personal note\n");
+  r = cliRetry(["doctor"], PROJ);
+  ok("doctor flags invisible v1 user memories", /v1 personal memories/.test(r.out), r.out.slice(0, 200));
+  fs.rmSync(userDir, { recursive: true, force: true });
+  cli(["reindex"], PROJ);
+
+  // uninstall: a .jsonc-only global opencode config must be found.
+  const home2 = path.join(T, "home-opencode");
+  const ocDir = path.join(home2, ".config", "opencode");
+  fs.mkdirSync(ocDir, { recursive: true });
+  const jsoncFile = path.join(ocDir, "opencode.jsonc");
+  fs.writeFileSync(jsoncFile, JSON.stringify({ plugin: ["file:///plugins/open-memex/src/index.ts"] }, null, 2));
+  r = cliRaw(["uninstall", "--client", "opencode", "--global", "--yes"], PROJ, { ...TESTENV, HOME: home2 });
+  const afterText = fs.readFileSync(jsoncFile, "utf8");
+  ok("uninstall finds and cleans .jsonc global config", r.code === 0 && !/open-memex/.test(afterText), (r.out + r.err).slice(0, 160) + " || " + afterText.slice(0, 120));
+}
+
 console.log("\n================ SUMMARY ================");
 console.log(`pass: ${pass}, fail: ${fail}`);
 if (failures.length) { console.log("failed tests:"); for (const f of failures) console.log("  - " + f); }

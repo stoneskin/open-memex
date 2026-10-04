@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D70 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D71 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -1469,18 +1469,22 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   entry back before deleting. The HTML rendering of the same data layer
   follows as a separate change; auto-draft stays gated on the unlock
   conditions in the design doc.
-
-- **D69 — inventory HTML rendering lands (3-C complete on the visibility side).**
-  `open-memex inventory --format html` renders the D68 data layer into a
-  single local page: scopes grouped, outbox drafts in their own section,
-  replaced/hidden history folded with supersede-chain pointers, all
-  content escaped, filter box is local show/hide (no innerHTML, no
-  network). Default output is the data dir's `inventory.html`; the D68
-  worktree refusal applies unchanged. Sections fold above 50 current
-  entries. With this, the 3-C visibility surfaces are complete (agent
-  inventory in chat, text/JSON reports, HTML page; hide + confirmed
-  delete as the correction actions). Auto-draft remains gated on the
-  unlock conditions in `docs/memory-visibility-design.md`.
+- **D71 — the scope seed is the folder opened, never a filesystem root.**
+  OpenCode v1 hands the plugin two roots: `worktree` (the repo root — but
+  the filesystem root itself, `C:\` or `/`, when the opened folder is not a
+  git repo) and `directory` (the folder actually opened). The v1 adapter
+  preferred `worktree`, so every non-git folder on a drive seeded its scope
+  on the drive root and collapsed into one shared
+  `project__workspace__<hash of the root>` bucket — a `c:\temp` project
+  landing in `project__workspace__3dc8472eaebe` (seed `c:\`) is what
+  surfaced it. `pickScopeRoot` (src/scope.ts) now takes `worktree` only when
+  it is a real directory below the filesystem root, else `directory`. The
+  repo-root behavior is unchanged: a real worktree still wins, so opening a
+  repo subfolder keeps the repo's scope. Memories already written under a
+  root-seeded key stay where they are (no auto-migration, per the existing
+  rule); `open-memex scopes` shows the stray bucket and
+  `open-memex migrate --from <old-key>` moves them. The v2 adapter already
+  seeded on the opened directory and is unaffected.
 
 - **D70 — visibility follow-ups: one number, one guard, one truth.** The
   3-C review of D68/D69 found the surfaces honest individually and

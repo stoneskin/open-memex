@@ -5,7 +5,7 @@ import { planConversion, isV2File, migrateV2 } from "../src/store/v2migrate.ts";
 import { redact, findSecret } from "../src/redact.ts";
 import { detectKeywords, scanKeywords } from "../src/capture/keywords.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
-import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
+import { resolveProjectScope, resolveCwdScope, pickScopeRoot, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
@@ -378,6 +378,17 @@ ok("cwd scope deterministic", cwdOnly.key === cwdOnly2.key);
 // In a repo with a git remote, cwd-only scope must differ from git-origin scope.
 // (This repo does have an origin after `git push`.)
 console.log("     cwd.key   =", cwdOnly.key);
+
+console.log("== scope (pickScopeRoot, D71) ==");
+// OpenCode v1 reports the filesystem root as `worktree` for non-git folders;
+// seeding a scope on it merges every non-git folder on the drive into one
+// shared `project__workspace__…` bucket. A real worktree still wins.
+const fsRoot = path.parse(process.cwd()).root;
+ok("real worktree wins", pickScopeRoot(process.cwd(), "/elsewhere/opened") === process.cwd());
+ok("fs-root worktree yields to directory", pickScopeRoot(fsRoot, process.cwd()) === process.cwd());
+ok("missing worktree uses directory", pickScopeRoot(null, process.cwd()) === process.cwd());
+ok("nothing but fs root: last resort", pickScopeRoot(fsRoot, null) === fsRoot);
+ok("no candidates falls back to cwd", pickScopeRoot(null, null) === process.cwd());
 
 console.log("== cjk ==");
 ok("detects han", hasCjk("中文记忆"));

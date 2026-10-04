@@ -9,6 +9,10 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Non-git folders shared one scope bucket (D71)
+
+- **Fixed: every non-git folder on a drive shared a single project scope.** OpenCode v1 reports the filesystem root (`C:\`, `/`) as the project `worktree` when the opened folder is not a git repo, and the plugin seeded its scope on that root — so unrelated folders like `C:\temp` and `C:\scratch` all wrote to one `project__workspace__…` bucket. The scope now seeds on the folder actually opened (`pickScopeRoot` in `src/scope.ts`); real repo worktrees are unchanged. Memories already saved under the shared bucket are not moved automatically: run `open-memex scopes` to spot it, then `open-memex migrate --from <old-key>`.
+
 ## Visibility follow-ups: one number, one guard, one truth (D70)
 
 Review of the D68/D69 inventory surfaces — each was honest on its own, and they disagreed with each other:
@@ -29,7 +33,7 @@ Review of the D68/D69 inventory surfaces — each was honest on its own, and the
 Group 3-C — the surface a user reads to learn what the store actually remembers:
 
 - **`memory_list` is now a numbered inventory.** Lines are structured (`[type] id=… created=… source=…`), keep the raw provenance, and every listing states its true total — a truncated list says how many entries it is not showing instead of quietly looking complete. New input `include: "active" | "all"` (default `active`): **behavior change** — superseded versions, retracted and archived memories no longer appear unless you pass `include=all` (the audit view). The CLI gains the matching `list --include` flag.
-- **`open-memex inventory`** renders the same data as readable text (default) or JSON (`--format json`, format `open-memex-inventory/2` — bumped from `/1` in D70, which dropped the absolute file path) — personal plus the current project, outbox drafts in their own section, hidden history counted rather than silently dropped. A report containing personal memories refuses to be written inside a git working tree without `--allow-personal`.
+- **`open-memex inventory`** renders the same data as readable text (default) or JSON (`--format json`, format `open-memex-inventory/1`) — personal plus the current project, outbox drafts in their own section, hidden history counted rather than silently dropped. A report containing personal memories refuses to be written inside a git working tree without `--allow-personal`.
 - **Hide instead of delete:** `memory_forget` gains `soft=true` (CLI: `forget --soft`) — the memory is retracted: out of lists and search, file kept. Still one-way (D64): bringing the fact back means saving it again.
 - **Guidance kept in one voice:** the tool descriptions, the MCP session-start instructions, SKILL.md and the `distill-agents` AGENTS.md snippet all teach the same flow — answer "what do you remember?" conversationally from the inventory, re-list before acting on a number, read an entry back before deleting it.
 

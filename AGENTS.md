@@ -126,6 +126,7 @@ Layout: `memories/<scope_key>/<id>.md` (YAML frontmatter + body) + `index.db` (S
 
 - `personal` scope key is literal `"personal"` (v1 called this `user`; renamed in v2, design §19).
 - `project` scope key: `project__<sanitized-name>__<12-hex-sha256>`, seeded from normalized git origin URL, else lowercased cwd. See `src/scope.ts`. Same repo across machines → same key (intentional; enables future git-commit of memories).
+- The root a host adapter seeds on matters: OpenCode v1 reports the **filesystem root** as `worktree` for non-git folders, so the v1 adapter goes through `pickScopeRoot` (src/scope.ts) — `worktree` only when it is a real directory below the filesystem root, else the opened `directory` (D71). Seeding on a filesystem root merges every non-git folder on a drive into one `project__workspace__…` bucket.
 - `org`, `team`, `public` are reserved — the schema rejects writes. See `docs/SCOPES.md`.
 - The scope key **changes** when a repo gains/loses a git origin. `src/index.ts` logs a one-shot warning on load if it finds files under the legacy cwd-only key (`resolveCwdScope`). Use `cli scopes` to enumerate all scope dirs and `cli migrate --from <old>` to reconcile — see `src/store/migrate.ts`. No auto-migration; two unrelated repos at the same cwd would silently merge.
 - Read-only callers must use `memoriesDirPath` (in `src/paths.ts`), never `memoriesDirFor`. The latter `mkdir -p`s the directory as a side effect and will pollute storage with empty scope dirs.
@@ -167,9 +168,9 @@ Context injection happens exactly once per session in `experimental.chat.system.
 
 ## Design constraints — read the frozen design first
 
-`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D69; open questions tracked at the end of the doc). Per its §12:
+`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D71; open questions tracked at the end of the doc). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
-built this way" (principles, iron rules, the append-only decision log, currently D1–D70). Before changing
+built this way" (principles, iron rules, the append-only decision log, currently D1–D71). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
 schema, MCP tools, CLI contract), read the relevant design section — the decision
 log records what was already considered and rejected.

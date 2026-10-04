@@ -9,6 +9,10 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Node 24 CLI aborts: SQLite driver moves to the N-API line (D72)
+
+- **Fixed: CLI processes intermittently aborted on Node 24.19+.** `better-sqlite3` 11 could finalize a prepared statement from a garbage-collection callback after Node's environment was gone (`RemoveEnvironmentCleanupHook ... Assertion failed`), killing the process with `SIGABRT` and losing its output even though the memory work had already landed. The driver is now `better-sqlite3` 13 (the N-API rewrite; Node ≥22 unchanged) — same API surface, no protocol or data change. If you build from source on Node 24.19+, reinstall dependencies so the new driver is picked up.
+
 ## Non-git folders shared one scope bucket (D71)
 
 - **Fixed: every non-git folder on a drive shared a single project scope.** OpenCode v1 reports the filesystem root (`C:\`, `/`) as the project `worktree` when the opened folder is not a git repo, and the plugin seeded its scope on that root — so unrelated folders like `C:\temp` and `C:\scratch` all wrote to one `project__workspace__…` bucket. The scope now seeds on the folder actually opened (`pickScopeRoot` in `src/scope.ts`); real repo worktrees are unchanged. Memories already saved under the shared bucket are not moved automatically: run `open-memex scopes` to spot it, then `open-memex migrate --from <old-key>`.

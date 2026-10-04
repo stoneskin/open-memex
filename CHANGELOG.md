@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- Added `docs/release-runbook.md`: the maintainer release checklist (version sync points, preflight, npm alpha/stable publish, MCP Registry publish, Node 22.14 floor notes).
+
 ## [0.7.1] - 2026-10-04
 
 ## The Node floor is 22.14, because the driver says so (D74)

@@ -12,7 +12,8 @@ import { z } from "zod";
 import type { Scope } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
 import { PERSONAL_SCOPE } from "../scope.ts";
-import { search, list, hitStateLabel } from "../retrieve/search.ts";
+import { search, list, countList, hitStateLabel } from "../retrieve/search.ts";
+import { formatInventoryLine, truncationNote } from "../retrieve/display.ts";
 import {
   writeMemoryFile,
   readMemoryFile,
@@ -23,7 +24,7 @@ import {
   type Frontmatter,
 } from "../store/markdown.ts";
 import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
-import { findDuplicates, supersede } from "../store/lifecycle.ts";
+import { findDuplicates, supersede, setStatus } from "../store/lifecycle.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
@@ -69,10 +70,11 @@ export const TOOL_DESCRIPTIONS = {
   memory_search:
     "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or personal scope. Call before asking the user about past decisions, conventions, or preferences they may have told you before. Search well: break the question into its concepts and try 2–3 phrasings per concept — synonyms, the user's other language, shorter keyword forms — and check the other scope too, before concluding nothing is stored.",
   memory_list:
-    "List memories in a scope, newest first. Useful for browsing what is remembered, or verifying that a save landed.",
+    "List memories in a scope, newest first, as a numbered inventory. Each line keeps the raw fields — [type] id=… created=… source=… — say them back to the user in plain words (source=user → 'you told me this'; inference → 'I inferred this, check me'; keyword → 'caught from your own wording'), never read the raw id aloud unless they ask. When the user asks 'what do you remember about me?', use scope=both and present the inventory conversationally. The user may point at an entry by its number ('delete #3'): numbers are only valid for the listing you just produced — re-run memory_list, read the candidate back in full, and get a confirmation before calling memory_forget (deletion is permanent). include=all is the audit view (superseded versions, retracted, archived also shown).",
   memory_supersede:
     "Replace an existing memory with a newer version. The old memory is kept as history (status: superseded) and retrieval returns the new one. Use when a saved fact becomes outdated and should be replaced rather than duplicated.",
-  memory_forget: "Delete a memory by id. Use when the user asks to forget something.",
+  memory_forget:
+    "Delete a memory by id. Use when the user asks to forget something. Deletion is permanent: before deleting, restate the memory's content to the user and get a confirmation. With soft=true the memory is hidden instead (retracted: out of lists and search, file kept, one-way).",
   memory_status:
     "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start, when the server reports drafts waiting for review, or when the user says 'sync memory' (or '同步记忆'); then ask the user which drafts to sync. (MCP server and the `open-memex sync-status` CLI; the opencode native plugin does not expose this tool.)",
   memory_submit:
@@ -143,6 +145,12 @@ export const memoryListArgs = {
     ),
   type: z.string().optional(),
   limit: z.number().int().min(1).max(100).optional(),
+  include: z
+    .enum(["active", "all"])
+    .optional()
+    .describe(
+      "D68: `active` (default) shows what is currently remembered — newest version of each fact, retracted/archived hidden. `all` is the audit view: every stored row including superseded versions and hidden ones. The default CHANGED in D68: superseded versions no longer appear unless include=all.",
+    ),
 };
 export type MemoryListArgs = z.infer<z.ZodObject<typeof memoryListArgs>>;
 
@@ -160,6 +168,12 @@ export type MemorySupersedeArgs = z.infer<z.ZodObject<typeof memorySupersedeArgs
 
 export const memoryForgetArgs = {
   id: z.string().min(1),
+  soft: z
+    .boolean()
+    .optional()
+    .describe(
+      "D68: hide instead of delete. The memory is retracted — excluded from lists and search — but its file stays. Retraction is one-way (D64): it does not come back; to restore the fact, save it again as a new memory. Offer `soft` when the user is unsure about deleting.",
+    ),
 };
 export type MemoryForgetArgs = z.infer<z.ZodObject<typeof memoryForgetArgs>>;
 
@@ -338,24 +352,34 @@ export async function listMemories(
   getScope: () => Scope,
   args: MemoryListArgs,
 ): Promise<ToolResult> {
+  // D68: the list is the user's inventory of what is remembered. Lines
+  // are structured (number + id + created= + source= + state tags) and
+  // every section reports its true total — a truncated list says so
+  // instead of quietly looking complete (the D66 sync-status lesson).
+  const include = args.include ?? "active";
+  const render = (scopeKey: string) => {
+    const hits = list(scopeKey, { type: args.type, limit: args.limit, include });
+    const total = countList(scopeKey, { type: args.type, include });
+    const lines = hits.map((h, i) => formatInventoryLine(i, h, PERSONAL_SCOPE.key));
+    const note = truncationNote(hits.length, total);
+    if (note) lines.push(note);
+    return lines;
+  };
   if (args.scope === "both") {
     // D64: "what do you remember about me" spans both stores; search
     // already defaults to both, list now matches. Each scope lists its
     // own newest (the limit applies per scope).
     const project = getScope();
     const sections: string[] = [];
-    for (const s of [project, PERSONAL_SCOPE]) {
-      const hits = list(s.key, { type: args.type, limit: args.limit });
-      if (hits.length === 0) {
-        sections.push(`## ${s.kind} (${s.key})\n  (none)`);
-        continue;
-      }
-      const lines = hits.map(
-        (h) => `- [${h.type}]${hitStateLabel(h)} id=${h.id} — ${h.snippet.replace(/\s+/g, " ").trim()}`,
-      );
-      sections.push(`## ${s.kind} (${s.key})\n${lines.join("\n")}`);
+    for (const s of [PERSONAL_SCOPE, project]) {
+      const lines = render(s.key);
+      const heading =
+        s.key === PERSONAL_SCOPE.key
+          ? "## About you (personal — stays on this machine, applies everywhere)"
+          : `## This project (${s.projectName || s.key})`;
+      sections.push(lines.length === 0 ? `${heading}\n(none yet)` : `${heading}\n${lines.join("\n")}`);
     }
-    return { title: "memory: list (both scopes)", output: sections.join("\n") };
+    return { title: "memory: list (both scopes)", output: sections.join("\n\n") };
   }
   const s = resolveScope(
     getScope,
@@ -363,14 +387,18 @@ export async function listMemories(
       ? args.scope
       : undefined,
   );
-  const hits = list(s.key, { type: args.type, limit: args.limit });
-  if (hits.length === 0) {
+  const lines = render(s.key);
+  if (lines.length === 0) {
     return { title: "memory: empty", output: `No memories in scope ${s.key}.` };
   }
-  const lines = hits.map(
-    (h) => `- [${h.type}]${hitStateLabel(h)} id=${h.id} — ${h.snippet.replace(/\s+/g, " ").trim()}`,
-  );
-  return { title: `memory: ${hits.length} in ${s.key}`, output: lines.join("\n") };
+  const heading =
+    s.key === PERSONAL_SCOPE.key
+      ? "## About you (personal — stays on this machine, applies everywhere)"
+      : `## This project (${s.projectName || s.key})`;
+  return {
+    title: `memory: ${countList(s.key, { type: args.type, include })} in ${s.key}`,
+    output: `${heading}\n${lines.join("\n")}`,
+  };
 }
 
 export async function supersedeMemory(
@@ -417,6 +445,21 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
     .get(args.id) as { file_path: string } | undefined;
   if (!row) {
     return { title: "memory: not found", output: `No memory with id ${args.id}.` };
+  }
+  if (args.soft) {
+    // D68: hide instead of delete. The status flip is the whole action —
+    // retrieval and the inventory exclude retracted, the file stays put.
+    // One-way (D64): no un-hide; restoring the fact means saving it again.
+    try {
+      const mf = setStatus(args.id, "retracted");
+      upsertFromFile(mf);
+      return {
+        title: "memory: hidden",
+        output: `Hidden ${args.id} (retracted). It no longer appears in lists or search, but the file is kept. This is one-way — to bring the fact back, save it again as a new memory.`,
+      };
+    } catch (e) {
+      return { title: "memory: hide failed", output: (e as Error).message };
+    }
   }
   // Delete by indexed file_path — location-agnostic (appdata or in-repo, 2B/D24).
   // Only ENOENT counts as "deleted": on any other unlink failure the file

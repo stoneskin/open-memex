@@ -416,9 +416,9 @@ they only matter once you share memories through Git.
 |---|---|
 | ● `memory_add`       | Save a fact, preference, decision, note |
 | ● `memory_search`    | Keyword search (BM25) across project + personal memories |
-| ● `memory_list`      | List memories in a scope (`project`, `personal`, or `both`), newest first |
+| ● `memory_list`      | List memories in a scope (`project`, `personal`, or `both`) as a numbered inventory; `include=all` is the audit view |
 | ● `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
-| ● `memory_forget`    | Delete a memory by id |
+| ● `memory_forget`    | Delete a memory by id (`soft=true` hides it instead — retracted, one-way) |
 | `memory_status`      | Show the sync queue: outbox drafts, repo review states, uncommitted files |
 | `memory_submit`      | Move named drafts into the repo memory dir (local branch + commit) |
 | `memory_propose`     | Copy personal memories into the project scope as review candidates |
@@ -643,9 +643,17 @@ open-memex search "auth flow"
 open-memex search "auth flow" --explain   # show FTS expression, scores, lifecycle-hidden counts
 open-memex list --scope project
 open-memex list --scope both       # each scope's newest under its own header
+open-memex list --include all      # audit view: superseded versions, retracted, archived
 open-memex supersede <id> "Updated content"
 open-memex status <id> deprecated
 open-memex forget <id>
+open-memex forget <id> --soft      # hide instead of delete (retracted; one-way)
+
+open-memex inventory                        # everything remembered, as readable text
+open-memex inventory --format json          # the same data, for agents
+# Personal + current project, outbox drafts in their own section, hidden
+# history counted. Refuses to write a personal-bearing report inside a
+# git working tree unless you pass --allow-personal.
 ```
 
 Team review workflow (two homes, one per stage):

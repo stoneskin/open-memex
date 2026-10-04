@@ -64,6 +64,27 @@ try 2–3 phrasings per concept — synonyms, the user's other language, shorter
 keyword forms — and check the other scope too, before concluding nothing is
 stored.
 
+## Seeing and removing what is remembered
+
+When the user asks "what do you remember about me?" (or wants to check or
+clean up), show them the inventory:
+
+```sh
+open-memex inventory              # everything remembered, read-only
+```
+
+In chat, present the memories conversationally — turn the fields into
+plain words (who the words came from, when it was saved, project or
+personal) instead of reading raw ids. If the user asks to remove one,
+read the entry back in full and get a confirmation before deleting —
+deletion is permanent, there is no undo. If they hesitate, offer hiding
+instead (`--soft`): it leaves lists and search but the file survives.
+
+```sh
+open-memex forget <id>          # delete (permanent)
+open-memex forget <id> --soft   # hide (retracted, one-way)
+```
+
 ## Project outbox → repo (the sync flow)
 
 New project memories land in a local outbox (not in git). Review and publish:

@@ -312,7 +312,37 @@ ok("distill-agents proposes snippet", /## Learned/.test(r.out), r.out.slice(0, 1
 r = cliRetry(["distill-agents", "--type", "decision", "-o", path.join(T, "snip.md")], PROJ);
 ok("distill-agents -o writes file", fs.existsSync(path.join(T, "snip.md")));
 
-// ---------- 7. pull / push ----------
+// ---------- 7. inventory (D68) ----------
+console.log("== inventory (D68) ==");
+addMem(["fulltest inventory entry with <script>alert(1)</script> tail", "--scope", "personal"], PROJ);
+r = cliRetry(["inventory"], PROJ);
+ok("inventory text lists the personal memory", r.out.includes("fulltest inventory entry"));
+ok("inventory text keeps structured provenance", /source=cli/.test(r.out));
+const invJson = cliRetry(["inventory", "--format", "json"], PROJ);
+const invData = JSON.parse(invJson.out.slice(invJson.out.indexOf("{")));
+ok("inventory json is the shared data layer", invData.format === "open-memex-inventory/1" && invData.total >= 1 && Array.isArray(invData.scopes));
+const invFile = path.join(T, "inventory.json");
+r = cliRetry(["inventory", "--format", "json", "--out", invFile], PROJ);
+ok("inventory --out writes the file", r.code === 0 && fs.existsSync(invFile), (r.err || r.out).slice(0, 150));
+// D68/3-C v2: a personal-bearing report must not land in a git worktree.
+const inTree = path.join(PROJ, "inv.json");
+r = cliRetry(["inventory", "--out", inTree], PROJ);
+ok("inventory refuses a worktree path without --allow-personal", r.code !== 0 && !fs.existsSync(inTree));
+r = cliRetry(["inventory", "--out", inTree, "--allow-personal"], PROJ);
+ok("inventory allows the worktree path with --allow-personal", r.code === 0 && fs.existsSync(inTree));
+fs.rmSync(inTree, { force: true });
+// D68: soft forget hides; audit view still shows it; delete still works.
+const softId = addMem(["fulltest soft-hide candidate"], PROJ);
+r = cliRetry(["forget", softId, "--soft"], PROJ);
+ok("forget --soft hides the memory", r.code === 0 && /hidden/.test(r.out), r.out.slice(0, 120));
+r = cliRetry(["list"], PROJ);
+ok("hidden memory out of the default list", !r.out.includes(softId));
+r = cliRetry(["list", "--include", "all"], PROJ);
+ok("hidden memory visible with --include all", r.out.includes(softId) && r.out.includes("[retracted]"), r.out.slice(0, 160));
+r = cliRetry(["forget", softId], PROJ);
+ok("hard forget still deletes a hidden memory", r.code === 0 && /deleted/.test(r.out));
+
+// ---------- 8. pull / push ----------
 console.log("== pull / push ==");
 r = cliRetry(["push"], PROJ);
 ok("push explicit", r.code === 0, (r.err || r.out).slice(0, 150));
@@ -334,7 +364,7 @@ cli(["push"], PROJ3);
 r = cli(["pull"], PROJ);
 ok("pull diverged → clear failure", r.code !== 0 && /diverg|behind|ahead/i.test(r.out + r.err), (r.out + r.err).slice(0, 160));
 
-// ---------- 8. migrate / reindex ----------
+// ---------- 9. migrate / reindex ----------
 console.log("== migrate / reindex ==");
 r = cli(["migrate", "--dry-run"], PROJ);
 ok("migrate bare → graceful no-op message", /no --from given/.test(r.out + r.err), (r.out + r.err).slice(0, 150));
@@ -369,7 +399,7 @@ ok("migrate personal→project runs", r.code === 0, (r.err || r.out).slice(0, 15
   ok("migrated file is now scope: project", /^scope: project$/m.test(moved), moved.slice(0, 200));
 }
 
-// ---------- 9. capture / doctor / mcp --print-config / init ----------
+// ---------- 10. capture / doctor / mcp --print-config / init ----------
 console.log("== capture / doctor / mcp / init ==");
 r = cli(["capture", "--dry-run", "remember: we deploy on Fridays and use ff merges"], PROJ);
 ok("capture --dry-run", r.code === 0 && /deploy|friday/i.test(r.out), r.out.slice(0, 150));
@@ -393,7 +423,7 @@ ok("init --client vscode --yes", r.code === 0 && fs.existsSync(path.join(PROJ, "
 r = cliRetry(["doctor"], PROJ);
 ok("doctor", r.code === 0 && /All checks passed/.test(r.out), (r.err || r.out).slice(0, 200));
 
-// ---------- 10. MCP: all 11 tools + session-start instructions ----------
+// ---------- 11. MCP: all 11 tools + session-start instructions ----------
 console.log("== MCP tools ==");
 {
   const child = spawn("node", ["--experimental-strip-types", MCP_TS], {
@@ -467,7 +497,7 @@ console.log("== MCP tools ==");
   child.kill();
 }
 
-// ---------- 11. D64: P1 review-flow honesty fixes ----------
+// ---------- 12. D64: P1 review-flow honesty fixes ----------
 console.log("== D64: p1 fixes (propose visibility / supersede published / status door / plugin sync / status cap / doctor v1 / uninstall jsonc) ==");
 {
   r = cli(["where"], PROJ);

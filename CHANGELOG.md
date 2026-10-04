@@ -9,6 +9,15 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Memory visibility: see it, hide it, delete it (D68)
+
+Group 3-C — the surface a user reads to learn what the store actually remembers:
+
+- **`memory_list` is now a numbered inventory.** Lines are structured (`[type] id=… created=… source=…`), keep the raw provenance, and every listing states its true total — a truncated list says how many entries it is not showing instead of quietly looking complete. New input `include: "active" | "all"` (default `active`): **behavior change** — superseded versions, retracted and archived memories no longer appear unless you pass `include=all` (the audit view). The CLI gains the matching `list --include` flag.
+- **`open-memex inventory`** renders the same data as readable text (default) or JSON (`--format json`, format `open-memex-inventory/1`) — personal plus the current project, outbox drafts in their own section, hidden history counted rather than silently dropped. A report containing personal memories refuses to be written inside a git working tree without `--allow-personal`.
+- **Hide instead of delete:** `memory_forget` gains `soft=true` (CLI: `forget --soft`) — the memory is retracted: out of lists and search, file kept. Still one-way (D64): bringing the fact back means saving it again.
+- **Guidance kept in one voice:** the tool descriptions, the MCP session-start instructions, SKILL.md and the `distill-agents` AGENTS.md snippet all teach the same flow — answer "what do you remember?" conversationally from the inventory, re-list before acting on a number, read an entry back before deleting it.
+
 ## Keyword capture: what counts as a trigger (D67)
 
 The D66 review left two questions open and introduced one regression. Ruled, not deferred:

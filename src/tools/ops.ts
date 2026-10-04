@@ -23,7 +23,8 @@ import {
   type Frontmatter,
 } from "../store/markdown.ts";
 import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
-import { findDuplicates, supersede, setStatus } from "../store/lifecycle.ts";
+import { findDuplicates, findTurnEcho, supersede, setStatus } from "../store/lifecycle.ts";
+import { TURN_ECHO_WINDOW_MS } from "../capture/handoff.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
@@ -65,7 +66,7 @@ export async function withOutboxNote(
 /** LLM-facing tool descriptions, shared by the opencode plugin and the MCP server. */
 export const TOOL_DESCRIPTIONS = {
   memory_add:
-    "Save a fact, preference, decision, or note to persistent local memory. Call this PROACTIVELY whenever the user shares something worth remembering across sessions — project conventions, tool choices, personal preferences, decisions made, error fixes and their causes. Worth saving: decisions and their reasons, preferences, conventions, gotchas, approaches tried and abandoned. Not worth saving: one-off task details or anything re-derivable from the code. Do not wait to be asked. For facts you infer yourself rather than the user stating, propose them first and save only on approval. Keep each memory to one self-contained statement; attach aliases when the parameter is available. Default scope is the current project; use the personal scope for facts about the user that apply across all projects.",
+    "Save a fact, preference, decision, or note to persistent local memory. Call this PROACTIVELY whenever the user shares something worth remembering across sessions — project conventions, tool choices, personal preferences, decisions made, error fixes and their causes. Worth saving: decisions and their reasons, preferences, conventions, gotchas, approaches tried and abandoned. Not worth saving: one-off task details or anything re-derivable from the code. Do not wait to be asked. For facts you infer yourself rather than the user stating, propose them first and save only on approval. Keep each memory to one self-contained statement; attach aliases when the parameter is available. If a note tells you the user's own wording was already stored verbatim this turn, that statement is already saved: do not retry it in a rewording — save only what that text does not contain, or use memory_supersede on the given id. Default scope is the current project; use the personal scope for facts about the user that apply across all projects.",
   memory_search:
     "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or personal scope. Call before asking the user about past decisions, conventions, or preferences they may have told you before. Search well: break the question into its concepts and try 2–3 phrasings per concept — synonyms, the user's other language, shorter keyword forms — and check the other scope too, before concluding nothing is stored.",
   memory_list:
@@ -292,6 +293,27 @@ export async function addMemory(
     return {
       title: "memory: already exists",
       output: `Identical memory already exists: id=${dups.exact.id}. Not duplicated.`,
+    };
+  }
+  // D73: one user statement, one memory. The keyword hook stores the user's
+  // sentence verbatim with no agent in the loop; a paraphrase of that same
+  // sentence is refused instead of written beside it. The stored id comes back
+  // so the caller can supersede it or save only the genuinely new part.
+  const echo = findTurnEcho(s.key, redacted, TURN_ECHO_WINDOW_MS);
+  if (echo.length > 0) {
+    const top = echo[0];
+    const others = echo
+      .slice(1)
+      .map((e) => `id=${e.id} (${e.source}, overlap ${e.score.toFixed(2)})`)
+      .join(", ");
+    return {
+      title: "memory: already captured verbatim",
+      output:
+        `Not saved — the user's own words were already stored moments ago (source: ${top.source}, overlap ${top.score.toFixed(2)}): ` +
+        `id=${top.id} — ${top.snippet}` +
+        (others ? `\nAlso matching: ${others}` : "") +
+        `\nDo not retry with a rewording: that only adds a second copy of one statement. ` +
+        `Save a separate memory only for information that stored text does not contain, or call memory_supersede on that id if this replaces it.`,
     };
   }
   const fm = buildFrontmatter(s, {

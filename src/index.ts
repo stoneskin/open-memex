@@ -3,6 +3,7 @@ import {
   PLUGIN_ID,
   bootstrapPlugin,
   captureFromText,
+  captureHandoff,
   injectOnce,
 } from "./plugin-core.ts";
 import { pickScopeRoot } from "./scope.ts";
@@ -28,19 +29,24 @@ const server: Plugin = async ({ worktree, directory }) => {
   return {
     tool: tools,
 
-    async "chat.message"(_input, output) {
+    async "chat.message"(input, output) {
       const parts = (output.parts ?? []) as Array<{ type: string; text?: string }>;
       const text = parts
         .map((p) => (p?.type === "text" ? p.text ?? "" : ""))
         .filter(Boolean)
         .join("\n");
-      captureFromText(text, state);
+      captureFromText(text, state, input.sessionID ?? "");
     },
 
     async "experimental.chat.system.transform"(input, output) {
-      injectOnce(input.sessionID ?? "", state, (block) => {
+      const sessionID = input.sessionID ?? "";
+      injectOnce(sessionID, state, (block) => {
         output.system.push(block);
       });
+      // D73: runs on every request, so the note lands on the very turn whose
+      // message the hook just captured. Delivered once per capture.
+      const handoff = captureHandoff(sessionID, state);
+      if (handoff) output.system.push(handoff);
     },
   };
 };

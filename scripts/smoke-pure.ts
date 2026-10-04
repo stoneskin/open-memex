@@ -9,6 +9,13 @@ import { resolveProjectScope, resolveCwdScope, pickScopeRoot, PERSONAL_SCOPE } f
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
+import {
+  TURN_ECHO_THRESHOLD,
+  TURN_ECHO_WINDOW_MS,
+  isTurnEcho,
+  freshCaptures,
+  formatHandoffBlock,
+} from "../src/capture/handoff.ts";
 import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, mergeV2PluginEntry, removeV2PluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME, shouldInstallSkill } from "../src/init.ts";
 import { z } from "zod";
 import { memoryAddArgs } from "../src/tools/ops.ts";
@@ -614,6 +621,50 @@ const near = similarity(
 );
 ok(`similarity near-dup ${near.toFixed(2)} >= ${NEAR_DUP_THRESHOLD}`, near >= NEAR_DUP_THRESHOLD);
 ok("similarity empty → 0", similarity("", "anything") === 0);
+
+console.log("== handoff (turn echo, D73) ==");
+// One "remember ..." sentence produced three memories on 2026-10-04: the
+// hook's verbatim capture plus two agent paraphrases. The hook capture is
+// what the store already holds; the guard must refuse a re-save of it and
+// must NOT eat a genuinely new fact the same sentence carried.
+const HOOK_CAPTURE =
+  "this folder is for my spark tank ideas for ipipeline.  I have ideas for AI Agents and shared memory/knowledge accross agents and employees.";
+const reworded = [
+  `User's iPipeline spark-tank themes: AI Agents, and shared memory/knowledge across agents and across employees.`,
+  `This folder (C:\\temp\\AI_Inovation) is the user's "spark tank" for iPipeline ideas`,
+  "Planned work in this folder: AI Agents plus shared memory/knowledge across agents and employees",
+];
+const newFacts = [
+  "Deploy smoke tests live in tests/smoke/deploy.spec.ts and need a staging token",
+  "The staging cluster runs 3 nodes in us-east-1",
+  "Never deploy on Fridays after 15:00 UTC",
+];
+for (const r of reworded) {
+  const s = similarity(HOOK_CAPTURE, r);
+  ok(`refuses a re-save (${s.toFixed(2)} >= ${TURN_ECHO_THRESHOLD})`, isTurnEcho(s));
+}
+for (const f of newFacts) {
+  const s = similarity(HOOK_CAPTURE, f);
+  ok(`keeps a new fact (${s.toFixed(2)} < ${TURN_ECHO_THRESHOLD})`, !isTurnEcho(s));
+}
+ok("threshold is inclusive", isTurnEcho(TURN_ECHO_THRESHOLD));
+ok("below threshold passes", !isTurnEcho(TURN_ECHO_THRESHOLD - 0.001));
+
+const now = 1_700_000_000_000;
+const rec = { id: "01ABC", scopeKey: "project__demo__0123456789ab", content: HOOK_CAPTURE, at: now };
+ok("fresh inside window", freshCaptures([rec], now + 1000).length === 1);
+ok("stale past window", freshCaptures([rec], now + TURN_ECHO_WINDOW_MS + 1).length === 0);
+ok("no records → no block", formatHandoffBlock([]) === "");
+const block = formatHandoffBlock([rec]);
+ok("block names the id", block.includes("01ABC"));
+ok("block shows the stored text", block.includes("spark tank"));
+ok("block says do not re-add", block.includes("Do not call memory_add"));
+ok("block points at supersede", block.includes("memory_supersede"));
+ok(
+  "block collapses whitespace",
+  !formatHandoffBlock([{ ...rec, content: "a\n\n  b" }]).includes("\n\n"),
+);
+ok("window is 10 minutes", TURN_ECHO_WINDOW_MS === 10 * 60 * 1000);
 
 console.log("== init --global: userMcpConfigPath / mergeServerEntry ==");
 // D45: user-level MCP config locations, per platform (platform param is injectable).

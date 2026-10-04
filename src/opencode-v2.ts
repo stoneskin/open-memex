@@ -3,6 +3,7 @@ import {
   PLUGIN_ID,
   bootstrapPlugin,
   captureFromText,
+  captureHandoff,
   injectOnce,
   type PluginState,
 } from "./plugin-core.ts";
@@ -101,14 +102,18 @@ export const v2Plugin = {
 
     registrations.push(
       await ctx.session.hook("prompt", (ev: V2PromptEvent) => {
-        captureFromText(ev.prompt?.text ?? "", state);
+        captureFromText(ev.prompt?.text ?? "", state, ev.sessionID ?? "");
       }),
     );
     registrations.push(
       await ctx.session.hook("context", (ev: V2ContextEvent) => {
-        injectOnce(ev.sessionID ?? "", state, (block) => {
+        const sessionID = ev.sessionID ?? "";
+        injectOnce(sessionID, state, (block) => {
           ev.system.push({ type: "text", text: block });
         });
+        // D73: tell the agent what the keyword hook already stored this turn.
+        const handoff = captureHandoff(sessionID, state);
+        if (handoff) ev.system.push({ type: "text", text: handoff });
       }),
     );
 

@@ -9,6 +9,7 @@ import {
 } from "../paths.ts";
 import { loadConfig } from "../config.ts";
 import { cjkIndexText } from "../retrieve/cjk.ts";
+import { isTurnEcho } from "../capture/handoff.ts";
 import {
   parse,
   serialize,
@@ -67,6 +68,11 @@ export interface DupResult {
 
 export const NEAR_DUP_THRESHOLD = 0.8;
 
+/** `source` values the keyword hook (or an agent marking a user statement) writes.
+ *  Only these are turn-echo candidates — a `tool` memory is the agent's own
+ *  inference and keeps the 0.8 near-dup notice instead of a refusal. */
+const ECHO_SOURCES = "('keyword','user')";
+
 interface IndexRow {
   id: string;
   content_hash: string;
@@ -101,6 +107,52 @@ export function findDuplicates(
   }
   near.sort((x, y) => y.score - x.score);
   return { exact, near: near.slice(0, 3) };
+}
+
+export interface TurnEchoCandidate extends DuplicateCandidate {
+  source: string;
+}
+
+/**
+ * D73: memories written from the user's own words moments ago — the keyword
+ * hook's captures, plus agent saves marked `source: user`. `memory_add` uses
+ * this to refuse a re-save of a statement the store already holds verbatim
+ * (see TURN_ECHO_THRESHOLD in src/capture/handoff.ts for why the bar is high).
+ * `created_at` is epoch ms in the index, so the window is a numeric compare.
+ */
+export function findTurnEcho(
+  scopeKey: string,
+  body: string,
+  windowMs: number,
+): TurnEchoCandidate[] {
+  const cutoff = Date.now() - windowMs;
+  let rows: Array<{ id: string; content: string; source: string; created_at: number }>;
+  try {
+    rows = db()
+      .prepare(
+        `SELECT id, content, source, created_at FROM memories
+         WHERE scope_key = ? AND status = 'active'
+           AND source IN ${ECHO_SOURCES} AND created_at >= ?`,
+      )
+      .all(scopeKey, cutoff) as typeof rows;
+  } catch {
+    return [];
+  }
+  const out: TurnEchoCandidate[] = [];
+  for (const r of rows) {
+    if (typeof r.created_at !== "number" || r.created_at < cutoff) continue;
+    const score = similarity(body, r.content);
+    if (isTurnEcho(score)) {
+      out.push({
+        id: r.id,
+        score,
+        source: r.source,
+        snippet: r.content.replace(/\s+/g, " ").trim().slice(0, 120),
+      });
+    }
+  }
+  out.sort((x, y) => y.score - x.score);
+  return out.slice(0, 3);
 }
 
 /** Locate a memory file by id: index file_path first, then dir-scan fallback. */

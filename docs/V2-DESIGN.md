@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D72 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D73 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -1469,6 +1469,47 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   entry back before deleting. The HTML rendering of the same data layer
   follows as a separate change; auto-draft stays gated on the unlock
   conditions in the design doc.
+- **D73 — one user statement, one memory: the keyword hook hands off to the
+  agent.** The keyword hook and the agent are two writers for one user turn,
+  and only one of them knows the sentence is already stored. Observed
+  2026-10-04: a single `remember this folder is for my spark tank ideas …
+  shared memory across agents and employees` produced **three** memories — one
+  `source: keyword` verbatim capture plus two `source: tool` paraphrases the
+  agent wrote because it could see the chat transcript but not the store. The
+  existing §3.4 guard could not catch it: token Jaccard scored those
+  paraphrases 0.21–0.38 against the capture, below the 0.8 near-dup bar, and
+  `open-memex audit` reported zero near-dup pairs, so the store looked healthy
+  while holding three copies of one statement (retrieval then returns all
+  three). Two mechanisms, deliberately layered:
+  **(a) hand-off note** — `captureFromText` records each capture against the
+  host session id (`chat.message` / v2 `prompt`, both of which carry one), and
+  the system-context hook (`experimental.chat.system.transform` / v2
+  `context`) pushes a short block naming what was already stored, delivered
+  once per capture and pruned after the turn window. The agent can now avoid
+  the duplicate write it had no way to see. In-memory only, like
+  `injectedSessions`: never persisted, gone on restart.
+  **(b) turn-echo guard** — `memory_add` additionally refuses a write that
+  overlaps a `source: keyword`/`user` memory created in the same scope within
+  the last 10 minutes, returning the stored id and pointing at
+  `memory_supersede`. This is the deterministic backstop for the case where
+  (a) is ignored. It is deliberately scoped and high-barred, because lexical
+  overlap **cannot** separate an agent's gloss from a genuinely new fact: in
+  the same measured set, the agent's gloss scored 0.211 and a distinct fact
+  the same sentence happened to contain scored 0.214. So the bar sits at
+  0.28 — wholesale re-saves of the captured sentence measure 0.29–0.36 and are
+  refused; anything below is left to (a) and the agent's judgment, and a
+  refusal always names the stored id so the caller can rephrase to the new
+  part or supersede. Agent-authored `source: tool` saves keep the old 0.8
+  near-dup *notice* and are never refused. The refused case is recoverable by
+  construction (supersede, or a follow-up add carrying only the new
+  information), and no D14-style masking, dedup, or lifecycle rule changes.
+  What is deliberately NOT done: no fuzzy-matching upgrade (D73 measures why a
+  better metric still cannot decide "new information"), no auto-merging of the
+  agent's gloss into the capture, and no transcript store (the replay-distillation
+  open question owns that).
+
+- **D72 — the Node SQLite driver moves to the N-API line.** The D70 suite was stable on Windows and failed in shifting clusters on Linux under Node 24.20: individual CLI processes intermittently died with `SIGABRT` in `Statement::~Statement()` (`RemoveEnvironmentCleanupHook ... Assertion failed: (env) != nullptr`) and lost their stdout, so unrelated supersede / submit / inventory checks failed depending on which process the GC reaped. The work itself had always landed; only the exit path was broken. Root cause is upstream: Node 24.19 changed `node::ObjectWrap` cleanup-hook registration, and `better-sqlite3` <13 (raw `node::ObjectWrap`) can finalize a prepared statement from a GC callback with no Environment entered. `better-sqlite3` 13 is the N-API rewrite and removes that path; it still supports Node ≥22, and every API this repo uses (`Database`, `prepare`, `exec`, `pragma`-style PRAGMAs, `close`) is unchanged. The suite's crash-retry shim stays as belt-and-braces for older installs, but the shipped driver no longer needs it on current Node. Verified: three consecutive Linux `test-full` runs at 114/114 plus a 40-command add/list/search loop with zero aborts (was ~50% per process).
+
 - **D71 — the scope seed is the folder opened, never a filesystem root.**
   OpenCode v1 hands the plugin two roots: `worktree` (the repo root — but
   the filesystem root itself, `C:\` or `/`, when the opened folder is not a
@@ -1517,8 +1558,6 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   divergence (a self-healed dangling chain pointer) instead of claiming
   equivalence. Deliberately NOT done, pending a decision: HTML i18n and a
   size cap for very large stores.
-
-- **D72 — the Node SQLite driver moves to the N-API line.** The D70 suite was stable on Windows and failed in shifting clusters on Linux under Node 24.20: individual CLI processes intermittently died with `SIGABRT` in `Statement::~Statement()` (`RemoveEnvironmentCleanupHook ... Assertion failed: (env) != nullptr`) and lost their stdout, so unrelated supersede / submit / inventory checks failed depending on which process the GC reaped. The work itself had always landed; only the exit path was broken. Root cause is upstream: Node 24.19 changed `node::ObjectWrap` cleanup-hook registration, and `better-sqlite3` <13 (raw `node::ObjectWrap`) can finalize a prepared statement from a GC callback with no Environment entered. `better-sqlite3` 13 is the N-API rewrite and removes that path; it still supports Node ≥22, and every API this repo uses (`Database`, `prepare`, `exec`, `pragma`-style PRAGMAs, `close`) is unchanged. The suite's crash-retry shim stays as belt-and-braces for older installs, but the shipped driver no longer needs it on current Node. Verified: three consecutive Linux `test-full` runs at 114/114 plus a 40-command add/list/search loop with zero aborts (was ~50% per process).
 
 ## Open Questions
 

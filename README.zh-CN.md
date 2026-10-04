@@ -162,7 +162,7 @@ npx -y open-memex init --yes
 open-memex init --client vscode
 ```
 
-写入 MCP 服务器配置并可干净重载；重载窗口，确认 Copilot Chat 的 MCP 面板里 `open-memex` 服务器已启动。默认把配置写到 VS Code 的*用户级*配置（每个项目都生效）；也可以写到项目级 `.vscode/mcp.json`。
+写入 MCP 服务器配置；重载窗口，确认 Copilot Chat 的 MCP 面板里 `open-memex` 服务器已启动。默认写到项目级 `.vscode/mcp.json`（交互式运行会问你选哪一级）；加 `--global` 改写 VS Code 的*用户级*配置——一次设置，每个项目都生效。
 
 **Cursor**：
 
@@ -170,7 +170,7 @@ open-memex init --client vscode
 open-memex init --client cursor
 ```
 
-形态和 VS Code 一样：默认用户级 MCP 配置，可选项目级 `.cursor/mcp.json`，外加 Copilot 风格的指令文件。
+形态和 VS Code 一样：默认项目级 `.cursor/mcp.json`，`--global` 改为用户级 MCP 配置，外加 Copilot 风格的指令文件。
 
 **opencode**（原生插件——推荐）：
 
@@ -255,7 +255,7 @@ open-memex uninstall --yes
 - **关键词触发**（仅 opencode 原生插件）：说 `remember …`、`note that …`、`don't forget …`、`TIL …`、`save this …`——中文 `记住…` / `记一下` / `记录一下` / `别忘了…`——这句话就被存下来，不需要任何工具调用。捕获默认进当前 **project**；`remember for me …`、`记住我…`、`替我记…`、`我觉得…`、`我喜欢…` 这类"这是关于我"的信号会改为进 **personal**；`我们决定…`、`帮我们记住…` 等团队语境仍留在项目里。
 - **助手主动保存**：在任何编辑器里，你让助手记住某件事（或者你陈述了一个值得记的事实、它自己判断该保存），它会调用 `memory_add`。上面的路由是启发式规则；你可以明说"存到我的个人记忆"，或用 CLI 加 `--scope` 明确指定。
 - **检查点提议**：一个任务收尾时，助手会提议 1–3 条从这轮工作里提炼的候选记忆——决定及其理由、约定、踩过的坑、走过又放弃的路——只有你点头的那几条才存。不会有任何东西在你不知情时被写下来。
-- **CLI**：`open-memex add "…"`，可选 `--scope` / `--tags` / `--type` / `--aliases`。
+- **CLI**：`open-memex add "…"`，可选 `--scope` / `--tag` / `--type` / `--aliases`。
 
 **别名。** 每条记忆可以带最多 4 个换一种说法（同义词、另一种语言的对应词），和记忆一起进索引，这样问法不同也能找到——比如搜 "vacation days" 能找到假期政策那条。`init` 时会问一次是否开启（默认开）；随时可用 `open-memex config set captureAliases false` 关掉。
 
@@ -323,7 +323,7 @@ MCP 服务器暴露十一个工具；opencode 原生插件暴露其中五个核�
 4. **PR 评审**——记忆是纯 Markdown；评审者走正常分支/PR 流程批准、要求修改或拒绝。
 5. **回想**——已发布的记忆在会话开始时注入，平时也能随时搜，人和助手都一样。
 
-看护共享记忆的人遵循 [维护者约定](./docs/CURATOR.md)：什么该批准、什么该打回、哪些卫生规则让共享记忆不腐烂。
+看护共享记忆的人遵循 [维护者约定](./docs/CURATOR.md)（英文）：什么该批准、什么该打回、哪些卫生规则让共享记忆不腐烂。
 
 ## 回想：记忆是怎么回来的
 
@@ -414,7 +414,7 @@ open-memex config set maxProjectMemories 12
 open-memex config set sync.autoPull true   # MCP 会话开始时尽力而为地 pull
 ```
 
-可设置的键：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、`keywordCaptureEnabled`、`logLevel`、`memoryDir`，以及 `sync.autoPull`（带点的键，写入嵌套的 `sync` 对象）。完整设计：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)。
+可设置的键：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、`keywordCaptureEnabled`、`captureAliases`、`logLevel`、`memoryDir`，以及 `sync.autoPull`（带点的键，写入嵌套的 `sync` 对象）。完整设计：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（英文）。
 
 ## CLI 参考
 
@@ -462,7 +462,7 @@ open-memex submit <id...> [--branch <name>] [--base <branch>]
 # 把你点名的草稿移进 .ai/open-memex/，标为 "proposed"：
 # 复制、翻转 review_state、在当前分支本地 git 提交。
 # 永不自己建分支——建分支是你（或拿到完整链路明确许可的助手）的事。
-# 全有全無；冲突（同 id 不同内容）干净地中止。
+# 全有全无；冲突（同 id 不同内容）干净地中止。
 # 打印 push + gh pr 命令；持有你 Yes 的助手可以一并执行 push/PR。
 # --branch <name> 先建分支（助手全链路路径）。PR base 默认是当前分支
 # （记忆 PR 叠在你的工作分支上）；--base 可改指到 main 或你的评审分支。
@@ -473,7 +473,7 @@ open-memex pr-status [--apply]
 # 要求修改 → 只给建议。默认只报告；--apply 在本地执行映射的迁移（不推送）。
 
 open-memex pull
-# 从 git 远程拉共享记忆：fetch + 純 fast-forward。
+# 从 git 远程拉共享记忆：fetch + 纯 fast-forward。
 # 分支分叉则明确报错失败——open-memex 永不强制合并；手工解决后再 pull。
 # 成功后本地索引重新同步。pull 默认显式触发；设置
 # `open-memex config set sync.autoPull true` 可在 MCP 会话开始时尽力拉一次
@@ -502,7 +502,7 @@ open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] 
 
 open-memex propose <id...> --to project [--local-approve]
 # 一次提议一条或多条个人记忆（一个分支、一个 PR）；
-# 每条复制并生成新 id。全有全無：任何一条 id 出错，整批中止，绝不半途。
+# 每条复制并生成新 id。全有全无：任何一条 id 出错，整批中止，绝不半途。
 # 把一条个人记忆复制到项目作用域作为评审候选
 # （是复制不是移动——个人原件保留）。结果落进 outbox；
 # 准备进仓库时再跑 sync-status / submit。
@@ -547,7 +547,7 @@ npx -y open-memex mcp        # 无需安装
 - **project（项目）**——限定在当前仓库，键由 git origin URL 的 hash 派生（所以同一仓库的多个 clone 共享一个作用域），没有远程时退回到当前工作目录路径。新记忆的默认作用域。
 - **personal（个人）**——横跨你的所有项目，仅限本机，永不向外同步。放个人偏好用。（v1 里叫 `user`；`migrate --to-v2` 会改名。）
 
-完整的 scope 模型（键派生、迁移、可见性、保留名）见 [docs/SCOPES.md](./docs/SCOPES.md)。[概念指南](./docs/CONCEPTS.zh-CN.md)把心智模型完整走了一遍。
+完整的 scope 模型（键派生、迁移、可见性、保留名）见 [docs/SCOPES.md](./docs/SCOPES.md)（英文）。[概念指南](./docs/CONCEPTS.zh-CN.md)把心智模型完整走了一遍。
 
 ## 故障排查
 
@@ -602,7 +602,7 @@ Windows 上已加载的 DLL 是锁定的：如果 open-memex 的 MCP 服务器�
 
 ## 项目状态
 
-open-memex 是稳定且日常在用的；当前稳定线以 `latest` 发到 npm 上，`alpha` 构建给测试者。发版历史在 [GitHub Releases](https://github.com/stoneskin/open-memex/releases)；设计决策记录在只追加的日志 [docs/V2-DESIGN.md](./docs/V2-DESIGN.md) 里。
+open-memex 是稳定且日常在用的；当前稳定线以 `latest` 发到 npm 上，`alpha` 构建给测试者。发版历史在 [GitHub Releases](https://github.com/stoneskin/open-memex/releases)；设计决策记录在只追加的日志 [docs/V2-DESIGN.md](./docs/V2-DESIGN.md) 里（英文）。
 
 在望的方向（不承诺版本号）：更多编辑器的原生助手插件（作为在同一组 MCP 工具之上的增强路径）；本地 embedding 作为可选择开启的实验（没经询问，永不下载任何模型）；只有在真实多仓库共享、ACL 或合规需求出现时才做 org 层。
 

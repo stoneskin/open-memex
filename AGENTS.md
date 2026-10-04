@@ -163,7 +163,7 @@ Context injection happens exactly once per session in `experimental.chat.system.
 
 ## Design constraints — read the frozen design first
 
-`docs/V2-DESIGN.md` is the frozen protocol v0.2 (zero open questions). Per its §12:
+`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions D1–D64 settled; open questions tracked at the end of the doc). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
 built this way" (principles, iron rules, D1–D49 decision log). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter

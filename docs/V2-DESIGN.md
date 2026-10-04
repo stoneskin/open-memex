@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Zero open questions.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D64 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -39,7 +39,7 @@ Decisions log; Prior Art; solo-dev adoption path.
 **OpenMemex is an open, local-first memory layer and interoperable protocol for AI coding agents.**
 
 - **Tagline:** *"Capture knowledge once, make it available to every AI agent."*
-- **Local-first, open source (MIT).** No cloud SaaS, no account, no mandatory network calls.
+- **Local-first, open source (Apache-2.0).** No cloud SaaS, no account, no mandatory network calls.
 - **The pain it kills:** every developer's AI learns in isolation. Dev A spends three days debugging an
   environment quirk with AI help; dev B rediscovers it next week. Hard-won knowledge should flow
   **personal → team → organization** instead of evaporating with each session.
@@ -109,35 +109,34 @@ One memory = one file. `id` = filename = ULID. No other ID scheme.
 ```yaml
 id: 01K6AB3XZQ7WVD9J1M2N4P5Q6R7
 schema_version: 2
-revision: 1
 scope: project            # personal | project | org  (ownership: WHO owns it)
                           # team, public → schema enum REJECTS writes (reserved)
+scope_key: project__my-repo__9f2c1a4b8e3d   # storage identity (repo-derived, or "personal")
 visibility: internal      # private | internal | shared (read access: WHO may read)
+project_name: my-repo
 type: decision            # content kind: what the memory IS (§3.2)
 role: knowledge           # knowledge | instruction — how it may be USED (§3.3)
-importance: normal         # low | normal | high (ranking hint; replaces 1–10 priority)
-instruction_state: null   # draft | approved | revoked — only when role=instruction
-trust_level: reviewed     # untrusted | reviewed | trusted
+importance: normal        # low | normal | high (ranking hint; replaces 1–10 priority)
 status: active            # active | superseded | deprecated | retracted | archived
-review_state: approved    # draft | proposed | approved | rejected | published (promotion)
+tags: [auth, oauth]
+aliases: ["oauth login flow"]   # optional: capture-time phrasing variants (D61)
 source: user              # provenance: user | tool | keyword | inference | import
-confidence: high          # high | medium | low — describes the CONTENT, not the author
-created_by: github:stoneskin   # namespaced identity: local:… | github:… | oidc:…:…
-promoted_by: null
-approved_by: null
-via: cli                  # mcp | copilot | opencode | cli | import (cross-agent provenance)
 created_at: "2026-09-26T12:00:00Z"   # RFC 3339, never bare epoch
 updated_at: "2026-09-26T12:00:00Z"
-supersedes: 01K69Z…       # on the NEW memory → points BACK to what it replaces
+supersedes: null          # on the NEW memory → points BACK to what it replaces
 superseded_by: null       # on the OLD memory → points FORWARD to its replacement
-expires_at: null
-repo_id: git-origin-sha256:9f2c…     # namespace: cross-machine project identity
-language: zh                         # detected or declared; drives tokenizer choice
-tags: [auth, oauth]
-paths: ["src/auth/**"]               # repo-relative globs; mismatch ⇒ downrank, not filter
-related: [01K6AC…]                   # light links between memories (no knowledge graph yet)
-canonical_ref: docs/adr-003.md       # memory holds a SUMMARY; the doc is canonical
+review_state: approved    # draft | proposed | approved | rejected | published (promotion)
+proposed_by: stoneskin
+approved_by: stoneskin
+derived_from: null        # for propose-copies: the personal memory this came from
+review_note: null
+review_history: []        # append-only [{at, by, from, to, note}] audit trail
 ```
+
+Field set as implemented (`src/store/markdown.ts`). Earlier drafts of this
+example listed aspirational fields (`revision`, `trust_level`, `confidence`,
+`via`, `expires_at`, `paths`, `related`, `canonical_ref`) that never shipped;
+they are not part of protocol v0.2.
 
 ### 3.1 Type taxonomy (content kind)
 
@@ -240,14 +239,17 @@ distills; explicit "save this note" may preserve long-form text.
 | Scope      | Owner | Lives where | Synced? |
 |------------|-------|-------------|---------|
 | `personal` | you | this machine only | **never** |
-| `project`  | repo collaborators | `<repo>/.open-memex/` | via git (opt-in per repo) |
+| `project`  | repo collaborators | `<repo>/.ai/open-memex/` | via git (opt-in per repo) |
 | `org`      | org members | dedicated org memory repo | via git |
 
 Legal combinations: `personal/*` (any visibility, stays local); `project/{internal,shared}`;
-`org/{internal,shared}`. `visibility: private` inside a shared scope is **physically isolated**:
-private memories are written to a local-only cache directory and never land under `.open-memex/`
-— never relying on `.gitignore` or filename conventions alone. (Pre-commit scanning is defense in
-depth, not the boundary.)
+`org/{internal,shared}`. `visibility: private` inside a shared scope is a logical boundary
+today, not a physical one: `export` excludes private memories by default (D40), and the
+`personal` scope never leaves the machine — but a private file placed under
+`<repo>/.ai/open-memex/` still travels with git, so review before you push. Physical
+isolation of private memories into a local-only cache directory remains planned
+(see docs/SCOPES.md); `.gitignore` and pre-commit scanning are defense in depth, not
+the boundary.
 
 **Namespace:** `repo_id` (`git-origin-sha256:…`, falling back to a normalized cwd hash) identifies
 the same project across machines — carried over from v1's scope-key design.
@@ -1368,7 +1370,7 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 
 ## Open Questions
 
-_All resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull)._
+_Some early questions are resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull). The entries below are open unless marked decided._
 - **Checkpoint proactivity for capture (open, 2026-10-02):** D53 retired checkpoint *polling* — the server pushes draft counts instead. But agent proactivity at task checkpoints genuinely helps knowledge capture (§3.5 distillation), so the open question is the degree: proactive enough to catch distillable moments, without nagging the user or burning tokens at every checkpoint. Candidate directions (server-pushed hints in tool results, client-side heuristics, or a middle setting) to be evaluated in a later version; default posture TBD. **Update (2026-10-03): decided in D61 — propose posture** (agent proposes 1–3 candidates at task checkpoints, saves only on approval; auto-draft deferred until memory visibility ships, see the MEMORY_VISIBILITY question below).
 
 - **Retrieval robustness: phrasing, synonyms, extra words (open, 2026-10-03):** keyword search matches word forms, not meaning — the asker phrases it differently, adds a word, or uses a synonym and the memory is missed. The current FTS5 setup (porter stemming + pre-tokenized CJK bigrams) already covers morphology and substrings; it cannot bridge semantics. Layered candidate directions, cheapest first: (1) query construction — never feed a raw sentence to FTS; extract content terms, drop stopwords, OR them and let bm25 rank, so extra words hurt ranking instead of killing the match; (2) agent-side query expansion as an explicit protocol in the skill/instructions (decompose the question into concepts, generate 2–3 synonym variants per concept, run several searches before giving up — the LLM is the synonym dictionary, no embedding model needed); (3) capture-time aliasing — when a memory is written, the agent attaches keyword/synonym aliases so future phrasings can hit it. Embeddings are the design's reserved optional capability: real semantic matching, but they require a design decision and a local model to distribute, so they stay deferred unless (1)–(3) prove insufficient. Note (3) pairs naturally with the proactive-capture question below: the same capture pass that proposes a memory can attach its aliases. **Status (2026-10-03): layer (1) shipped (D56, 0.6.1)** — query construction now filters EN/CJK function words, dedupes, and caps terms. Layers (2) agent-side expansion and (3) capture-time aliasing remain open; embeddings stay deferred. **Update (2026-10-03): layers (2) and (3) shipped in D61** — agent-side expansion as guidance text on every surface, capture-time aliases indexed in their own FTS column behind the `captureAliases` flag. Embeddings stay deferred.

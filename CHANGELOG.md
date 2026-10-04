@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- Design doc maintenance (D75): pruned resolved Open Questions (decided in D56/D57/D61/D68, plus the shipped retrieval-robustness layers) and recorded four competitor-scan directions — retrieval evaluation gate, per-client trust levels, cold-start import, and a `doctor` mis-registration check.
+
 - Added a root `Dockerfile` (multi-stage, starts the stdio MCP server via `node dist/cli.js mcp`) so container-based directories such as Glama can build, start, and introspect the server.
 
 - Both READMEs now open the Core concepts section with an architecture diagram (English and Chinese versions in `docs/assets/`).

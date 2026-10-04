@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-04
+
 ## One thing you said is one memory (D73)
 
 Saying "remember ." used to save the same statement up to three times: the keyword hook stored your sentence verbatim with no agent in the loop, then the agent - which could see the chat but not the store - saved its own paraphrase beside it, and `memory_add`'s near-duplicate check scored the two too far apart (0.21-0.38 against a 0.80 bar) to notice. `open-memex audit` reported zero near-duplicates while three copies sat in the folder, and search returned all of them.

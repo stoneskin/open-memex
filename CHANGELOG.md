@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- Release runbook: commands are now given one per step with explicit stop-and-check gates, including "wait for npm to propagate before mcp-publisher publish".
+
 - Added `docs/release-runbook.md`: the maintainer release checklist (version sync points, preflight, npm alpha/stable publish, MCP Registry publish, Node 22.14 floor notes).
 
 ## [0.7.1] - 2026-10-04

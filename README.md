@@ -222,9 +222,10 @@ open-memex init --client vscode
 ```
 
 Writes the MCP server entry; reload the window afterwards and confirm the
-`open-memex` server is started in Copilot Chat's MCP panel. By default the
-server entry goes to VS Code's *user-level* config (works in every project);
-`init` can also write a project-level `.vscode/mcp.json` if you prefer.
+`open-memex` server is started in Copilot Chat's MCP panel. By default this
+writes a project-level `.vscode/mcp.json` (an interactive run asks which
+level you want); add `--global` for VS Code's *user-level* config instead —
+one setup that works in every project.
 
 **Cursor:**
 
@@ -232,8 +233,8 @@ server entry goes to VS Code's *user-level* config (works in every project);
 open-memex init --client cursor
 ```
 
-Same shape as VS Code: user-level MCP config by default, project-level
-`.cursor/mcp.json` on request, plus Copilot-style instructions.
+Same shape as VS Code: project-level `.cursor/mcp.json` by default,
+user-level MCP config with `--global`, plus Copilot-style instructions.
 
 **opencode** (native plugin — recommended):
 
@@ -378,7 +379,7 @@ Three ways memories get in:
   conventions, gotchas, approaches tried and abandoned — and saves only the
   ones you approve. Nothing is written silently: no draft is created behind
   your back.
-- **The CLI**: `open-memex add "…"` with optional `--scope` / `--tags` / `--type`
+- **The CLI**: `open-memex add "…"` with optional `--scope` / `--tag` / `--type`
   / `--aliases`.
 
 **Aliases.** Each saved memory can carry up to 4 alternate phrasings
@@ -605,7 +606,7 @@ open-memex config set sync.autoPull true   # best-effort pull at MCP session sta
 ```
 
 Settable keys: `maxProjectMemories`, `maxProfileItems`, `injectOnFirstTurn`,
-`keywordCaptureEnabled`, `logLevel`, `memoryDir`, and `sync.autoPull` (a dotted
+`keywordCaptureEnabled`, `captureAliases`, `logLevel`, `memoryDir`, and `sync.autoPull` (a dotted
 key that writes into the nested `sync` object). Full design:
 [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
 

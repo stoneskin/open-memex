@@ -7,9 +7,13 @@ decide who is *allowed* to.
 
 ## What the curator does
 
-1. **Triage proposals.** `open-memex propose` puts memories up for review.
-   The curator reads them, then `open-memex promote <id>` to approve or
-   `open-memex promote <id> --reject` to send back, with `--note` saying why.
+1. **Triage proposals.** Contributors put a memory up for review in two
+   steps: `open-memex propose` (personal memory → outbox draft), then
+   `open-memex submit` (draft lands in the repo as `proposed`, riding a
+   branch/PR). The curator reviews the proposed ones: `open-memex promote
+   <id>` approves (promote again to publish), or `open-memex promote <id>
+   --reject` to send back, with `--note` saying why. (`promote` refuses
+   drafts by design — an outbox draft must be submitted first.)
 2. **Resolve conflicts.** `open-memex resolve` lists file-level and semantic
    conflicts. The curator merges or picks a winner — Core never silently
    resolves a semantic conflict; both sides stay `active` until a human

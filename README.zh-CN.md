@@ -71,6 +71,8 @@ open-memex doctor
 
 三个概念能解释 open-memex 几乎所有的事。
 
+![open-memex 结构示意：你用的编辑器共享同一份本地记忆——Markdown 文件是事实来源，SQLite FTS5 索引负责检索，个人记忆只留本机，项目记忆经 Git PR 分享](docs/assets/open-memex-architecture-zh.png)
+
 **1. 两种作用域：`project` 和 `personal`。**
 每条记忆属于两个地方之一：
 

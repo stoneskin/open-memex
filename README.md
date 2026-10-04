@@ -86,6 +86,8 @@ open-memex doctor
 
 Three ideas explain almost everything open-memex does.
 
+![open-memex architecture: your editors share one local memory — Markdown files as the source of truth, an SQLite FTS5 index for search, personal scope that never leaves the machine, and project scope shared through git PRs](docs/assets/open-memex-architecture-en.png)
+
 **1. Two scopes: `project` and `personal`.**
 Every memory belongs to one of two places:
 

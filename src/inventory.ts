@@ -31,6 +31,7 @@ export interface InventoryRow {
   updated_at: number;
   content: string;
   file_path: string;
+  superseded_by?: string | null;
 }
 
 export interface InventoryData {
@@ -41,6 +42,8 @@ export interface InventoryData {
   outbox: InventoryRow[];
   /** History that exists but is not "remembered": counted, not listed. */
   hidden: { superseded: number; retracted: number; archived: number };
+  /** The hidden rows themselves (audit surfaces only: HTML report). */
+  hiddenEntries: InventoryRow[];
   total: number;
 }
 
@@ -60,19 +63,19 @@ export function loadInventory(scopeKeys: string[]): InventoryData {
        ORDER BY scope_key, updated_at DESC`,
     )
     .all(...scopeKeys) as unknown as InventoryRow[];
-  const hiddenRows = db()
+  const hiddenEntries = db()
     .prepare(
-      `SELECT status, COUNT(*) AS n FROM memories
+      `SELECT ${BASE_COLS}, superseded_by FROM memories
        WHERE scope_key IN (${inList}) AND status IN ('superseded', 'retracted', 'archived')
-       GROUP BY status`,
+       ORDER BY updated_at DESC`,
     )
-    .all(...scopeKeys) as unknown as Array<{ status: string; n: number }>;
+    .all(...scopeKeys) as unknown as InventoryRow[];
 
   const hidden = { superseded: 0, retracted: 0, archived: 0 };
-  for (const r of hiddenRows) {
-    if (r.status === "superseded") hidden.superseded = r.n;
-    if (r.status === "retracted") hidden.retracted = r.n;
-    if (r.status === "archived") hidden.archived = r.n;
+  for (const r of hiddenEntries) {
+    if (r.status === "superseded") hidden.superseded++;
+    if (r.status === "retracted") hidden.retracted++;
+    if (r.status === "archived") hidden.archived++;
   }
 
   const outbox = current.filter(
@@ -108,6 +111,7 @@ export function loadInventory(scopeKeys: string[]): InventoryData {
     scopes,
     outbox,
     hidden,
+    hiddenEntries,
     total: current.length,
   };
 }

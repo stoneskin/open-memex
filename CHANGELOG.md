@@ -9,6 +9,10 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Inventory HTML report (D68 follow-up)
+
+- **`open-memex inventory --format html`** renders the same data layer as the text/JSON formats into a single local page: current memories grouped by scope, outbox drafts in their own section, and the replaced/hidden history folded at the bottom with supersede-chain pointers. All content is escaped; the filter box is local show/hide only. Default output is `<data dir>/inventory.html`; the worktree refusal (`--allow-personal`) applies here too. Sections fold when the store grows past 50 current entries.
+
 ## Memory visibility: see it, hide it, delete it (D68)
 
 Group 3-C — the surface a user reads to learn what the store actually remembers:

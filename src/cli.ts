@@ -179,16 +179,18 @@ Example:
   inventory: `Show everything remembered — personal + this project — in the
 open: what each memory says, where it came from, and whether it has reached
 the repo yet. Read-only; deleting stays a confirmed conversation with your
-agent. Formats: text (default, diffable) and json (for agents).
+agent. Formats: text (default, diffable), json (for agents), html (a local
+page for your browser; default writes <data dir>/inventory.html).
 
-Usage: open-memex inventory [--format text|json] [--scope project|personal|both] [--out <path>] [--allow-personal]
+Usage: open-memex inventory [--format text|json|html] [--scope project|personal|both] [--out <path>] [--allow-personal]
 
-Default scope: both. Without --out the report goes to stdout. A report that
+Default scope: both. Without --out, text/json go to stdout. A report that
 includes personal memories is refused inside a git working tree unless
 --allow-personal is passed — personal content must not ride a commit.
 
 Example:
-  open-memex inventory --format json --out ~/inventory.json`,
+  open-memex inventory --format json --out ~/inventory.json
+  open-memex inventory --format html`,
 
   pull: `Pull shared project memories from the git remote: fetch + fast-forward
 only. Never auto-merges — a diverged branch fails with a clear message and is
@@ -414,7 +416,7 @@ Usage:
   open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
   open-memex resolve [id-or-path]
   open-memex sync-status
-  open-memex inventory [--format text|json] [--scope project|personal|both] [--out <path>] [--allow-personal]
+  open-memex inventory [--format text|json|html] [--scope project|personal|both] [--out <path>] [--allow-personal]
   open-memex pull
   open-memex push
   open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
@@ -1260,8 +1262,8 @@ function positionalArgs(argv: string[]): string[] {
     syncScope(PERSONAL_SCOPE.key, "cli");
     const flags = parseFlags(rest);
     const format = flags.format ?? "text";
-    if (format !== "text" && format !== "json") {
-      console.error(`inventory: unknown --format '${format}' (text|json; html arrives separately)`);
+    if (format !== "text" && format !== "json" && format !== "html") {
+      console.error(`inventory: unknown --format '${format}' (text|json|html)`);
       process.exit(2);
     }
     const scopeKeys =
@@ -1289,6 +1291,25 @@ function positionalArgs(argv: string[]): string[] {
     try {
       const { loadInventory, renderInventoryText, renderInventoryJson } = await import("./inventory.ts");
       const data = loadInventory(scopeKeys);
+      if (format === "html") {
+        const { renderInventoryHtml, defaultHtmlOutPath } = await import("./inventory-html.ts");
+        const target = outPath ?? defaultHtmlOutPath(paths().root);
+        if (
+          scopeKeys.includes(PERSONAL_SCOPE.key) &&
+          flags["allow-personal"] !== "true" &&
+          isInsideWorkTree(target)
+        ) {
+          console.error(
+            `inventory: ${target} is inside a git working tree and this report includes personal memories. ` +
+              `Refusing to write it there. Pass --allow-personal if you really want that, or write outside the repo.`,
+          );
+          process.exit(2);
+        }
+        fs.writeFileSync(target, renderInventoryHtml(data), "utf8");
+        console.log(`inventory: ${data.total} memories → ${target}`);
+        console.log(`open it in any browser; the report is read-only.`);
+        return;
+      }
       const rendered = format === "json" ? renderInventoryJson(data) : renderInventoryText(data);
       if (outPath) {
         fs.writeFileSync(outPath, rendered, "utf8");

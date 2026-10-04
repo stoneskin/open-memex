@@ -341,6 +341,21 @@ r = cliRetry(["list", "--include", "all"], PROJ);
 ok("hidden memory visible with --include all", r.out.includes(softId) && r.out.includes("[retracted]"), r.out.slice(0, 160));
 r = cliRetry(["forget", softId], PROJ);
 ok("hard forget still deletes a hidden memory", r.code === 0 && /deleted/.test(r.out));
+// D68 follow-up: the HTML rendering of the same data layer.
+const htmlId = addMem(["fulltest html page entry"], PROJ);
+cliRetry(["forget", htmlId, "--soft"], PROJ);
+const htmlFile = path.join(T, "inventory-page.html");
+r = cliRetry(["inventory", "--format", "html", "--out", htmlFile], PROJ);
+ok("inventory --format html writes the page", r.code === 0 && fs.existsSync(htmlFile), (r.err || r.out).slice(0, 150));
+const page = fs.readFileSync(htmlFile, "utf8");
+ok("html page shows current memories", page.includes("fulltest inventory entry"));
+ok("html page escapes memory content", page.includes("&lt;script&gt;alert(1)&lt;/script&gt;") && !page.includes("<script>alert(1)</script>"));
+ok("html page folds the hidden history", page.includes("Replaced &amp; hidden history") && page.includes(htmlId) && page.includes("retracted"));
+r = cliRetry(["inventory", "--format", "html"], PROJ);
+ok("html defaults to the data dir", r.code === 0 && fs.existsSync(path.join(T, "data", "inventory.html")), (r.err || r.out).slice(0, 150));
+const inTreePage = path.join(PROJ, "page.html");
+r = cliRetry(["inventory", "--format", "html", "--out", inTreePage], PROJ);
+ok("html refuses a worktree path without --allow-personal", r.code !== 0 && !fs.existsSync(inTreePage));
 
 // ---------- 8. pull / push ----------
 console.log("== pull / push ==");

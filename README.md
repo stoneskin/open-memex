@@ -651,6 +651,7 @@ open-memex forget <id> --soft      # hide instead of delete (retracted; one-way)
 
 open-memex inventory                        # everything remembered, as readable text
 open-memex inventory --format json          # the same data, for agents
+open-memex inventory --format html          # the same data as a local page (writes <data dir>/inventory.html)
 # Personal + current project, outbox drafts in their own section, hidden
 # history counted. Refuses to write a personal-bearing report inside a
 # git working tree unless you pass --allow-personal.

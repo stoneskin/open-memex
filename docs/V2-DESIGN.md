@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D68 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D69 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -1469,6 +1469,18 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   entry back before deleting. The HTML rendering of the same data layer
   follows as a separate change; auto-draft stays gated on the unlock
   conditions in the design doc.
+
+- **D69 — inventory HTML rendering lands (3-C complete on the visibility side).**
+  `open-memex inventory --format html` renders the D68 data layer into a
+  single local page: scopes grouped, outbox drafts in their own section,
+  replaced/hidden history folded with supersede-chain pointers, all
+  content escaped, filter box is local show/hide (no innerHTML, no
+  network). Default output is the data dir's `inventory.html`; the D68
+  worktree refusal applies unchanged. Sections fold above 50 current
+  entries. With this, the 3-C visibility surfaces are complete (agent
+  inventory in chat, text/JSON reports, HTML page; hide + confirmed
+  delete as the correction actions). Auto-draft remains gated on the
+  unlock conditions in `docs/memory-visibility-design.md`.
 
 ## Open Questions
 

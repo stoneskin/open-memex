@@ -33,7 +33,7 @@ npm run typecheck                                    # tsc --noEmit — the only
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
 npm run cli -- <command> --help                          # per-command help (AI assistants discover flags this way)
 npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
-npm run cli -- inventory [--format text|json] [--scope both]  # what is remembered, in the open (D68); personal-bearing output refused inside a git worktree without --allow-personal
+npm run cli -- inventory [--format text|json|html] [--scope both]  # what is remembered, in the open (D68); personal-bearing output refused inside a git worktree without --allow-personal
 npm run cli -- audit [--scope project|personal|both]            # memory health: near-dup pairs, stale actives, broken chains, personal-in-repo (read-only)
 npm run cli -- pull                                          # fetch + fast-forward only (explicit; diverged = clean failure, never force-merge)
 npm run cli -- push                                          # push current branch to remote (explicit only; open-memex never auto-pushes)
@@ -166,9 +166,9 @@ Context injection happens exactly once per session in `experimental.chat.system.
 
 ## Design constraints — read the frozen design first
 
-`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D68; open questions tracked at the end of the doc). Per its §12:
+`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D69; open questions tracked at the end of the doc). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
-built this way" (principles, iron rules, the append-only decision log, currently D1–D68). Before changing
+built this way" (principles, iron rules, the append-only decision log, currently D1–D69). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
 schema, MCP tools, CLI contract), read the relevant design section — the decision
 log records what was already considered and rejected.

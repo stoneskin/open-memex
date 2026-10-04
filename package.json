@@ -1,6 +1,6 @@
 {
   "name": "open-memex",
-  "version": "0.7.0-alpha.7",
+  "version": "0.7.0-alpha.8",
   "description": "Local-first memory layer and protocol for AI coding agents. Markdown source of truth, SQLite FTS5 index, zero cloud.",
   "type": "module",
   "license": "Apache-2.0",
@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit",
     "cli": "node --experimental-strip-types src/cli.ts",
     "mcp": "node --experimental-strip-types src/mcp.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-stamp.mjs",
     "prepublishOnly": "npm run build",
     "postinstall": "node scripts/postinstall.js"
   },

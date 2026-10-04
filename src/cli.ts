@@ -806,12 +806,13 @@ async function main() {
       process.exit(1);
     }
     const cfg = loadConfig();
-    const { detectKeywords } = await import("./capture/keywords.ts");
+    const { scanKeywords, MIN_CAPTURE_CHARS, MAX_CAPTURE_CHARS } = await import(
+      "./capture/keywords.ts"
+    );
     const text = rest.slice(1).join(" ");
-    const hits = detectKeywords(text, cfg);
+    const { hits, dropped } = scanKeywords(text, cfg);
     if (hits.length === 0) {
-      console.log("no keyword triggers — nothing would be captured.");
-      return;
+      console.log("no keyword triggers - nothing would be captured.");
     }
     for (const h of hits) {
       const r = redact(h.content, cfg.redactPatterns);
@@ -820,6 +821,15 @@ async function main() {
       console.log(`  secret hit:   ${r.hadSecret ? `yes (${r.matchedPattern}) — will be masked` : "no"}`);
       console.log(
         `  body:         ${r.content.slice(0, 160)}${r.content.length > 160 ? "…" : ""}`,
+      );
+    }
+    // D67: a trigger that matched but produced a fragment is reported, not
+    // silently dropped - otherwise "记住：这个" just looks broken.
+    for (const d of dropped) {
+      console.log(
+        d.reason === "too-short"
+          ? `! matched but NOT captured: body "${d.content}" is ${d.content.length} chars (floor: ${MIN_CAPTURE_CHARS}). A trigger alone isn't a memory - write the fact: "记住：<fact>".`
+          : `! matched but NOT captured: body is ${d.content.length} chars (ceiling: ${MAX_CAPTURE_CHARS}) - save it with memory_add instead.`,
       );
     }
     return;

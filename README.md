@@ -364,12 +364,18 @@ snippet to paste instead.
 Three ways memories get in:
 
 - **Keyword triggers** (opencode native plugin only): say `remember …`,
-  `note that …`, `don't forget …`, `TIL …`, `save this …` — or in Chinese
-  `记住…` / `记一下` / `记录一下` / `别忘了…` — and the sentence is captured
+  `note that …`, `don't forget: …`, `TIL …`, `save this …` — or in Chinese
+  `记住…` / `记一下…` / `记录一下…` / `别忘了：…` — and the sentence is captured
   without any tool call. Captures land in the current **project** by default;
-  phrases that signal "this is about me" — `remember for me …`, `记住我…`,
-  `替我记…`, `帮我记…`, `我觉得…`, `我喜欢…` — go to **personal** instead, and
+  phrases that signal "this is about me" — `remember for me …`, `help me remember: …`,
+  `记住我…`, `替我记…`, `帮我记…`, `我觉得…`, `我喜欢…` — go to **personal** instead, and
   team-context phrases (`我们决定…`, `帮我们记住…`) stay in project.
+  Two rules keep the noise down (D67): a trigger must be a *statement to the
+  store*, so the narration forms `记得…` / `remind me to…` / `别忘了带伞` /
+  `don't forget the wifi password` never fire (add a separator — `别忘了：…`,
+  `don't forget: …` — or `that` to make it an instruction); and a captured body
+  under 3 characters is rejected as a fragment rather than saved — `capture
+  --dry-run` says so instead of dropping it silently.
 - **The agent saves it**: in any editor, ask your agent to remember something
   (or it saves on its own when you state a fact worth keeping) — it calls
   `memory_add`. The routing above is a heuristic; you can always say "save this
@@ -636,6 +642,7 @@ open-memex add "This repo uses better-sqlite3" --type fact
 open-memex search "auth flow"
 open-memex search "auth flow" --explain   # show FTS expression, scores, lifecycle-hidden counts
 open-memex list --scope project
+open-memex list --scope both       # each scope's newest under its own header
 open-memex supersede <id> "Updated content"
 open-memex status <id> deprecated
 open-memex forget <id>

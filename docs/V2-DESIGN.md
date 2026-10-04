@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D66 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D67 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -1407,6 +1407,42 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   answers from a possibly-stale index rather than taking the tools
   down. (5) §19's legacy-paths text now names the shipped locations;
   historical decision entries keep their as-decided wording.
+
+- **D67 — keyword capture: a trigger must be a statement to the store.**
+  Three rulings, all from the D66 review's open items plus one bug D66
+  introduced. (1) **The boundary guard guards the bare verb only.** D66 put
+  a separator requirement *after* the whole verb phrase, which killed the
+  commonest Chinese form — `帮我记一下这个配置`, `帮我记住这个配置`,
+  `替我记一下我住在杭州`, `帮我们记一下这个约定` all stopped matching, because
+  the noun follows 记一下/记住 directly. The guard now applies only to a
+  bare 记: `记` + (`住`|`录`, never followed by a verb continuation like
+  得/着) + optional `一下`, or a separator. So mid-word garbage (`帮我记得带伞`
+  → `带伞`) is still impossible while the natural form captures. (2) **The
+  ≥3-char body floor stays, but stops being silent.** A trigger that yields
+  `这个` or `OK` is a match on the trigger, not a memory, and a 2-char memory
+  is noise in every later injection — so the floor is deliberately *not*
+  lowered (a script-aware floor is the escape hatch if short Latin bodies
+  ever matter). What changed is honesty: `capture --dry-run` prints the
+  rejection with the reason, and `logLevel: debug` logs it, so "nothing
+  happened" is never a mystery. A rejected **personal** match also keeps
+  its line claimed — otherwise `记住我：OK` fell through to the generic
+  记住 and was saved as the nonsense project memory `我：OK`. (3) **Narrative
+  forms are not triggers.** `记得…`, `remind me to…`, `I always forget to…`
+  stay out: they are imperatives aimed at the agent, they are the most
+  frequent sentences in any conversation that mentions memory, and a false
+  trigger writes permanent state nobody reviewed — while a missed trigger
+  costs one sentence. The asymmetry is deliberate: precision over recall.
+  For the two ambiguous forms already in the list, an explicit marker now
+  separates narration from instruction: `别忘了：…` / `don't forget: …` /
+  `don't forget that …` capture; bare `别忘了带伞` / `don't forget the wifi
+  password` do not. The `note` family is untouched — `note the API is v2`
+  was never ambiguous. (4) Test/tooling honesty: `test-full.ts` guards the
+  built `dist/` with a content fingerprint (`scripts/build-stamp.mjs`)
+  rather than mtimes — `git checkout` rewrites mtimes, so a branch switch
+  could leave an older-branch dist looking fresh — and the agent-facing
+  `memory_status` cap is pinned again (20 entries per section plus a
+  "full list: open-memex sync-status" pointer) after D66's CLI-parity test
+  had dropped that coverage.
 
 ## Open Questions
 

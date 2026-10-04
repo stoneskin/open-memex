@@ -17,19 +17,19 @@ const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI = path.join(REPO, "dist", "cli.js");
 const MCP_TS = path.join(REPO, "src", "mcp.ts");
 
-// Freshness guard: the CLI under test is the built dist/cli.js. A stale
-// build turns src fixes into phantom product failures, so refuse to run
-// against one (run `npm run build` first).
+// Freshness guard: the CLI under test is the built dist/cli.js. A stale build
+// turns src fixes into phantom product failures, so refuse to run against one.
+// The check is a content fingerprint written by the build (scripts/build-stamp.mjs),
+// not an mtime comparison: `git checkout` rewrites src mtimes, so switching
+// branches can leave an older-branch dist looking newer than the branch's src.
 {
-  const newestSrc = (dir: string): number =>
-    fs.readdirSync(dir, { withFileTypes: true }).reduce((max, e) => {
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) return Math.max(max, newestSrc(p));
-      return e.name.endsWith(".ts") ? Math.max(max, fs.statSync(p).mtimeMs) : max;
-    }, 0);
-  const distMtime = fs.existsSync(CLI) ? fs.statSync(CLI).mtimeMs : 0;
-  if (newestSrc(path.join(REPO, "src")) > distMtime) {
-    console.error("dist/ is older than src/ — run `npm run build` before scripts/test-full.ts");
+  try {
+    execFileSync("node", [path.join(REPO, "scripts", "build-stamp.mjs"), "--check"], {
+      cwd: REPO,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (e: any) {
+    console.error((e.stderr ?? "").toString().trim() || "dist/ is stale — run `npm run build` first");
     process.exit(1);
   }
 }
@@ -540,6 +540,25 @@ console.log("== D64: p1 fixes (propose visibility / supersede published / status
   // results, whose "… and N more" line points back here).
   const fillerShown = (r.out.match(/zzq cap filler/g) ?? []).length;
   ok("sync-status shows the full list", fillerShown === 21 && !/… and \d+ more/.test(r.out), `shown=${fillerShown}`);
+  // ...and the agent-facing render (what memory_status returns) caps per section
+  // and names the CLI, so a hidden entry is still reachable.
+  const capProbe = path.join(T, "p1-cap-probe.ts");
+  fs.writeFileSync(capProbe, [
+    `import { getSyncStatus, formatSyncStatus } from ${JSON.stringify(pathToFileURL(path.join(REPO, "src", "submit.ts")).href)};`,
+    `console.log(formatSyncStatus(getSyncStatus()));`,
+  ].join("\n"));
+  let capOut = "";
+  try {
+    capOut = execFileSync("node", ["--experimental-strip-types", capProbe], { cwd: PROJ, env: TESTENV, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (e: any) { capOut = (e.stdout ?? "") + (e.stderr ?? ""); }
+  const outboxSection = (capOut.split("outbox (appdata")[1] ?? "").split("repo .ai/open-memex")[0];
+  const capEntries = (outboxSection.match(/\[(draft|proposed|approved|published|rejected)\]/g) ?? []).length;
+  const capFiller = (outboxSection.match(/zzq cap filler/g) ?? []).length;
+  ok(
+    "agent-facing sync-status caps and points at the CLI",
+    capEntries === 20 && capFiller < 21 && /… and \d+ more \(full list: open-memex sync-status\)/.test(outboxSection),
+    `entries=${capEntries} fillers=${capFiller} ${outboxSection.slice(0, 200)}`,
+  );
   for (let i = 0; i < 21; i++) fs.rmSync(path.join(outboxDir, `01P1CAP${String(i).padStart(19, "0")}.md`), { force: true });
 
   // doctor: v1 memories left under memories/user/ must be flagged.

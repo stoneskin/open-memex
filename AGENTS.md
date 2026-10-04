@@ -157,7 +157,9 @@ AGENTS.md hygiene footer, the MCP handshake, and the tool descriptions.
 - Chain integrity is self-healing: on read, a missing counterpart is auto-completed with a warning; a dangling pointer warns but is never fabricated. Don't "fix" chains by editing frontmatter directly — let the read path do it.
 - Frontmatter is `schema_version: 2`. The SQLite index schema is versioned separately and rebuilds automatically on version change — never hand-edit `index.db`.
 
-Keyword capture fires from `chat.message` on the user's message parts (`UserMessage`). Patterns live in `src/capture/keywords.ts` / config `keywordPatterns`; regex group 1 is the memory body. Scope routing: personal patterns (`cfg.keywordPersonalPatterns`) force the personal scope — the rule is 我 → personal (记住我/替我记/帮我记/我觉得/我喜欢/remember for me), 我们 → current scope (我们认为/我们决定/帮我们记住); personal patterns run first and claim their line so a generic trigger can't double-fire.
+Keyword capture fires from `chat.message` on the user's message parts (`UserMessage`). Patterns live in `src/capture/keywords.ts` / config `keywordPatterns`; regex group 1 is the memory body. Scope routing: personal patterns (`cfg.keywordPersonalPatterns`) force the personal scope — the rule is 我 → personal (记住我/替我记/帮我记/我觉得/我喜欢/remember for me/help me remember), 我们 → current scope (我们认为/我们决定/帮我们记住); personal patterns run first and claim their line so a generic trigger can't double-fire (a rejected personal match keeps the claim — see D67).
+
+D67 rules for any new pattern: a trigger must be a **statement to the store**, not narration — 记得… / `remind me to…` are deliberately out, and the ambiguous forms require an explicit marker (`别忘了：…`, `don't forget: …`, `don't forget that …`). The 帮/替/我们 family takes the full verb phrase (`记` + optional `住|录`, never followed by a verb continuation) + optional `一下`; the separator boundary applies to the **bare** verb only, so `帮我记一下这个配置` captures while `帮我记得带伞` cannot produce mid-word garbage. Bodies under `MIN_CAPTURE_CHARS` (3) are rejected as fragments — never lower the floor silently; `scanKeywords` returns the drop so `capture --dry-run` and the debug log can report it.
 
 Context injection happens exactly once per session in `experimental.chat.system.transform`, guarded by an in-memory `Set<sessionID>` in `src/index.ts`. It is not persisted — restarting opencode re-injects on the next first turn.
 
@@ -165,7 +167,7 @@ Context injection happens exactly once per session in `experimental.chat.system.
 
 `docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions D1–D64 settled; open questions tracked at the end of the doc). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
-built this way" (principles, iron rules, the append-only decision log, currently D1–D66). Before changing
+built this way" (principles, iron rules, the append-only decision log, currently D1–D67). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
 schema, MCP tools, CLI contract), read the relevant design section — the decision
 log records what was already considered and rejected.

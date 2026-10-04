@@ -1368,6 +1368,21 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   that answers a question must be reading current truth, and every
   workflow state must have a next step.
 
+- **D65 — keyword capture: natural phrasings fell through.** Default-pattern
+  fixes found while verifying a review claim: (1) `帮我记住…` — arguably the
+  most natural Chinese phrasing — matched no pattern at all; it now captures
+  to personal, following the established 我-rule (same as 替我记）, while
+  `帮我们记住…` still routes project. (2) A leading `请` defeated every
+  记住-led pattern (`请记住我…`, `请记住：…`, `请记住（个人）…`); the
+  `(?:请)?` prefix the 记一下 patterns already had is now uniform.
+  (3) English `remember to …` left a stray leading "to" in the captured
+  body; the pattern consumes it (with backtracking verified so
+  "remember Toronto…" is not mangled). Patterns are code defaults, so
+  upgrades pick these up automatically unless the user customized the
+  pattern lists. Deliberately NOT changed: multi-line paste triggering
+  and the secret-masking windows stay as they are — narrowing them is a
+  capture-recall tradeoff that needs an explicit decision, not a drive-by.
+
 ## Open Questions
 
 _Some early questions are resolved — see D10 (rename), D11 (type/role split), D12 (explicit pull). The entries below are open unless marked decided._

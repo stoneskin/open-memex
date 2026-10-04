@@ -368,7 +368,7 @@ Three ways memories get in:
   `记住…` / `记一下` / `记录一下` / `别忘了…` — and the sentence is captured
   without any tool call. Captures land in the current **project** by default;
   phrases that signal "this is about me" — `remember for me …`, `记住我…`,
-  `替我记…`, `我觉得…`, `我喜欢…` — go to **personal** instead, and
+  `替我记…`, `帮我记…`, `我觉得…`, `我喜欢…` — go to **personal** instead, and
   team-context phrases (`我们决定…`, `帮我们记住…`) stay in project.
 - **The agent saves it**: in any editor, ask your agent to remember something
   (or it saves on its own when you state a fact worth keeping) — it calls

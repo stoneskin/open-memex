@@ -12,6 +12,7 @@ import { cjkIndexText } from "../retrieve/cjk.ts";
 import {
   parse,
   serialize,
+  atomicWriteTextSync,
   ulid,
   msToRfc3339,
   type Frontmatter,
@@ -144,7 +145,7 @@ export function findMemoryFile(id: string): MemoryFile | null {
 }
 
 export function rewriteMemoryFile(mf: MemoryFile): void {
-  fs.writeFileSync(mf.filePath, serialize(mf.fm, mf.body), "utf8");
+  atomicWriteTextSync(mf.filePath, serialize(mf.fm, mf.body));
 }
 
 export interface ChainRepairResult {
@@ -241,7 +242,14 @@ export function supersede(
     updated_at: now,
     supersedes: oldId,
     superseded_by: null,
-    review_state: "draft",
+    // D64: the replacement inherits the old memory's place in the review
+    // flow. A draft stays a draft; anything that had entered review
+    // (proposed/approved/published/rejected) re-enters at "proposed" so
+    // promote can advance it — resetting to "draft" would strand the new
+    // file in the repo, where submit cannot reach it (not the outbox)
+    // and promote refuses drafts.
+    review_state:
+      (oldMf.fm.review_state ?? "draft") === "draft" ? "draft" : "proposed",
     proposed_by: null,
     approved_by: null,
     derived_from: null,
@@ -249,7 +257,7 @@ export function supersede(
   };
   const dir = path.dirname(oldMf.filePath);
   const newPath = path.join(dir, `${newFm.id}.md`);
-  fs.writeFileSync(newPath, serialize(newFm, input.body), "utf8");
+  atomicWriteTextSync(newPath, serialize(newFm, input.body));
   const st = fs.statSync(newPath);
   const newMf: MemoryFile = {
     fm: newFm,
@@ -292,6 +300,16 @@ export function setStatus(id: string, status: MemoryStatus): MemoryFile {
   if (mf.fm.status === "superseded") {
     throw new Error(
       `memory ${id} is superseded (chain-managed); supersede it again instead of changing status directly`,
+    );
+  }
+  // D64: retraction is a one-way door through this path. A retracted
+  // memory was withdrawn on purpose (wrong, sensitive, superseded by
+  // policy); silently flipping it back to active would return it to
+  // recall (retrieval excludes retracted) with no review. Save a new
+  // memory if the content is valid again.
+  if (mf.fm.status === "retracted" && status === "active") {
+    throw new Error(
+      `memory ${id} is retracted and cannot return to active; save the content as a new memory if it is valid again`,
     );
   }
   mf.fm.status = status;

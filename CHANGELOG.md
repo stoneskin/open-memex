@@ -9,6 +9,18 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## P1 fixes: stale answers and stranded files (D64)
+
+Second batch from the whole-project review — the index, the files, and the guidance can no longer quietly disagree:
+
+- The opencode plugin now re-syncs the index before every tool call (previously only at startup): memories added via the CLI or another client are visible right away instead of after a restart.
+- Superseding a published memory re-enters review as `proposed` instead of a stranded `draft` no command could advance; `promote` can move it forward again.
+- All memory-file rewrites are atomic (tmp + rename), not just creates.
+- A retracted memory can't be flipped back to `active` via status changes — save a new memory if the content is valid again.
+- Proposed copies of personal memories are `visibility: internal` (was: `private`, which export silently excluded from team bundles).
+- `uninstall` finds the real global opencode config (`.jsonc` included), and `doctor` checks all eleven MCP tools plus stranded v1 (`user`-scope) memories.
+- `memory_status` output is capped per section; `memory_list` accepts `scope: both`; `forget` notes when the deleted file was in the repo; `where` prints the config path.
+
 ## Correctness fixes from the whole-project review (D63)
 
 Six silent-wrong-answer bugs found by an external three-lens review, each fixed with a regression test:

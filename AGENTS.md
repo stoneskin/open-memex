@@ -151,6 +151,9 @@ AGENTS.md hygiene footer, the MCP handshake, and the tool descriptions.
 
 - Statuses: `active → superseded | deprecated | retracted | archived`. Retrieval excludes `retracted`/`archived`, ranks `active` above `deprecated`.
 - Never hand-write `status: superseded` or half a chain. Use the `supersede` code path (`src/store/lifecycle.ts`): the old record keeps its file, flips to `superseded`, and both sides get `supersedes`/`superseded_by`. Only `active` memories can be superseded.
+- Superseding a memory that had entered review (proposed/approved/published/rejected) starts the replacement at `review_state: proposed` so `promote` can advance it (D64). Never reset it to `draft` — a draft in the repo dir is stranded (submit only moves outbox files).
+- `setStatus` refuses `retracted → active` (D64): retracted content must not silently return to recall. Save a new memory instead.
+- **Every memory-file write goes through `atomicWriteTextSync`** (markdown.ts; tmp + rename). The create path, supersede flips, review transitions, submit landings, migrate/v2migrate rewrites — no direct `fs.writeFileSync` on a memory file. A torn read mid-rewrite parses as a deletion and drops the memory from the index.
 - Chain integrity is self-healing: on read, a missing counterpart is auto-completed with a warning; a dangling pointer warns but is never fabricated. Don't "fix" chains by editing frontmatter directly — let the read path do it.
 - Frontmatter is `schema_version: 2`. The SQLite index schema is versioned separately and rebuilds automatically on version change — never hand-edit `index.db`.
 

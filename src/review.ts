@@ -27,6 +27,7 @@ import { resolveProjectScope } from "./scope.ts";
 import {
   parse as parseMemory,
   serialize,
+  atomicWriteTextSync,
   ulid,
   writeMemoryFile,
   type Frontmatter,
@@ -107,6 +108,12 @@ function copyPersonalToProject(
     id: ulid(),
     scope: "project",
     scope_key: project.key,
+    // D64: the copy is headed for the team. Source visibility (usually
+    // "private") must not ride along: export excludes private by default,
+    // so a private copy would silently vanish from every bundle the team
+    // builds. Proposing IS the act of sharing — the copy is internal;
+    // the personal original keeps its own visibility, untouched.
+    visibility: "internal",
     project_name: project.projectName,
     created_at: now,
     updated_at: now,
@@ -240,7 +247,7 @@ export function promoteMemory(
       },
     ],
   };
-  fs.writeFileSync(mf.filePath, serialize(fm, mf.body), "utf8");
+  atomicWriteTextSync(mf.filePath, serialize(fm, mf.body));
   upsertFromFile({ fm, body: mf.body, filePath: mf.filePath, mtimeMs: Date.now() });
   return { id, from, to, history: fm.review_history };
 }
@@ -494,7 +501,7 @@ export function resolveConflict(target: string): ResolveOutcome {
   if (conflicts.length > 0) return { ok: false, filePath, conflicts };
 
   const fm = merged as unknown as Frontmatter;
-  fs.writeFileSync(filePath, serialize(fm, mergedBody), "utf8");
+  atomicWriteTextSync(filePath, serialize(fm, mergedBody));
   upsertFromFile({ fm, body: mergedBody, filePath, mtimeMs: Date.now() });
   return { ok: true, filePath, autoMerged: [...new Set(autoMerged)] };
 }

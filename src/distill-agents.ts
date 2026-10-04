@@ -86,6 +86,12 @@ export function distillAgentsMarkdown(opts: DistillAgentsOptions): string {
     `- When saving via \`memory_add\`, attach 2–4 aliases (alternate phrasings,`,
     `  synonyms, equivalents in the user's other language) when the install has`,
     `  capture aliases enabled — they make reworded questions find the memory.`,
+    // D64: the skills runbook and the MCP handshake both teach marking
+    // inferred captures source: "inference"; this footer omitted it, so
+    // opencode agents saved distilled conclusions as if the user had
+    // stated them ("tool"). Keep the rubric one voice across surfaces.
+    `- Mark captures you infer (rather than the user stating) with`,
+    `  \`source: "inference"\` — provenance matters more than polish.`,
   );
   lines.push(``);
   return lines.join("\n");

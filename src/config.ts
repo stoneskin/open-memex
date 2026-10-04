@@ -45,25 +45,38 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   captureAliases: true,
   keywordPatterns: [
     "^\\s*remember(?!\\s+for\\s+me)(?:\\s+that|\\s+to)?[:,]?\\s+(.+)$",
-    "^\\s*(?:please\\s+)?(?:note|don'?t\\s+forget)(?:\\s+that)?[:,]?\\s+(.+)$",
+    "^\\s*(?:please\\s+)?note(?:\\s+that)?[:,]?\\s+(.+)$",
+    // D67: "don't forget the wifi password" is narration addressed to the
+    // agent, not a statement to the store. An explicit marker - "that" or a
+    // colon - makes it an instruction ("don't forget that ..." / "don't
+    // forget: ..."). Mirrors 别忘了 below; see D67.
+    "^\\s*(?:please\\s+)?don'?t\\s+forget(?:\\s+that\\s+|[:,]\\s+)(.+)$",
     "^\\s*TIL[:,]?\\s+(.+)$",
     "^\\s*save\\s+(?:this|to\\s+memory)[:,]?\\s+(.+)$",
     // Chinese equivalents
     "^\\s*(?:请)?记住(?!（个人）)[：:,，]?\\s*(.+)$",
     "^\\s*(?:请)?(?:记一下|记录一下)[：:,，]?\\s*(.+)$",
-    "^\\s*别忘了[：:,，]?\\s*(.+)$",
+    // D67: separator required. "别忘了带伞" is narration ("don't forget your
+    // umbrella"); "别忘了：周五不发布" is an instruction to the store. Same
+    // rule as the English "don't forget" above.
+    "^\\s*别忘了[：:,，]\\s*(.+)$",
     // First-person plural: team/project context, NOT personal
     "^\\s*我们认为[：:,，]?\\s*(.+)$",
     "^\\s*我们决定[：:,，]?\\s*(.+)$",
-    "^\\s*帮我们记(?:住|一下)?[：:,，]?\\s*(.+)$",
+    // D67: the boundary applies to the BARE verb only. 记 + (住|录) + 一下 is a
+    // complete verb phrase, so the noun may follow directly ("帮我记住这个配置",
+    // "记一下这个约定"); only a bare 记 needs a separator, otherwise 帮我记得…
+    // would capture mid-word garbage. See D67.
+    "^\\s*(?:请)?帮我们记(?:(?:住|录)(?!得|着)(?:一下)?|一下|(?=[：:,，\\s]|$))[：:,，]?\\s*(.+)$",
   ],
   keywordPersonalPatterns: [
     "^\\s*remember\\s+for\\s+me(?:\\s+that)?[:,]?\\s+(.+)$",
     "^\\s*(?:请)?记住（个人）[：:,，]?\\s*(.+)$",
     // First-person singular: personal scope ("我" → 个人, "我们" → 项目)
     "^\\s*(?:请)?记住我(?!们)[：:,，]?\\s*(.+)$",
-    "^\\s*替我记(?:住|一下)?[：:,，]?\\s*(.+)$",
-    "^\\s*帮我记(?:住|一下)?[：:,，]?\\s*(.+)$",
+    "^\\s*(?:请)?替我记(?:(?:住|录)(?!得|着)(?:一下)?|一下|(?=[：:,，\\s]|$))[：:,，]?\\s*(.+)$",
+    "^\\s*(?:请)?帮我记(?:(?:住|录)(?!得|着)(?:一下)?|一下|(?=[：:,，\\s]|$))[：:,，]?\\s*(.+)$",
+    "^\\s*help\\s+me\\s+remember(?:\\s+that)?[:,]?\\s+(.+)$",
     "^\\s*我觉得[：:,，]?\\s*(.+)$",
     "^\\s*我喜欢[：:,，]?\\s*(.+)$",
   ],

@@ -252,7 +252,7 @@ open-memex uninstall --yes
 
 三种存入方式：
 
-- **关键词触发**（仅 opencode 原生插件）：说 `remember …`、`note that …`、`don't forget …`、`TIL …`、`save this …`——中文 `记住…` / `记一下` / `记录一下` / `别忘了…`——这句话就被存下来，不需要任何工具调用。捕获默认进当前 **project**；`remember for me …`、`记住我…`、`替我记…`、`帮我记…`、`我觉得…`、`我喜欢…` 这类"这是关于我"的信号会改为进 **personal**；`我们决定…`、`帮我们记住…` 等团队语境仍留在项目里。
+- **关键词触发**（仅 opencode 原生插件）：说 `remember …`、`note that …`、`don't forget: …`、`TIL …`、`save this …`——中文 `记住…` / `记一下…` / `记录一下…` / `别忘了：…`——这句话就被存下来，不需要任何工具调用。捕获默认进当前 **project**；`remember for me …`、`help me remember: …`、`记住我…`、`替我记…`、`帮我记…`、`我觉得…`、`我喜欢…` 这类"这是关于我"的信号会改为进 **personal**；`我们决定…`、`帮我们记住…` 等团队语境仍留在项目里。两条降噪规则（D67）：触发词必须是**对存储说的话**，所以叙述型的 `记得…` / `remind me to…` / `别忘了带伞` / `don't forget the wifi password` 一律不触发（加一个分隔符——`别忘了：…`、`don't forget: …`——或用 `that`，才算指令）；捕获内容不足 3 个字符按碎片丢弃，不会存下来——`capture --dry-run` 会明确说明，不再悄悄吞掉。
 - **助手主动保存**：在任何编辑器里，你让助手记住某件事（或者你陈述了一个值得记的事实、它自己判断该保存），它会调用 `memory_add`。上面的路由是启发式规则；你可以明说"存到我的个人记忆"，或用 CLI 加 `--scope` 明确指定。
 - **检查点提议**：一个任务收尾时，助手会提议 1–3 条从这轮工作里提炼的候选记忆——决定及其理由、约定、踩过的坑、走过又放弃的路——只有你点头的那几条才存。不会有任何东西在你不知情时被写下来。
 - **CLI**：`open-memex add "…"`，可选 `--scope` / `--tag` / `--type` / `--aliases`。
@@ -442,6 +442,7 @@ open-memex add "This repo uses better-sqlite3" --type fact
 open-memex search "auth flow"
 open-memex search "auth flow" --explain   # 显示 FTS 表达式、分数、被生命周期藏掉的计数
 open-memex list --scope project
+open-memex list --scope both       # 两个作用域各自最新的，各带一个标题
 open-memex supersede <id> "Updated content"
 open-memex status <id> deprecated
 open-memex forget <id>

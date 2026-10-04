@@ -3,7 +3,7 @@
 import { parse, serialize, ulid, normalizeFrontmatter, msToRfc3339, timeToMs, parseRawFrontmatter, normalizeAliases, type Frontmatter } from "../src/store/markdown.ts";
 import { planConversion, isV2File, migrateV2 } from "../src/store/v2migrate.ts";
 import { redact, findSecret } from "../src/redact.ts";
-import { detectKeywords } from "../src/capture/keywords.ts";
+import { detectKeywords, scanKeywords } from "../src/capture/keywords.ts";
 import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
@@ -280,6 +280,83 @@ ok("remember Toronto… body intact", g5.length === 1 && g5[0]?.content === "Tor
 // 帮我们记 still routes project (the 们-rule survives the new 帮我记 pattern).
 const g6 = detectKeywords("帮我们记住：周五不发布", DEFAULT_CONFIG);
 ok("帮我们记住 → project", g6.length === 1 && g6[0]?.personal === false, JSON.stringify(g6));
+
+console.log("== keywords: review follow-ups (D66) ==");
+// The new 帮我记 pattern initially shipped without the (?:请)? its siblings
+// got in D65 — 请帮我记住 fell through again.
+const f1 = detectKeywords("请帮我记住：这个项目用 pnpm", DEFAULT_CONFIG);
+ok("请帮我记住 → personal", f1.length === 1 && f1[0]?.personal === true && f1[0]?.content === "这个项目用 pnpm", JSON.stringify(f1));
+// 帮我记录一下 used to capture mid-word garbage ("录一下：…"). The verb
+// phrase now includes 记录/记录一下 and must end at a separator boundary.
+const f2 = detectKeywords("帮我记录一下：周五不发布", DEFAULT_CONFIG);
+ok("帮我记录一下 body clean", f2.length === 1 && f2[0]?.content === "周五不发布", JSON.stringify(f2));
+const f3 = detectKeywords("替我记录一下：护照在抽屉里", DEFAULT_CONFIG);
+ok("替我记录一下 body clean", f3.length === 1 && f3[0]?.content === "护照在抽屉里", JSON.stringify(f3));
+// The boundary guard: 帮我记得… is not a capture form and must not fire.
+const f4 = detectKeywords("帮我记得带伞", DEFAULT_CONFIG);
+ok("帮我记得 → no capture", f4.length === 0, JSON.stringify(f4));
+// English personal phrasing on par with "remember for me".
+const f5 = detectKeywords("Help me remember: the wifi is on the fridge note", DEFAULT_CONFIG);
+ok("help me remember → personal", f5.length === 1 && f5[0]?.personal === true, JSON.stringify(f5));
+
+console.log("== keywords: separator-less verb phrases (D67) ==");
+// D66's boundary guard was one notch too strict: it demanded a separator even
+// after a COMPLETE verb phrase, so the most natural form - "帮我记一下这个配置",
+// with the noun straight after 记一下 - stopped matching. The boundary now
+// guards the bare verb only (记 must be followed by 住/录/一下 or a separator),
+// so 记得/记着 still cannot produce mid-word garbage.
+const v1 = detectKeywords("帮我记一下这个配置", DEFAULT_CONFIG);
+ok("帮我记一下这个配置 (no separator)", v1.length === 1 && v1[0]?.personal === true && v1[0]?.content === "这个配置", JSON.stringify(g1));
+const v2 = detectKeywords("帮我记住这个配置", DEFAULT_CONFIG);
+ok("帮我记住这个配置 (no separator)", v2.length === 1 && v2[0]?.content === "这个配置", JSON.stringify(g2));
+const v3 = detectKeywords("替我记一下我住在杭州", DEFAULT_CONFIG);
+ok("替我记一下我住在杭州 (no separator)", v3.length === 1 && v3[0]?.personal === true && v3[0]?.content === "我住在杭州", JSON.stringify(g3));
+const v4 = detectKeywords("帮我们记一下这个约定", DEFAULT_CONFIG);
+ok("帮我们记一下这个约定 → project", v4.length === 1 && v4[0]?.personal === false && v4[0]?.content === "这个约定", JSON.stringify(g4));
+const v5 = detectKeywords("替我记着这个流程", DEFAULT_CONFIG);
+ok("替我记着… → no capture (verb continuation)", v5.length === 0, JSON.stringify(v5));
+const v6 = detectKeywords("帮我们记得每周同步", DEFAULT_CONFIG);
+ok("帮我们记得… → no capture (verb continuation)", v6.length === 0, JSON.stringify(v6));
+const v7 = detectKeywords("帮我记：这个项目用 pnpm", DEFAULT_CONFIG);
+ok("帮我记：… (bare verb + separator)", v7.length === 1 && v7[0]?.content === "这个项目用 pnpm", JSON.stringify(v7));
+
+console.log("== keywords: narration is not a trigger (D67) ==");
+// 记得… / remind me… stay out on purpose (D67): they are imperatives aimed at
+// the agent, and a false trigger writes memory nobody reviewed. The two forms
+// already in the list follow the same rule - an explicit separator (or "that")
+// marks a statement to the store.
+const n1 = detectKeywords("别忘了带伞", DEFAULT_CONFIG);
+ok("别忘了带伞 (narration) → no capture", n1.length === 0, JSON.stringify(n1));
+const n2 = detectKeywords("别忘了：周五不发布", DEFAULT_CONFIG);
+ok("别忘了：… (instruction) → project", n2.length === 1 && n2[0]?.personal === false && n2[0]?.content === "周五不发布", JSON.stringify(n2));
+const n3 = detectKeywords("别忘了,每次发布前更新 changelog", DEFAULT_CONFIG);
+ok("别忘了,… (ascii comma) → project", n3.length === 1 && n3[0]?.content === "每次发布前更新 changelog", JSON.stringify(n3));
+const n4 = detectKeywords("Don't forget the wifi password", DEFAULT_CONFIG);
+ok("don't forget <bare> (narration) → no capture", n4.length === 0, JSON.stringify(n4));
+const n5 = detectKeywords("Don't forget that the wifi password is on the fridge", DEFAULT_CONFIG);
+ok("don't forget that … → project", n5.length === 1 && n5[0]?.content === "the wifi password is on the fridge", JSON.stringify(n5));
+const n6 = detectKeywords("don't forget: the wifi password", DEFAULT_CONFIG);
+ok("don't forget: … → project", n6.length === 1 && n6[0]?.content === "the wifi password", JSON.stringify(n6));
+// The 'note' family is unaffected - it was never the ambiguous form.
+const n7 = detectKeywords("note the API is v2", DEFAULT_CONFIG);
+ok("note <bare> still captures", n7.length === 1 && n7[0]?.content === "the API is v2", JSON.stringify(n7));
+const n8 = detectKeywords("记得每次都要跑迁移脚本", DEFAULT_CONFIG);
+ok("记得… → no capture", n8.length === 0, JSON.stringify(n8));
+const n9 = detectKeywords("remind me to lock the door", DEFAULT_CONFIG);
+ok("remind me to… → no capture", n9.length === 0, JSON.stringify(n9));
+
+console.log("== keywords: the length floor reports instead of swallowing (D67) ==");
+// D67 keeps the >=3-char floor (a trigger that yields 这个 is a match on the
+// trigger, not a memory) but a rejection is no longer silent.
+const d1 = scanKeywords("记住：这个", DEFAULT_CONFIG);
+ok("短 body 不捕获", d1.hits.length === 0, JSON.stringify(d1));
+ok("短 body 有说明 (too-short)", d1.dropped.length === 1 && d1.dropped[0]?.reason === "too-short" && d1.dropped[0]?.content === "这个", JSON.stringify(d1.dropped));
+const d2 = scanKeywords("记住：这个配置", DEFAULT_CONFIG);
+ok(">=3 字的照常捕获", d2.hits.length === 1 && d2.dropped.length === 0, JSON.stringify(d2));
+// A rejected personal match must not leak into the project scope: "记住我：OK"
+// must not be re-captured by the generic 记住 as "我：OK".
+const d3 = scanKeywords("记住我：OK", DEFAULT_CONFIG);
+ok("短 personal 不落到 project", d3.hits.length === 0 && d3.dropped.some((x) => x.reason === "too-short" && x.content === "OK"), JSON.stringify(d3));
 
 console.log("== scope ==");
 const s = resolveProjectScope(process.cwd());

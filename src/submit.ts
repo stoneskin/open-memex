@@ -170,7 +170,7 @@ export function outboxDraftCount(scopeKey: string): number {
   return row?.n ?? 0;
 }
 
-export function formatSyncStatus(st: SyncStatus): string {
+export function formatSyncStatus(st: SyncStatus, opts: { cap?: number } = {}): string {
   const lines: string[] = [];
   lines.push(`project: ${st.projectName} (${st.scopeKey})`);
   // D31: when the index was last synced and what triggered it.
@@ -182,12 +182,16 @@ export function formatSyncStatus(st: SyncStatus): string {
   } else {
     lines.push(`last sync: never`);
   }
-  const CAP = 20;
+  // Agent-facing renders cap each section so a big store can't flood a
+  // tool result; the cap line points at the CLI, which shows everything.
+  const CAP = opts.cap ?? 20;
+  const more = (n: number) =>
+    `  … and ${n} more (full list: open-memex sync-status)`;
   lines.push(`outbox (appdata, pending sync): ${st.outbox.length}`);
   for (const e of st.outbox.slice(0, CAP)) {
     lines.push(`  ${e.id}  [${e.reviewState}] ${e.title}`);
   }
-  if (st.outbox.length > CAP) lines.push(`  … and ${st.outbox.length - CAP} more`);
+  if (st.outbox.length > CAP) lines.push(more(st.outbox.length - CAP));
   const byState = new Map<string, number>();
   for (const e of st.inRepo) byState.set(e.reviewState, (byState.get(e.reviewState) ?? 0) + 1);
   const breakdown = [...byState.entries()].map(([s, n]) => `${n} ${s}`).join(", ") || "none";
@@ -196,7 +200,7 @@ export function formatSyncStatus(st: SyncStatus): string {
     const u = e.gitState === "uncommitted" ? " (uncommitted)" : "";
     lines.push(`  ${e.id}  [${e.reviewState}]${u} ${e.title}`);
   }
-  if (st.inRepo.length > CAP) lines.push(`  … and ${st.inRepo.length - CAP} more`);
+  if (st.inRepo.length > CAP) lines.push(more(st.inRepo.length - CAP));
   if (st.uncommitted.length > 0) {
     lines.push(`note: ${st.uncommitted.length} repo file(s) not yet committed — they ride with the working tree until you commit.`);
   }

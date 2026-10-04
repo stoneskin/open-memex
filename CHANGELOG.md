@@ -9,6 +9,24 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## Keyword capture: what counts as a trigger (D67)
+
+The D66 review left two questions open and introduced one regression. Ruled, not deferred:
+
+- **Fixed a regression:** D66's separator boundary was one notch too strict — it also demanded a separator after a *complete* verb phrase, so `帮我记一下这个配置`, `帮我记住这个配置`, `替我记一下我住在杭州` and `帮我们记一下这个约定` stopped matching. The boundary now guards the bare verb only, so `帮我记得…` still can't produce mid-word garbage.
+- **The ≥3-character body floor stays, but is no longer silent.** `记住：这个` is a fragment, not a memory, so it isn't captured — but `open-memex capture --dry-run` now says why, and `logLevel: debug` logs it. A rejected *personal* match also keeps its line, so `记住我：OK` can no longer fall through to the generic 记住 and be saved as `我：OK`.
+- **Narration is not a trigger.** `记得…`, `remind me to…` and friends stay out on purpose (a false trigger writes unreviewed memory; a missed one costs a sentence). The ambiguous forms already in the list now need an explicit marker: `别忘了：…`, `don't forget: …` and `don't forget that …` capture; bare `别忘了带伞` and `don't forget the wifi password` do not. The `note` family is unchanged.
+- **Test tooling:** the stale-`dist/` guard is now a content fingerprint (`scripts/build-stamp.mjs`) instead of mtimes, which a branch switch could defeat; the agent-facing `memory_status` cap (20 per section + a "full list" pointer) is pinned again after D66's test replaced that coverage.
+
+## Review follow-ups (D66)
+
+Fixes from the follow-up review of the D63–D65 stack:
+
+- Keyword patterns: `请帮我记住…` works (the D65 pattern had missed its `请` prefix), `帮我记录一下：…` / `替我记录一下：…` capture cleanly instead of saving mid-word garbage, `帮我记得…` no longer fires, and `help me remember: …` routes personal like `remember for me`.
+- `open-memex sync-status` (the CLI) shows the full list again — the 20-per-section cap now applies only to agent tool results, whose "… and N more" line points at the CLI. `open-memex list --scope both` matches the `memory_list` tool.
+- `open-memex status --help` documents that retraction is one-way.
+- The full test suite is Windows-safe now (file:// probe imports, USERPROFILE-aware uninstall test) and refuses to run against a stale `dist/` build.
+
 ## Keyword capture gaps (D65)
 
 The most natural phrasings were the ones that fell through:

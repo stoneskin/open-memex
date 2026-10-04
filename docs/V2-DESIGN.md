@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D64 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D67 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -569,8 +569,10 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 - Times: epoch ms → RFC 3339. `priority: N` → `importance: low|normal|high` (1–3 low, 4–7 normal, 8–10 high).
 - `type: instruction` (if any v1 memory used it) → `type: <content-kind>` + `role: instruction`.
 - Index is discarded and rebuilt from markdown files. `open-memex migrate --dry-run` previews everything.
-- Legacy paths: v1 `.my-o-memory/` repo dirs and `~/.my-o-memory/` config are moved to `.open-memex/` /
-  `~/.open-memex/` during migration (originals kept as backup until the user confirms).
+- Legacy paths: v1 `.my-o-memory/` repo dirs and `~/.my-o-memory/` config are moved to the
+  v2 locations (in-repo `.ai/open-memex/`; data root per §4/paths — `OPEN_MEMEX_HOME`, else
+  `%APPDATA%\open-memex` or `$XDG_DATA_HOME/open-memex`) by `open-memex migrate --to-v2`,
+  with the pre-migration tree kept as a dated backup.
 
 ---
 
@@ -1382,6 +1384,65 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   pattern lists. Deliberately NOT changed: multi-line paste triggering
   and the secret-masking windows stay as they are — narrowing them is a
   capture-recall tradeoff that needs an explicit decision, not a drive-by.
+
+- **D66 — follow-up review of the D63–D65 stack.** (1) The 帮/替
+  keyword family is rebuilt around full verb phrases: an optional `请`,
+  `记` + optional `住|录` + optional `一下`, then a separator boundary —
+  `请帮我记住：…` captures (D65's new pattern lacked its own `请`),
+  `帮我记录一下：…` saves `周五不发布` instead of the mid-word garbage
+  `录一下：…`, and `帮我记得…` does not fire. `help me remember: …`
+  joins the personal patterns. Still deliberately unchanged: shortening
+  the ≥3-char content floor (it eats `记一下这个`-type captures, but
+  lowering it invites junk) and adding narrative triggers like `记得…` /
+  `remind me to…` (imperative-vs-narration ambiguity) — both need an
+  explicit decision. (2) `sync-status` CLI shows the full list; the
+  20-line cap binds only agent renders, whose "… and N more" line names
+  the CLI. `list --scope both` reaches CLI parity with the tool, and
+  `status --help` documents the retracted one-way door. (3) The test
+  suite is Windows-safe (probe imports are `file://` URLs, the uninstall
+  test sets `USERPROFILE` since `os.homedir()` ignores `HOME` there)
+  and refuses to run against a stale `dist/`. (4) Sync-error posture is
+  now a stated asymmetry: the MCP adapter lets pre-call sync errors
+  propagate as tool errors; the plugin adapter logs them at debug and
+  answers from a possibly-stale index rather than taking the tools
+  down. (5) §19's legacy-paths text now names the shipped locations;
+  historical decision entries keep their as-decided wording.
+
+- **D67 — keyword capture: a trigger must be a statement to the store.**
+  Three rulings, all from the D66 review's open items plus one bug D66
+  introduced. (1) **The boundary guard guards the bare verb only.** D66 put
+  a separator requirement *after* the whole verb phrase, which killed the
+  commonest Chinese form — `帮我记一下这个配置`, `帮我记住这个配置`,
+  `替我记一下我住在杭州`, `帮我们记一下这个约定` all stopped matching, because
+  the noun follows 记一下/记住 directly. The guard now applies only to a
+  bare 记: `记` + (`住`|`录`, never followed by a verb continuation like
+  得/着) + optional `一下`, or a separator. So mid-word garbage (`帮我记得带伞`
+  → `带伞`) is still impossible while the natural form captures. (2) **The
+  ≥3-char body floor stays, but stops being silent.** A trigger that yields
+  `这个` or `OK` is a match on the trigger, not a memory, and a 2-char memory
+  is noise in every later injection — so the floor is deliberately *not*
+  lowered (a script-aware floor is the escape hatch if short Latin bodies
+  ever matter). What changed is honesty: `capture --dry-run` prints the
+  rejection with the reason, and `logLevel: debug` logs it, so "nothing
+  happened" is never a mystery. A rejected **personal** match also keeps
+  its line claimed — otherwise `记住我：OK` fell through to the generic
+  记住 and was saved as the nonsense project memory `我：OK`. (3) **Narrative
+  forms are not triggers.** `记得…`, `remind me to…`, `I always forget to…`
+  stay out: they are imperatives aimed at the agent, they are the most
+  frequent sentences in any conversation that mentions memory, and a false
+  trigger writes permanent state nobody reviewed — while a missed trigger
+  costs one sentence. The asymmetry is deliberate: precision over recall.
+  For the two ambiguous forms already in the list, an explicit marker now
+  separates narration from instruction: `别忘了：…` / `don't forget: …` /
+  `don't forget that …` capture; bare `别忘了带伞` / `don't forget the wifi
+  password` do not. The `note` family is untouched — `note the API is v2`
+  was never ambiguous. (4) Test/tooling honesty: `test-full.ts` guards the
+  built `dist/` with a content fingerprint (`scripts/build-stamp.mjs`)
+  rather than mtimes — `git checkout` rewrites mtimes, so a branch switch
+  could leave an older-branch dist looking fresh — and the agent-facing
+  `memory_status` cap is pinned again (20 entries per section plus a
+  "full list: open-memex sync-status" pointer) after D66's CLI-parity test
+  had dropped that coverage.
 
 ## Open Questions
 

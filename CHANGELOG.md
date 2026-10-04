@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-04
+
 ## The Node floor is 22.14, because the driver says so (D74)
 
 - **Fixed: every command could die with no output on Node older than 22.14.** `better-sqlite3` 13 (the D72 N-API line) is compiled against Node-API 10, which Node only gained in **22.14.0**. Below that, `require()` succeeds and the first `new Database()` segfaults the process - no message, no stack, exit 139 on macOS/Linux and `0xC0000005` on Windows. Reproduced on win32-x64 with Node 22.12.0; Node 22.23.3 and 24.20.0 are fine, and Node 20 can never work with v13 (upstream [WiseLibs/better-sqlite3#1514](https://github.com/WiseLibs/better-sqlite3/issues/1514), open). open-memex now refuses to load the driver below the floor and says exactly what to do (upgrade Node, or pin `better-sqlite3@^12.11.1`) instead of dying.

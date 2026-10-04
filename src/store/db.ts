@@ -1,5 +1,10 @@
 import { createRequire } from "node:module";
 import { paths } from "../paths.ts";
+import {
+  MIN_NODE_VERSION,
+  nativeDriverFloorMessage,
+  nodeSupportsNativeDriver,
+} from "../runtime-floor.ts";
 
 // Runtime-agnostic SQLite:
 //   - Inside opencode (Bun runtime): bun:sqlite (built-in, no native module load)
@@ -17,6 +22,13 @@ function loadDatabase(): AnyDatabaseCtor {
   if (isBun) {
     // bun:sqlite is a built-in module; only resolvable under the Bun runtime.
     return require("bun:sqlite").Database as AnyDatabaseCtor;
+  }
+  // D74: better-sqlite3 13 is built against Node-API 10, which Node gained in
+  // 22.14.0. Below that floor `require` succeeds and `new Database()` then
+  // segfaults the process with no diagnostic — so refuse before we can crash
+  // and say what to do instead (upstream: WiseLibs/better-sqlite3#1514).
+  if (!nodeSupportsNativeDriver(process.versions.node)) {
+    throw new Error(nativeDriverFloorMessage());
   }
   return require("better-sqlite3") as AnyDatabaseCtor;
 }

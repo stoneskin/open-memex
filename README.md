@@ -53,7 +53,7 @@ depth once you're up and running.
 
 ## Quick start
 
-You need **Node.js ≥ 22.6** (check with `node -v`). Then:
+You need **Node.js ≥ 22.14** (check with `node -v`). Then:
 
 ```sh
 npm install -g open-memex
@@ -163,7 +163,9 @@ no one remembers to write down.
 
 ### Requirements
 
-- **Node.js ≥ 22.6** (`open-memex doctor` verifies this for you)
+- **Node.js ≥ 22.14** (`open-memex doctor` verifies this for you). The floor is
+  the SQLite driver's: `better-sqlite3` 13 is built against Node-API 10, which
+  Node gained in 22.14.0 — older Node segfaults on the first database open.
 
 ### Install the CLI
 
@@ -804,6 +806,18 @@ migration, visibility, reserved names. The [concept guide](./docs/CONCEPTS.md)
 walks through the mental model end to end.
 
 ## Troubleshooting
+
+**Every command dies with no output, or the process crashes (`exit 139`,
+`0xC0000005`, "Segmentation fault").**
+Your Node is older than **22.14** and the bundled SQLite driver cannot load on
+it. `better-sqlite3` 13 is compiled against Node-API 10, which Node only gained
+in 22.14.0; on anything older `require()` succeeds and then the first database
+open segfaults the process with no diagnostic. open-memex now refuses to load
+the driver and says so, but anything already crashing was almost certainly this.
+Check with `node -v`, then either upgrade Node (`nvm install 22.14 && nvm use
+22.14`, or any current 22.x/24.x) or pin the driver down with `npm install
+better-sqlite3@^12.11.1`. `open-memex doctor` reports both the Node floor and a
+live driver probe. Known upstream: WiseLibs/better-sqlite3#1514.
 
 **`open-memex` is not recognized / command not found.**
 A global `npm install -g` puts the `open-memex` launcher in npm's global bin

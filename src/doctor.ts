@@ -10,6 +10,11 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, configSource, DEFAULT_CONFIG, stripJsonComments } from "./config.ts";
 import { paths, homeOverride } from "./paths.ts";
 import { resolveCwdScope } from "./scope.ts";
+import {
+  MIN_NODE_VERSION,
+  nativeDriverFloorMessage,
+  nodeSupportsNativeDriver,
+} from "./runtime-floor.ts";
 import { db, backendName } from "./store/db.ts";
 import { LEGACY_PACKAGE_NAME, opencodeGlobalConfigPath, userMcpConfigPath } from "./init.ts";
 
@@ -37,12 +42,72 @@ const EXPECTED_TOOLS = [
 
 function nodeCheck(): Check {
   const [major, minor] = process.versions.node.split(".").map(Number);
-  const ok = major > 22 || (major === 22 && minor >= 6);
-  return {
-    name: "node",
-    ok,
-    detail: `v${process.versions.node} (need >= 22.6 for --experimental-strip-types)`,
-  };
+  // Two independent floors, and the higher one wins: 22.6 for
+  // --experimental-strip-types, 22.14 for the native SQLite driver (D74).
+  const stripTypesOk = major > 22 || (major === 22 && minor >= 6);
+  const driverOk = nodeSupportsNativeDriver(process.versions.node);
+  const ok = stripTypesOk && driverOk;
+  let detail = `v${process.versions.node}`;
+  if (!stripTypesOk) {
+    detail += ` (need >= 22.6 for --experimental-strip-types)`;
+  } else if (!driverOk) {
+    detail += ` (need >= ${MIN_NODE_VERSION}: better-sqlite3 13 is built against Node-API 10 and segfaults below it)`;
+  } else {
+    detail += " (>= 22.14: ok for type stripping and the SQLite driver)";
+  }
+  return { name: "node", ok, detail };
+}
+
+/**
+ * D74: the native driver used to fail by segfaulting — invisible to any
+ * in-process try/catch. Now that `loadDatabase` refuses below the floor, the
+ * load is safe to attempt here, so a broken driver reports itself here instead
+ * of killing the first command the user runs.
+ */
+function driverCheck(): Check {
+  if (typeof (globalThis as { Bun?: unknown }).Bun !== "undefined") {
+    return { name: "sqlite driver", ok: true, detail: "bun:sqlite (built-in, no native module)" };
+  }
+  // Resolve the driver from THIS package's directory, not from the caller's
+  // cwd: `doctor` routinely runs with cwd set to a user project, where a bare
+  // `require("better-sqlite3")` would not find our node_modules at all.
+  const pkgRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  try {
+    const probe = execFileSync(
+      process.execPath,
+      [
+        "-e",
+        "const p=process.argv[1];const D=require(require.resolve('better-sqlite3',{paths:[p]}));const db=new D(':memory:');db.exec('create table t(a)');db.close();process.stdout.write('ok')",
+        pkgRoot,
+      ],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 },
+    );
+    return {
+      name: "sqlite driver",
+      ok: probe.includes("ok"),
+      detail: probe.includes("ok")
+        ? "better-sqlite3 loaded and opened an in-memory database"
+        : `probe returned ${JSON.stringify(probe)}`,
+    };
+  } catch (err) {
+    const e = err as { status?: number | null; signal?: string | null; stderr?: string };
+    // A native crash arrives as a huge unsigned status (0xC0000005 on Windows,
+    // 139 via SIGSEGV elsewhere). Print both forms - the hex is the one people
+    // recognize from Event Viewer or a shell's `exit=139`.
+    const how = e.signal
+      ? `signal ${e.signal}`
+      : typeof e.status === "number" && e.status > 255
+        ? `exit code ${e.status} (0x${(e.status >>> 0).toString(16).toUpperCase()})`
+        : `exit code ${e.status}`;
+    return {
+      name: "sqlite driver",
+      ok: false,
+      detail:
+        `better-sqlite3 could not open a database (${how}). ` +
+        (e.stderr ? String(e.stderr).trim().split("\n").slice(-2).join(" ") + " " : "") +
+        nativeDriverFloorMessage(),
+    };
+  }
 }
 
 function configCheck(): Check {
@@ -540,7 +605,7 @@ function vscodeMcpCheck(): Check {
 
 export async function runDoctor(): Promise<boolean> {
   console.log("open-memex doctor");
-  const checks: Check[] = [nodeCheck(), configCheck(), scopeCheck(), storageCheck(), lockingCheck(), opencodePluginCheck(), vscodeMcpCheck()];
+  const checks: Check[] = [nodeCheck(), configCheck(), driverCheck(), scopeCheck(), storageCheck(), lockingCheck(), opencodePluginCheck(), vscodeMcpCheck()];
   checks.push(await mcpCheck());
   checks.push(legacyCheck());
   let allOk = true;

@@ -42,7 +42,7 @@
 
 ## 快速开始
 
-需要 **Node.js ≥ 22.6**（用 `node -v` 检查）。然后：
+需要 **Node.js ≥ 22.14**（用 `node -v` 检查）。然后：
 
 ```sh
 npm install -g open-memex
@@ -118,7 +118,7 @@ open-memex 用两种方式接编辑器：原生的 **opencode 插件**，和标�
 
 ### 环境要求
 
-- **Node.js ≥ 22.6**（`open-memex doctor` 会替你核查）
+- **Node.js ≥ 22.14**（`open-memex doctor` 会替你核查）。这个下限来自 SQLite 驱动：`better-sqlite3` 13 是按 Node-API 10 编译的，而 Node 直到 22.14.0 才支持它——更老的 Node 在第一次打开数据库时会直接段错误崩溃。
 
 ### 安装 CLI
 
@@ -560,6 +560,9 @@ npx -y open-memex mcp        # 无需安装
 完整的 scope 模型（键派生、迁移、可见性、保留名）见 [docs/SCOPES.md](./docs/SCOPES.md)（英文）。[概念指南](./docs/CONCEPTS.zh-CN.md)把心智模型完整走了一遍。
 
 ## 故障排查
+
+**每条命令都毫无输出地死掉，或进程直接崩溃（`exit 139`、`0xC0000005`、"Segmentation fault"）。**
+你的 Node 比 **22.14** 老，内置的 SQLite 驱动在它上面加载不了。`better-sqlite3` 13 是按 Node-API 10 编译的，而 Node 直到 22.14.0 才支持；在更老的版本上 `require()` 会成功，然后第一次打开数据库就把进程段错误掉，没有任何诊断信息。open-memex 现在会拒绝加载驱动并明确告诉你，但如果之前就是毫无输出一路崩溃，基本可以确定是这个原因。用 `node -v` 确认后，二选一：升级 Node（`nvm install 22.14 && nvm use 22.14`，或任意当前的 22.x/24.x），或者把驱动降回去：`npm install better-sqlite3@^12.11.1`。`open-memex doctor` 会同时报告 Node 下限和一次真实的驱动探测。上游已知问题：WiseLibs/better-sqlite3#1514。
 
 **`open-memex` 无法识别 / 命令找不到。**
 全局 `npm install -g` 把 `open-memex` 启动器放在 npm 的全局 bin 文件夹里。终端找不到命令，就是这个文件夹不在 PATH 上：

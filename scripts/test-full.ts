@@ -358,74 +358,6 @@ const inTreePage = path.join(PROJ, "page.html");
 r = cliRetry(["inventory", "--format", "html", "--out", inTreePage], PROJ);
 ok("html refuses a worktree path without --allow-personal", r.code !== 0 && !fs.existsSync(inTreePage));
 
-// ---------- 7b. D70: visibility fixes from the 3-C review ----------
-console.log("== D70: honest counts, stable numbers, one guard ==");
-// The guard must not fail open: a --out whose parent directory does not
-// exist used to skip the worktree check (git -C on a missing dir throws)
-// and then die with a raw ENOENT. Outside a worktree the missing directory
-// is the only problem left, so it gets its own message.
-const missingDir = path.join(T, "no-such-dir", "report.json");
-r = cliRetry(["inventory", "--out", missingDir], PROJ);
-ok(
-  "inventory explains a missing parent directory",
-  r.code !== 0 && /does not exist/.test(r.err) && !r.err.includes("ENOENT"),
-  (r.err || r.out).slice(0, 160),
-);
-// ...and inside a worktree the personal-content refusal wins over it.
-const missingInTree = path.join(PROJ, "no-such-dir", "report.json");
-r = cliRetry(["inventory", "--out", missingInTree], PROJ);
-ok(
-  "worktree refusal wins over a missing directory",
-  r.code !== 0 && /git working tree/.test(r.err) && !fs.existsSync(missingInTree),
-  (r.err || r.out).slice(0, 160),
-);
-
-// `open-memex list` is the surface a sceptical user runs first: it must
-// not look complete when it isn't (the tool already discloses).
-const fillerIds: string[] = [];
-for (let i = 0; i < 22; i++) fillerIds.push(addMem([`fulltest d70 filler ${i} padding text`], PROJ));
-r = cliRetry(["list", "--limit", "5"], PROJ);
-ok("cli list discloses truncation", /… and \d+ more not shown/.test(r.out), r.out.slice(-160));
-ok("cli list renders the structured inventory line", /^\d+\. \[[a-z]+\] id=\S+ created=\S+ source=/m.test(r.out), r.out.slice(0, 200));
-// Numbering runs across the whole listing, so a number names one entry.
-r = cliRetry(["list", "--scope", "both", "--limit", "5"], PROJ);
-const nums = [...r.out.matchAll(/^(\d+)\. \[/gm)].map((m) => Number(m[1]));
-ok(
-  "numbers are unique and ascending across scopes",
-  nums.length > 2 && nums.every((n, i) => i === 0 || n === nums[i - 1]! + 1) && new Set(nums).size === nums.length,
-  JSON.stringify(nums),
-);
-for (const id of fillerIds) cliRetry(["forget", id], PROJ);
-
-// A retraction of an in-repo memory is a local working-tree edit until it
-// is committed - "hidden" must not read as "gone for the team".
-const repoHideId = addMem(["fulltest d70 repo retraction"], PROJ);
-cliRetry(["submit", repoHideId], PROJ);
-r = cliRetry(["forget", repoHideId, "--soft"], PROJ);
-ok(
-  "soft hide of a repo memory warns about the commit",
-  /commit and push/i.test(r.out) && /team still sees it/i.test(r.out),
-  r.out.slice(0, 200),
-);
-r = cliRetry(["forget", repoHideId], PROJ);
-
-// An empty scope must still appear: "this project has nothing" is an answer.
-const emptyProj = mkproj("empty-proj");
-r = cliRetry(["inventory", "--scope", "project"], emptyProj);
-ok("inventory shows an empty scope as 0", /Project:.*\(0\)/.test(r.out) && /nothing remembered/i.test(r.out), r.out.slice(0, 200));
-
-// JSON: no absolute local paths, and the format id records the change.
-r = cliRetry(["inventory", "--format", "json"], PROJ);
-const invJson2 = JSON.parse(r.out.slice(r.out.indexOf("{")));
-ok(
-  "inventory json is /2 and carries no absolute file paths",
-  invJson2.format === "open-memex-inventory/2" &&
-    !JSON.stringify(invJson2).includes(TESTENV.MY_O_MEMORY_HOME as string) &&
-    !/"file":/.test(JSON.stringify(invJson2)),
-  `${invJson2.format} ${JSON.stringify(invJson2).slice(0, 120)}`,
-);
-ok("inventory json counts hidden without the entries", invJson2.hidden !== undefined && !("hiddenEntries" in invJson2));
-
 // ---------- 8. pull / push ----------
 console.log("== pull / push ==");
 r = cliRetry(["push"], PROJ);
@@ -694,6 +626,147 @@ console.log("== D64: p1 fixes (propose visibility / supersede published / status
   r = cliRaw(["uninstall", "--client", "opencode", "--global", "--yes"], PROJ, { ...TESTENV, HOME: home2, USERPROFILE: home2 });
   const afterText = fs.readFileSync(jsoncFile, "utf8");
   ok("uninstall finds and cleans .jsonc global config", r.code === 0 && !/open-memex/.test(afterText), (r.out + r.err).slice(0, 160) + " || " + afterText.slice(0, 120));
+}
+
+// ---------- 12. D70: the visibility fixes from the 3-C review ----------
+// Last section on purpose: nothing here may perturb the flows above it.
+// It writes only into a scratch project and into appdata fixtures (no
+// commits in PROJ, no extra CLI spawns beyond a handful) so the suite stays
+// order-independent and cheap — the shared PROJ git state is never dirtied.
+console.log("== D70: honest counts, stable numbers, one guard ==");
+{
+  const fixture = (dir: string, id: string, body: string, scopeKey: string) => {
+    const now = new Date().toISOString();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, `${id}.md`),
+      `---
+id: ${id}
+schema_version: 2
+scope_key: ${scopeKey}
+scope: project
+visibility: internal
+project_name: d70
+type: fact
+role: knowledge
+importance: normal
+status: active
+tags: []
+source: cli
+created_at: "${now}"
+updated_at: "${now}"
+supersedes: null
+superseded_by: null
+review_state: draft
+proposed_by: null
+approved_by: null
+derived_from: null
+review_note: null
+review_history: []
+---
+
+${body}
+`,
+      "utf8",
+    );
+  };
+
+  // The guard must not fail open: a --out whose parent directory does not
+  // exist used to skip the worktree check (git -C on a missing dir throws)
+  // and then die with a raw ENOENT. Outside a worktree the missing directory
+  // is the only problem left, so it gets its own message.
+  const missingDir = path.join(T, "no-such-dir", "report.json");
+  r = cliRetry(["inventory", "--out", missingDir], PROJ);
+  ok(
+    "inventory explains a missing parent directory",
+    r.code !== 0 && /does not exist/.test(r.err) && !r.err.includes("ENOENT"),
+    (r.err || r.out).slice(0, 160),
+  );
+  // ...and inside a worktree the personal-content refusal wins over it.
+  const missingInTree = path.join(PROJ, "no-such-dir", "report.json");
+  r = cliRetry(["inventory", "--out", missingInTree], PROJ);
+  ok(
+    "worktree refusal wins over a missing directory",
+    r.code !== 0 && /git working tree/.test(r.err) && !fs.existsSync(missingInTree),
+    (r.err || r.out).slice(0, 160),
+  );
+
+  // `open-memex list` is the surface a sceptical user runs first: it must
+  // not look complete when it isn't. Fixtures go straight into the outbox
+  // (appdata, never the repo), so this needs no commits and no cleanup in git.
+  const d70Key = (/project:\s*(\S+)/.exec(cli(["where"], PROJ).out) || [])[1] ?? "";
+  const outboxDir = path.join(TESTENV.MY_O_MEMORY_HOME as string, "memories", d70Key);
+  const fillerIds: string[] = [];
+  for (let i = 0; i < 22; i++) {
+    const cid = `01P1D70${String(i).padStart(19, "0")}`;
+    fillerIds.push(cid);
+    fixture(outboxDir, cid, `fulltest d70 filler ${i} padding text`, d70Key);
+  }
+  cli(["reindex"], PROJ);
+  r = cliRetry(["list", "--limit", "5"], PROJ);
+  ok("cli list discloses truncation", /… and \d+ more not shown/.test(r.out), r.out.slice(-160));
+  ok(
+    "cli list renders the structured inventory line",
+    /^\d+\. \[[a-z]+\] id=\S+ created=\S+ source=/m.test(r.out),
+    r.out.slice(0, 200),
+  );
+  // Numbering runs across the whole listing, so a number names one entry.
+  r = cliRetry(["list", "--scope", "both", "--limit", "5"], PROJ);
+  const nums = [...r.out.matchAll(/^(\d+)\. \[/gm)].map((m) => Number(m[1]));
+  ok(
+    "numbers are unique and ascending across scopes",
+    nums.length > 2 && new Set(nums).size === nums.length && nums[0] === 1 && nums.every((n, i) => i === 0 || n === nums[i - 1]! + 1),
+    JSON.stringify(nums),
+  );
+  // The text report numbers the same way.
+  r = cliRetry(["inventory", "--scope", "project"], PROJ);
+  const textNums = [...r.out.matchAll(/^(\d+)\. \[/gm)].map((m) => Number(m[1]));
+  ok(
+    "inventory text numbers continuously too",
+    textNums.length > 2 && new Set(textNums).size === textNums.length && textNums.every((n, i) => i === 0 || n === textNums[i - 1]! + 1),
+    JSON.stringify(textNums.slice(0, 8)),
+  );
+  for (const id of fillerIds) fs.rmSync(path.join(outboxDir, `${id}.md`), { force: true });
+  cli(["reindex"], PROJ);
+
+  // A retraction of an in-repo memory is a local working-tree edit until it
+  // is committed - "hidden" must not read as "gone for the team". Runs in its
+  // own project so PROJ's git state stays clean for the sections above.
+  const d70Proj = mkproj("d70-proj");
+  const repoHideId = addMem(["fulltest d70 repo retraction"], d70Proj);
+  cliRetry(["submit", repoHideId], d70Proj);
+  r = cliRetry(["forget", repoHideId, "--soft"], d70Proj);
+  ok(
+    "soft hide of a repo memory warns about the commit",
+    /commit and push/i.test(r.out) && /team still sees it/i.test(r.out),
+    r.out.slice(0, 200),
+  );
+  r = cliRetry(["forget", repoHideId], d70Proj);
+  ok("hard forget of a hidden repo memory still deletes", r.code === 0 && /deleted/i.test(r.out), (r.err || r.out).slice(0, 120));
+
+  // An empty scope must still appear: "this project has nothing" is an answer.
+  const emptyProj = mkproj("empty-proj");
+  r = cliRetry(["inventory", "--scope", "project"], emptyProj);
+  ok(
+    "inventory shows an empty scope as 0",
+    /Project:.*\(0\)/.test(r.out) && /nothing remembered/i.test(r.out),
+    r.out.slice(0, 200),
+  );
+
+  // JSON: no absolute local paths, and the format id records the change.
+  r = cliRetry(["inventory", "--format", "json"], PROJ);
+  const invJson2 = JSON.parse(r.out.slice(r.out.indexOf("{")));
+  ok(
+    "inventory json is /2 and carries no absolute file paths",
+    invJson2.format === "open-memex-inventory/2" &&
+      !JSON.stringify(invJson2).includes(TESTENV.MY_O_MEMORY_HOME as string) &&
+      !/"file":/.test(JSON.stringify(invJson2)),
+    `${invJson2.format} ${JSON.stringify(invJson2).slice(0, 120)}`,
+  );
+  ok(
+    "inventory json counts hidden without the entries",
+    invJson2.hidden !== undefined && !("hiddenEntries" in invJson2),
+  );
 }
 
 console.log("\n================ SUMMARY ================");

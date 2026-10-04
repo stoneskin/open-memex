@@ -91,10 +91,10 @@ export const TOOL_DESCRIPTIONS = {
 
 /** Shared zod input shapes (raw shape, not z.object — hosts wrap as needed). */
 export const scopeArg = z
-  .enum(["project", "personal", "user"])
+  .enum(["project", "personal"])
   .optional()
   .describe(
-    "Memory scope. `project` = tied to this repo. `personal` = global across all your projects. `user` is a deprecated alias of `personal`. Default: project.",
+    "Memory scope. `project` = tied to this repo. `personal` = global across all your projects. Default: project.",
   );
 
 export const aliasesArg = z
@@ -128,7 +128,7 @@ export const memorySearchArgs = {
     .min(1)
     .describe("Free-text query. File paths, error strings, identifiers work well."),
   scope: z
-    .enum(["project", "personal", "user", "both"])
+    .enum(["project", "personal", "both"])
     .optional()
     .describe("Which scope(s) to search. Default: both."),
   type: z.string().optional().describe("Restrict to memories of this type."),
@@ -138,7 +138,7 @@ export type MemorySearchArgs = z.infer<z.ZodObject<typeof memorySearchArgs>>;
 
 export const memoryListArgs = {
   scope: z
-    .enum(["project", "personal", "user", "both"])
+    .enum(["project", "personal", "both"])
     .optional()
     .describe(
       "Which scope(s) to list. `project` = tied to this repo. `personal` = global across all your projects. `both` lists each scope's newest. Default: project.",

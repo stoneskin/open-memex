@@ -22,6 +22,8 @@ memory on your machine.
 - **One memory, every agent**: wire up several editors with one command; they
   share the same memory instead of keeping separate silos.
 
+![Terminal demo: two memories saved on Monday, recalled by search in a fresh session on Friday](./docs/assets/open-memex-demo.svg)
+
 New here? This README takes you from install to a working memory in about a
 minute. The [concept guide](./docs/CONCEPTS.md) explains the mental model in
 depth once you're up and running.

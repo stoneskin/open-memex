@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D71 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D72 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -1517,6 +1517,8 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   divergence (a self-healed dangling chain pointer) instead of claiming
   equivalence. Deliberately NOT done, pending a decision: HTML i18n and a
   size cap for very large stores.
+
+- **D72 — the Node SQLite driver moves to the N-API line.** The D70 suite was stable on Windows and failed in shifting clusters on Linux under Node 24.20: individual CLI processes intermittently died with `SIGABRT` in `Statement::~Statement()` (`RemoveEnvironmentCleanupHook ... Assertion failed: (env) != nullptr`) and lost their stdout, so unrelated supersede / submit / inventory checks failed depending on which process the GC reaped. The work itself had always landed; only the exit path was broken. Root cause is upstream: Node 24.19 changed `node::ObjectWrap` cleanup-hook registration, and `better-sqlite3` <13 (raw `node::ObjectWrap`) can finalize a prepared statement from a GC callback with no Environment entered. `better-sqlite3` 13 is the N-API rewrite and removes that path; it still supports Node ≥22, and every API this repo uses (`Database`, `prepare`, `exec`, `pragma`-style PRAGMAs, `close`) is unchanged. The suite's crash-retry shim stays as belt-and-braces for older installs, but the shipped driver no longer needs it on current Node. Verified: three consecutive Linux `test-full` runs at 114/114 plus a 40-command add/list/search loop with zero aborts (was ~50% per process).
 
 ## Open Questions
 

@@ -73,7 +73,7 @@
 
 ## H. 已知问题观察
 
-- [ ] better-sqlite3 在 Node 24 退出时偶发 crash（exit 134）：注意是否丢数据（预期：不丢，只影响退出码）
+- [x] better-sqlite3 在 Node 24 退出时偶发 crash（exit 134）：D72 已把驱动升到 13（N-API 线）；Linux Node 24.20 连续 3 次 `test-full` 114/114。Windows 真机仍需确认同一版本下无 `SIGABRT` / exit 134，且不丢数据。
 - [ ] `memory_list` 默认只列 project scope 是否符合预期（Stone 已定保持现状）
 
 ---

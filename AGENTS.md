@@ -162,15 +162,17 @@ AGENTS.md hygiene footer, the MCP handshake, and the tool descriptions.
 
 Keyword capture fires from `chat.message` on the user's message parts (`UserMessage`). Patterns live in `src/capture/keywords.ts` / config `keywordPatterns`; regex group 1 is the memory body. Scope routing: personal patterns (`cfg.keywordPersonalPatterns`) force the personal scope — the rule is 我 → personal (记住我/替我记/帮我记/我觉得/我喜欢/remember for me/help me remember), 我们 → current scope (我们认为/我们决定/帮我们记住); personal patterns run first and claim their line so a generic trigger can't double-fire (a rejected personal match keeps the claim — see D67).
 
+D73 — one user statement, one memory. The hook and the agent are two writers for one turn, and only the hook knows the sentence is stored. Both hooks therefore take the session id (`chat.message` on v1, `prompt` on v2), `captureFromText` records each capture in `PluginState.captures`, and the system/context hook pushes the hand-off note (`captureHandoff` → `formatHandoffBlock`, `src/capture/handoff.ts`) once per capture. `memory_add` additionally refuses a write overlapping a `source: keyword`/`user` memory created in the same scope within `TURN_ECHO_WINDOW_MS` (`findTurnEcho`, threshold `TURN_ECHO_THRESHOLD` = 0.28) and returns the stored id plus the supersede route. Keep the note, the refusal text, `TOOL_DESCRIPTIONS.memory_add`, the skill, and this paragraph saying the same thing — an agent that reads only one of them still has to behave. Never lower `TURN_ECHO_THRESHOLD` to catch more: the measured reason it is high is that an agent's gloss (0.211) and a genuinely new fact from the same sentence (0.214) are lexically indistinguishable.
+
 D67 rules for any new pattern: a trigger must be a **statement to the store**, not narration — 记得… / `remind me to…` are deliberately out, and the ambiguous forms require an explicit marker (`别忘了：…`, `don't forget: …`, `don't forget that …`). The 帮/替/我们 family takes the full verb phrase (`记` + optional `住|录`, never followed by a verb continuation) + optional `一下`; the separator boundary applies to the **bare** verb only, so `帮我记一下这个配置` captures while `帮我记得带伞` cannot produce mid-word garbage. Bodies under `MIN_CAPTURE_CHARS` (3) are rejected as fragments — never lower the floor silently; `scanKeywords` returns the drop so `capture --dry-run` and the debug log can report it.
 
 Context injection happens exactly once per session in `experimental.chat.system.transform`, guarded by an in-memory `Set<sessionID>` in `src/index.ts`. It is not persisted — restarting opencode re-injects on the next first turn.
 
 ## Design constraints — read the frozen design first
 
-`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D72; open questions tracked at the end of the doc). Per its §12:
+`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D73; open questions tracked at the end of the doc). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
-built this way" (principles, iron rules, the append-only decision log, currently D1–D72). Before changing
+built this way" (principles, iron rules, the append-only decision log, currently D1–D73). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
 schema, MCP tools, CLI contract), read the relevant design section — the decision
 log records what was already considered and rejected.

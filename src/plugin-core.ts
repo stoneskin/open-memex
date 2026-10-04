@@ -12,6 +12,12 @@ import {
 } from "./store/markdown.ts";
 import { buildContextBlock } from "./retrieve/inject.ts";
 import { detectKeywords } from "./capture/keywords.ts";
+import {
+  TURN_ECHO_WINDOW_MS,
+  formatHandoffBlock,
+  freshCaptures,
+  type CaptureRecord,
+} from "./capture/handoff.ts";
 import { findDuplicates } from "./store/lifecycle.ts";
 import { redact } from "./redact.ts";
 
@@ -28,6 +34,12 @@ export interface PluginState {
   scope: Scope;
   /** Sessions that already received the one-time context injection. */
   injectedSessions: Set<string>;
+  /**
+   * D73: what the keyword hook stored this session, so the agent can be told
+   * before it re-saves the same statement. In memory only, like
+   * `injectedSessions` — never persisted, pruned by the turn window.
+   */
+  captures: Map<string, CaptureRecord[]>;
 }
 
 /**
@@ -60,15 +72,21 @@ export function bootstrapPlugin(root: string): PluginState {
   } catch (err) {
     console.error("[open-memex] init failed:", err);
   }
-  return { cfg, scope, injectedSessions: new Set<string>() };
+  return { cfg, scope, injectedSessions: new Set<string>(), captures: new Map() };
 }
 
 /**
  * Keyword capture (§ capture): scan one user message for "remember …"
  * triggers and save each hit. Shared by the v1 `chat.message` hook and
- * the v2 session `prompt` hook — both hand us the message text.
+ * the v2 session `prompt` hook — both hand us the message text and the
+ * session id. The session id is what makes the D73 hand-off possible: without
+ * it the agent never learns the sentence is already stored.
  */
-export function captureFromText(text: string, state: PluginState): void {
+export function captureFromText(
+  text: string,
+  state: PluginState,
+  sessionID?: string,
+): void {
   const { cfg, scope } = state;
   if (!cfg.keywordCaptureEnabled || !text) return;
   const hits = detectKeywords(text, cfg);
@@ -119,10 +137,51 @@ export function captureFromText(text: string, state: PluginState): void {
       // offers no toast channel, so the plugin log is the feedback surface.
       const preview = content.length > 60 ? content.slice(0, 60) + "…" : content;
       console.log(`[open-memex] remembered → ${target.kind} scope: "${preview}"`);
+      // D73 hand-off: the agent gets told about this capture in the turn's
+      // system context, so it does not save the same statement again.
+      recordCapture(state, sessionID, { id: fm.id, scopeKey: target.key, content, at: now });
     } catch (err) {
       console.error("[open-memex] keyword capture failed:", err);
     }
   }
+}
+
+/** Note one hook capture against its session (D73). No-op without a session. */
+function recordCapture(
+  state: PluginState,
+  sessionID: string | undefined,
+  record: CaptureRecord,
+): void {
+  if (!sessionID) return;
+  const list = state.captures.get(sessionID) ?? [];
+  list.push(record);
+  state.captures.set(sessionID, list);
+}
+
+/**
+ * D73 hand-off note (a): what the keyword hook already stored for this
+ * session, delivered once per capture into the turn's system context. The
+ * agent cannot avoid re-saving a statement it cannot see is stored, so the
+ * store tells it. Returns "" when there is nothing new to hand off; stale
+ * records are pruned (in-memory only, like `injectedSessions`).
+ *
+ * Both host adapters push this from their system/context hook — the one that
+ * runs before the model request, i.e. after `chat.message` / `prompt`.
+ */
+export function captureHandoff(sessionID: string, state: PluginState): string {
+  if (!sessionID) return "";
+  const list = state.captures.get(sessionID);
+  if (!list || list.length === 0) return "";
+  const now = Date.now();
+  const fresh = freshCaptures(list, now);
+  if (fresh.length !== list.length) {
+    if (fresh.length === 0) state.captures.delete(sessionID);
+    else state.captures.set(sessionID, fresh);
+  }
+  const pending = fresh.filter((r) => !r.delivered);
+  if (pending.length === 0) return "";
+  for (const r of pending) r.delivered = true;
+  return formatHandoffBlock(pending);
 }
 
 /**

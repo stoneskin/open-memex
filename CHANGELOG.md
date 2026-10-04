@@ -9,9 +9,17 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## One thing you said is one memory (D73)
+
+Saying "remember ." used to save the same statement up to three times: the keyword hook stored your sentence verbatim with no agent in the loop, then the agent - which could see the chat but not the store - saved its own paraphrase beside it, and `memory_add`'s near-duplicate check scored the two too far apart (0.21-0.38 against a 0.80 bar) to notice. `open-memex audit` reported zero near-duplicates while three copies sat in the folder, and search returned all of them.
+
+- **The agent is told what was already stored.** When the keyword hook captures a sentence, the plugin records it against the session and the next system context carries a short note naming the stored memory. Do not save that text again in any rewording; save only what it does not contain, or `memory_supersede` it. Delivered once per capture, in memory only (nothing new is written to disk).
+- **`memory_add` refuses the echo anyway.** A write that overlaps a memory captured from your own words in the same scope within the last 10 minutes is refused with the stored id, as a deterministic backstop for when the note is not enough. The bar is deliberately high (0.28 token overlap) and never applies to the agent's own inferences - a distinct fact the same sentence carried still saves normally. A refusal is recoverable: supersede the stored one, or re-save with only the new information.
+- Reports nothing and changes no data: existing memories are not merged or rewritten, and the near-duplicate notice for ordinary agent saves is unchanged.
+
 ## Node 24 CLI aborts: SQLite driver moves to the N-API line (D72)
 
-- **Fixed: CLI processes intermittently aborted on Node 24.19+.** `better-sqlite3` 11 could finalize a prepared statement from a garbage-collection callback after Node's environment was gone (`RemoveEnvironmentCleanupHook ... Assertion failed`), killing the process with `SIGABRT` and losing its output even though the memory work had already landed. The driver is now `better-sqlite3` 13 (the N-API rewrite; Node ≥22 unchanged) — same API surface, no protocol or data change. If you build from source on Node 24.19+, reinstall dependencies so the new driver is picked up.
+- **Fixed: CLI processes intermittently aborted on Node 24.19+.** `better-sqlite3` 11 could finalize a prepared statement from a garbage-collection callback after Node's environment was gone (`RemoveEnvironmentCleanupHook ... Assertion failed`), killing the process with `SIGABRT` and losing its output even though the memory work had already landed. The driver is now `better-sqlite3` 13 (the N-API rewrite; Node �22 unchanged) - same API surface, no protocol or data change. If you build from source on Node 24.19+, reinstall dependencies so the new driver is picked up.
 
 ## Non-git folders shared one scope bucket (D71)
 

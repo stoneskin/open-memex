@@ -25,6 +25,12 @@ open-memex add "I prefer concise diffs" --scope personal   # applies everywhere
 Keep each memory one self-contained statement. Scope routing: facts about the
 user ("I"/"me") → `personal`; everything else → the current project.
 
+One thing the user said is one memory. When their own wording triggered keyword
+capture (`remember …`, `记住…`), that sentence is already stored — do not save it
+again in any rewording. Save only what the stored text does not contain, as its
+own statement; if your version replaces it, use `memory_supersede`. `memory_add`
+refuses the echo and hands you the stored id.
+
 Worth saving: decisions and their reasons, preferences, conventions, gotchas,
 approaches tried and abandoned. Not worth saving: one-off task details or
 anything re-derivable from the code.

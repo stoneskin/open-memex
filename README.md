@@ -375,7 +375,11 @@ Three ways memories get in:
   `don't forget the wifi password` never fire (add a separator — `别忘了：…`,
   `don't forget: …` — or `that` to make it an instruction); and a captured body
   under 3 characters is rejected as a fragment rather than saved — `capture
-  --dry-run` says so instead of dropping it silently.
+  --dry-run` says so instead of dropping it silently. A trigger also owns its
+  own sentence: the plugin tells the agent what it just stored, and a
+  `memory_add` that re-saves the same words within the next few minutes is
+  refused with the stored id (D73) — one thing you said is one memory, not
+  three copies of it.
 - **The agent saves it**: in any editor, ask your agent to remember something
   (or it saves on its own when you state a fact worth keeping) — it calls
   `memory_add`. The routing above is a heuristic; you can always say "save this

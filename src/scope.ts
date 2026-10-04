@@ -68,6 +68,24 @@ export function resolveCwdScope(worktree: string): Scope {
   return scopeFromSeed(seed, projectName);
 }
 
+/** Pick the directory that seeds scope resolution from a host's candidate
+ *  roots. OpenCode v1 hands the plugin both `worktree` (the repo root — but
+ *  the filesystem root, e.g. `C:\` or `/`, when the opened folder is not a
+ *  git repo) and `directory` (the folder actually opened). Seeding on a
+ *  filesystem root collapses every non-git folder on a drive into one shared
+ *  `project__workspace__…` scope (D71), so prefer `worktree` only when it is
+ *  a real directory below the filesystem root. */
+export function pickScopeRoot(
+  worktree?: string | null,
+  directory?: string | null,
+): string {
+  const isFsRoot = (p: string) => path.parse(p).root === p;
+  if (worktree && !isFsRoot(worktree)) return worktree;
+  if (directory) return directory;
+  if (worktree) return worktree;
+  return process.cwd();
+}
+
 export function resolveProjectScope(worktree: string): Scope {
   const target = worktree && worktree.length > 0 ? worktree : ".";
   const remote = tryGitRemote(target);

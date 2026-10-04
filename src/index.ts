@@ -5,6 +5,7 @@ import {
   captureFromText,
   injectOnce,
 } from "./plugin-core.ts";
+import { pickScopeRoot } from "./scope.ts";
 import { makeTools } from "./tools/memory.ts";
 import { v2Plugin } from "./opencode-v2.ts";
 
@@ -19,8 +20,9 @@ import { v2Plugin } from "./opencode-v2.ts";
  * type-only (D58), and v2's decode is structural.
  */
 const server: Plugin = async ({ worktree, directory }) => {
-  const roots = worktree || directory || process.cwd();
-  const state = bootstrapPlugin(roots);
+  // v1's `worktree` is the filesystem root for non-git folders — never seed a
+  // scope on it (D71). `pickScopeRoot` falls back to the opened `directory`.
+  const state = bootstrapPlugin(pickScopeRoot(worktree, directory));
   const tools = makeTools(() => state.scope, state.cfg);
 
   return {

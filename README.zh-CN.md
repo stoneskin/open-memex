@@ -4,6 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/open-memex.svg)](https://www.npmjs.com/package/open-memex)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+[![open-memex MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/stoneskin/open-memex/badges/score.svg)](https://glama.ai/mcp/servers/stoneskin/open-memex)
 
 [English README](./README.md)
 

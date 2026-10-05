@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- Dropped the deprecated `user` value from the MCP tools' advertised `scope` enums (`personal` is the only global-scope name now; the storage layer still migrates v1 `user` data automatically).
+
 - Added a root `Dockerfile` (multi-stage, starts the stdio MCP server via `node dist/cli.js mcp`) so container-based directories such as Glama can build, start, and introspect the server.
 
 - Both READMEs now open the Core concepts section with an architecture diagram (English and Chinese versions in `docs/assets/`).

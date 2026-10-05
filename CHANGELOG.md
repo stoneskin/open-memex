@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- Added a root `Dockerfile` (multi-stage, starts the stdio MCP server via `node dist/cli.js mcp`) so container-based directories such as Glama can build, start, and introspect the server.
+
 - Both READMEs now open the Core concepts section with an architecture diagram (English and Chinese versions in `docs/assets/`).
 
 ## [0.7.2] - 2026-10-04

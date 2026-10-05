@@ -1,6 +1,6 @@
 # OpenMemex — Design Document (protocol v0.2)
 
-**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D75 are settled; open questions are tracked at the end of this document.
+**Status:** FROZEN — protocol v0.2 (2026-09-26). Decisions D1–D76 are settled; open questions are tracked at the end of this document.
 **Author:** Stone, with 小沐
 **Changelog vs v1:** incorporates round-3 review from Perplexity, Grok, Gemini, ChatGPT, DeepSeek.
 Key changes: Design Principles section; `role` separated from `type`; two iron rules;
@@ -1591,6 +1591,8 @@ requirement: personal data never touches third-party services). Benchmarks to tr
   size cap for very large stores.
 
 - **D75 — closed questions leave the list; competitor-inspired directions enter it (2026-10-04).** The Open Questions section is a working list, not an archive: the entries decided in D56 (host parity), D57 (retrieval explainability / memory health), D61 (checkpoint proactivity, capture criteria, retrieval layers 2–3), and D68 (memory visibility), plus the retrieval-robustness entry whose three cheap layers all shipped, are removed; the decisions remain the record. A same-day scan of five Glama-listed memory servers (auxly-memory-cli, agent-memory, remnic, Agent-Memory-Bridge, memtomem, memryzed) confirmed the current wedge — proactive in-session capture + one memory shared across editors + PR-based team sharing — appears in none of them whole. Borrowable directions are recorded instead: four new open questions (retrieval evaluation gate, per-client trust levels, cold-start import, session working state) and one roadmap candidate (`doctor` mis-registration check). Nothing here commits implementation; each direction needs its own design pass.
+
+- **D76 — tool annotations must tell the truth (2026-10-05).** `memory_pr_status` declared `readOnlyHint: true` while `apply=true` writes local review states (caught by Glama's TDQS evaluation of v0.7.2, 4.0/5). Structured hints are part of the protocol surface: all 11 tools now declare read-only / destructive / open-world hints that match their behavior, descriptions route between sibling tools instead of leaving agents to guess, and `scripts/smoke-mcp.ts` guards the pr_status combination. Description honesty is held to the same standard as behavior: ranking claims, defaults, and error semantics in tool text must match the code.
 
 ## Open Questions
 

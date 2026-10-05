@@ -209,6 +209,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_add,
       inputSchema: z.object(memoryAddArgs),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     withSync((args) => toMcp(withOutboxNote(getScope().key, addMemory(getScope, cfg, args), "call memory_status to review"))),
   );
@@ -218,7 +219,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_search,
       inputSchema: z.object(memorySearchArgs),
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     withSync((args) => toMcp(searchMemories(getScope, args))),
   );
@@ -228,7 +229,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_list,
       inputSchema: z.object(memoryListArgs),
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     withSync((args) => toMcp(listMemories(getScope, args))),
   );
@@ -238,6 +239,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_supersede,
       inputSchema: z.object(memorySupersedeArgs),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     withSync((args) => toMcp(withOutboxNote(getScope().key, supersedeMemory(cfg, args), "call memory_status to review"))),
   );
@@ -247,7 +249,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_forget,
       inputSchema: z.object(memoryForgetArgs),
-      annotations: { destructiveHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     withSync((args) => toMcp(withOutboxNote(getScope().key, forgetMemory(args), "call memory_status to review"))),
   );
@@ -257,7 +259,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_status,
       inputSchema: z.object(memoryStatusArgs),
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     withSync((_args) => toMcp(statusMemories())),
   );
@@ -267,6 +269,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_submit,
       inputSchema: z.object(memorySubmitArgs),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     withSync((args) => toMcp(withOutboxNote(getScope().key, submitMemoriesOp(args), "call memory_status to review"))),
   );
@@ -276,6 +279,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_propose,
       inputSchema: z.object(memoryProposeArgs),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     withSync((args) => toMcp(withOutboxNote(getScope().key, proposeMemoriesOp(args), "call memory_status to review"))),
   );
@@ -285,6 +289,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_promote,
       inputSchema: z.object(memoryPromoteArgs),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     withSync((args) => toMcp(promoteMemoryOp(args))),
   );
@@ -294,6 +299,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_resolve,
       inputSchema: z.object(memoryResolveArgs),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     withSync((args) => toMcp(resolveMemoryOp(args))),
   );
@@ -303,7 +309,7 @@ export async function runMcpServer() {
     {
       description: TOOL_DESCRIPTIONS.memory_pr_status,
       inputSchema: z.object(memoryPrStatusArgs),
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     withSync((args) => toMcp(prStatusOp(args))),
   );

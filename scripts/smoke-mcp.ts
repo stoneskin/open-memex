@@ -85,6 +85,9 @@ try {
       JSON.stringify(["memory_add", "memory_forget", "memory_list", "memory_pr_status", "memory_promote", "memory_propose", "memory_resolve", "memory_search", "memory_status", "memory_submit", "memory_supersede"]),
     names.join(","),
   );
+  // D76: annotations must tell the truth — pr_status mutates with apply=true.
+  const prStatusTool = tools.result.tools.find((t: any) => t.name === "memory_pr_status");
+  check("pr_status is not read-only (D76)", prStatusTool?.annotations?.readOnlyHint === false, JSON.stringify(prStatusTool?.annotations));
   const addSchema = tools.result.tools.find((t: any) => t.name === "memory_add").inputSchema;
   check("memory_add schema has content+type+scope+tags", !!addSchema.properties?.content && !!addSchema.properties?.type, Object.keys(addSchema.properties ?? {}).join(","));
 

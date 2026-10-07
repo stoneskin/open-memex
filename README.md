@@ -519,10 +519,12 @@ the opencode plugin injects it directly on the first turn.
 ### Retrieval evaluation
 
 We measure recall on a checked-in synthetic fixture instead of asserting it:
-48 memories + 34 queries (exact terms, paraphrases, synonyms, Chinese, and
-cross-language hard cases) — reproduce with
+48 memories + 37 queries (exact terms, paraphrases, synonyms, Chinese,
+cross-language hard cases, and synonym-only queries the first pass cannot
+see) — reproduce with
 `node --experimental-strip-types scripts/retrieval-eval.ts`.
-Current FTS5 baseline: **recall@1 0.85, recall@5 0.97, MRR 0.90**.
+Current baseline, with the synonym second-chance round (D79):
+**recall@1 0.81, recall@5 0.95, MRR 0.87**.
 Small synthetic corpus, so read it as a regression guard and a starting point,
 not a real-world claim. The single miss is an English query against a
 Chinese-only memory — the known hard case for lexical search.

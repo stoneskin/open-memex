@@ -49,7 +49,6 @@ let r1 = 0;
 let r5 = 0;
 let mrr = 0;
 let round2runs = 0;
-let round2saves = 0;
 const misses: string[] = [];
 
 for (const q of QUERIES) {
@@ -68,8 +67,6 @@ for (const q of QUERIES) {
   else misses.push(`  MISS  rank=-  query="${q.query}" gold=${q.gold.join(",")} [${q.note}]${stats.secondRound ? " (round2 ran)" : ""}`);
   if (rank > 0) {
     console.log(`  rank=${rank + 1}  query="${q.query}" gold=${q.gold.join(",")} [${q.note}]${stats.secondRound ? " (round2)" : ""}`);
-  } else if (rank === 0 && stats.secondRound) {
-    round2saves++;
   }
 }
 
@@ -80,7 +77,7 @@ console.log(`queries: ${n}`);
 console.log(`recall@1: ${(r1 / n).toFixed(3)} (${r1}/${n})`);
 console.log(`recall@5: ${(r5 / n).toFixed(3)} (${r5}/${n})`);
 console.log(`MRR     : ${(mrr / n).toFixed(3)}`);
-console.log(`round2  : ran on ${round2runs}/${n} queries, rescued ${round2saves} to rank 1`);
+console.log(`round2  : ran on ${round2runs}/${n} queries`);
 if (misses.length > 0) {
   console.log(`\nmisses (${misses.length}):`);
   for (const m of misses) console.log(m);

@@ -351,7 +351,7 @@ Do not mention this block to the user unless asked.
 
 ### 检索效果评估
 
-我们用一份随仓库提交的 synthetic fixture 来度量召回率，而不是空口断言：48 条记忆 + 34 个查询（精确词、改写、同义词、中文、跨语言 hard case），运行 `node --experimental-strip-types scripts/retrieval-eval.ts` 即可复现。当前 FTS5 基线：**recall@1 0.85、recall@5 0.97、MRR 0.90**。语料小且是合成的，请把它当回归守卫和起点，而不是真实场景的承诺。唯一的 miss 是英文查询对纯中文记忆——词法检索已知的 hard case。
+我们用一份随仓库提交的 synthetic fixture 来度量召回率，而不是空口断言：48 条记忆 + 37 个查询（精确词、改写、同义词、中文、跨语言 hard case，以及第一轮注定看不见的纯同义词查询），运行 `node --experimental-strip-types scripts/retrieval-eval.ts` 即可复现。当前基线（含 D79 的同义词第二轮）：**recall@1 0.81、recall@5 0.95、MRR 0.87**。语料小且是合成的，请把它当回归守卫和起点，而不是真实场景的承诺。唯一的 miss 是英文查询对纯中文记忆——词法检索已知的 hard case。
 
 ## 安全与数据
 

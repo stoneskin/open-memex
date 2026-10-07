@@ -100,6 +100,9 @@ export const MEMORIES: FixtureMemory[] = [
   { id: "mem-046", type: "preference", tags: ["meetings"], body: "No-meeting Wednesdays for the eng team. Recurring meetings that land on Wednesday get moved, not exempted." },
   { id: "mem-047", type: "fact", tags: ["vpn"], body: "The company VPN auto-disconnects after 12 hours. Long-running remote jobs should run on the dev server inside the network, not over a laptop VPN session." },
   { id: "mem-048", type: "lesson", tags: ["estimation"], body: "Estimates are given as ranges (3–5 days), never single numbers. The single-number estimates were wrong 80% of the time; ranges forced the uncertainty conversation upfront." },
+  { id: "mem-049", type: "fact", tags: ["备份", "数据库"], body: "数据库备份每天凌晨两点执行，全量保留三十天，恢复演练每个季度做一次。" },
+  { id: "mem-050", type: "decision", tags: ["发布", "测试"], body: "上线前必须跑完全量回归测试，测试报告要贴到发布群里，TL 确认后才能发。" },
+  { id: "mem-051", type: "gotcha", tags: ["staging"], body: "The staging environment wipes itself every night at midnight. Never leave test data there overnight — it will be gone by morning." },
 ];
 
 export const QUERIES: FixtureQuery[] = [
@@ -138,6 +141,14 @@ export const QUERIES: FixtureQuery[] = [
   // ---- cross-language (expected hard) ----
   { query: "production release thursday rule", gold: ["mem-021"], note: "EN query, ZH memory — hard" },
   { query: "wechat miniprogram request limit", gold: ["mem-022"], note: "EN query, ZH memory — hard" },
+
+  // ---- vocabulary-mismatch (translation pairs; the real-world slice LongMemEval-S lacks) ----
+  // Written 2026-10-07 BEFORE any index-time expansion or embedding layer exists:
+  // each query shares ~zero content words with its gold memory.
+  { query: "database backup retention policy", gold: ["mem-049"], note: "EN query, ZH memory — 备份/保留" },
+  { query: "full regression test before production release", gold: ["mem-050"], note: "EN query, ZH memory — 回归/上线" },
+  { query: "预发布环境数据为什么会丢", gold: ["mem-051"], note: "ZH query, EN memory — staging/wipe" },
+  { query: "单点登录强制要求", gold: ["mem-043"], note: "ZH query, EN memory — SSO/mandatory" },
 
   // ---- distractor resistance ----
   { query: "where is the deploy dashboard", gold: ["mem-005"], note: "must prefer mem-005 over mem-001/003" },

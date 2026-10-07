@@ -529,6 +529,16 @@ Small synthetic corpus, so read it as a regression guard and a starting point,
 not a real-world claim. The single miss is an English query against a
 Chinese-only memory — the known hard case for lexical search.
 
+External check on public data: the same pipeline scores **recall@5 97.0% /
+MRR 0.909** on LongMemEval-S (470 questions, retrieval stage only — no answer
+generation, no judge model; this is not the official LongMemEval score). For
+reference, agentmemory's published numbers on the same protocol are 86.2% /
+0.715 (BM25-only) and 95.2% / 0.882 (BM25+vector). A 22k-memory pooled stress
+run drops recall@5 to 40.6% — the lexical ceiling, measured rather than
+asserted. Reproduce with
+`node --experimental-strip-types scripts/bench-longmemeval.ts --data <path>`
+(dataset: `xiaowu0162/longmemeval-cleaned`, MIT).
+
 ## Security & data
 
 - **Local-first:** everything lives on your machine (`%APPDATA%\open-memex` on

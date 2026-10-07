@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- LongMemEval-S retrieval bench (`scripts/bench-longmemeval.ts`): 470 questions, recall_any@k + MRR on public data, per-question isolated corpora plus a pooled 22k-memory stress mode, with synonym on/off ablation. Result: R@5 97.0% / MRR 0.909 (ahead of agentmemory’s published BM25-only, level with their BM25+vector). Finding: the count-based second-round trigger fired 0/470 — logged as a D79 redesign follow-up, not a scale answer.
+
 - Query-time synonym expansion (D79, retrieval layer 4): `search()` runs a second-chance round when the first FTS pass is thin, re-running with curated synonym variants OR-ed in (`src/retrieve/synonyms.ts`, EN dev-domain + ZH groups, no model). Round-two rows only fill gaps; round-one ranking is never diluted. `SearchStats.secondRound` records it (shown in `search --explain`). Baseline with the round: recall@1 0.81, recall@5 0.95, MRR 0.87 over 37 fixture queries.
 
 - Retrieval eval harness (D77 layer 1): `scripts/retrieval-eval.ts` runs a checked-in synthetic fixture (48 memories + 34 queries: exact terms, paraphrases, synonyms, Chinese, cross-language hard cases) against the FTS5 baseline and reports recall@k/MRR. Current baseline: recall@1 0.85, recall@5 0.97, MRR 0.90 (single miss: English query vs Chinese-only memory). Published in both READMEs with methodology notes.

@@ -63,6 +63,7 @@ process.env.OPEN_MEMEX_HOME = HOME;
 import { serialize, normalizeFrontmatter } from "../src/store/markdown.ts";
 import { syncScope } from "../src/store/sync.ts";
 import { search } from "../src/retrieve/search.ts";
+import { expandQueryWithSynonyms } from "../src/retrieve/synonyms.ts";
 import { memoriesDirPath } from "../src/paths.ts";
 import { db } from "../src/store/db.ts";
 
@@ -181,6 +182,110 @@ if (POOLED) {
   }
   syncScope("personal");
   console.log(`pooled corpus: ${(db().prepare("SELECT COUNT(*) c FROM memories").get() as { c: number }).c} memories`);
+}
+
+// ---- rescue experiment: where do synonyms actually help? ----
+// Arms: A = round 1 only; B = fallback append (shipped design, trigger forced
+// to fire); C = always-expand + RRF fusion. Metric is rescue-focused, not MRR:
+// a hit counts when the gold lands in the arm's top-K. Stratification by
+// query-gold lexical overlap happens in analysis (see --out-rows TSV).
+const RESCUE = args.includes("--rescue");
+const ROWS = (() => {
+  const i = args.indexOf("--out-rows");
+  return i === -1 ? "" : args[i + 1];
+})();
+
+const RESCUE_STOP = new Set(
+  "the a an and or of to in on for with is are was were be been do does did how what why when where which who whom we i you he she it they them us me my our your his her its their this that these those there here can could should would will shall may might please if then than so as at by from into about over under again once just".split(" "),
+);
+function contentTerms(t: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of t.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+    if (w.length > 2 && !RESCUE_STOP.has(w)) out.add(w);
+  }
+  return out;
+}
+function rrfFuse(
+  lists: Array<Array<{ id: string }>>,
+  k: number,
+  depth: number,
+): string[] {
+  const scores = new Map<string, number>();
+  for (const list of lists) {
+    list.slice(0, depth).forEach((h, rank) => {
+      scores.set(h.id, (scores.get(h.id) ?? 0) + 1 / (k + rank + 1));
+    });
+  }
+  return [...scores.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+}
+
+if (RESCUE) {
+  const RD = 50; // retrieval depth per arm
+  const rows: string[] = ["qi\toverlap\ta\tb\tc"];
+  let qi = 0;
+  // pooled seeding happens once below via the shared POOLED block
+  if (POOLED) {
+    const dir = wipeScope();
+    let qj = 0;
+    for (const q of questions) {
+      q.haystack_sessions.forEach((turns, i) => {
+        writeSession(dir, `q${qj}-s${i}`, turns, `question ${qj}, session ${i}`);
+      });
+      qj++;
+    }
+    syncScope("personal");
+  }
+  let nA = 0, nB = 0, nC = 0, n = 0;
+  for (const q of questions) {
+    const gold = goldIdxFor(q);
+    if (gold.size === 0) { qi++; continue; }
+    let isGold: (id: string) => boolean;
+    let goldText = "";
+    if (POOLED) {
+      const myQi = qi;
+      isGold = (id) => {
+        const m = /^q(\d+)-s(\d+)$/.exec(id);
+        return !!m && Number(m[1]) === myQi && gold.has(Number(m[2]));
+      };
+      goldText = [...gold].map((i) => q.haystack_sessions[i].map((t) => t.content).join(" ")).join(" ");
+    } else {
+      const dir = wipeScope();
+      q.haystack_sessions.forEach((turns, i) => {
+        writeSession(dir, `sess-${i}`, turns, `session ${i}`);
+      });
+      syncScope("personal");
+      isGold = (id) => {
+        const m = /^sess-(\d+)$/.exec(id);
+        return !!m && gold.has(Number(m[1]));
+      };
+      goldText = [...gold].map((i) => q.haystack_sessions[i].map((t) => t.content).join(" ")).join(" ");
+    }
+    const r1 = search(q.question, { scopeKeys: ["personal"], limit: RD, synonyms: false });
+    const qx = expandQueryWithSynonyms(q.question);
+    const r2 = qx === q.question ? r1 : search(qx, { scopeKeys: ["personal"], limit: RD, synonyms: false });
+    const ids1 = r1.map((h) => h.id);
+    const in1 = new Set(ids1);
+    const aTop = ids1.slice(0, K);
+    const bTop = [...aTop, ...r2.map((h) => h.id).filter((id) => !in1.has(id))].slice(0, K);
+    const cTop = rrfFuse([r1, r2], 60, RD).slice(0, K);
+    const hit = (top: string[]) => (top.some(isGold) ? 1 : 0);
+    const ha = hit(aTop), hb = hit(bTop), hc = hit(cTop);
+    nA += ha; nB += hb; nC += hc; n++;
+    const qt = contentTerms(q.question);
+    const gt = contentTerms(goldText);
+    let overlap = 0;
+    for (const t of qt) if (gt.has(t)) overlap++;
+    rows.push(`${qi}\t${overlap}\t${ha}\t${hb}\t${hc}`);
+    qi++;
+    if (qi % 50 === 0) console.log(`  ... ${qi}/${questions.length}`);
+  }
+  if (ROWS) fs.writeFileSync(ROWS, rows.join("\n") + "\n", "utf8");
+  console.log(`\n==== rescue experiment (${POOLED ? "pooled" : "per-question"}, K=${K}) ====`);
+  console.log(`arm A (round1 only)      recall@${K}: ${(nA / n * 100).toFixed(1)}%`);
+  console.log(`arm B (fallback append)  recall@${K}: ${(nB / n * 100).toFixed(1)}%  rescues: ${nB - nA}`);
+  console.log(`arm C (RRF fusion)       recall@${K}: ${(nC / n * 100).toFixed(1)}%  rescues: ${nC - nA}`);
+  console.log(`rows written to ${ROWS || "(none)"}`);
+  process.exit(0);
 }
 
 let done = 0;

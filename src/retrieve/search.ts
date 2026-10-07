@@ -161,9 +161,20 @@ function resolveVisible(rows: RawRow[], limit: number, stats?: SearchStats): Sea
  */
 export function search(
   query: string,
-  opts: { scopeKeys?: string[]; limit?: number; type?: string; stats?: SearchStats; synonyms?: boolean } = {},
+  opts: {
+    scopeKeys?: string[];
+    limit?: number;
+    type?: string;
+    stats?: SearchStats;
+    synonyms?: boolean;
+    /** Ablation toggles for query construction (default = shipped behavior). */
+    stopwords?: boolean;
+    orJoin?: boolean;
+    prefix?: boolean;
+  } = {},
 ): SearchHit[] {
-  const q = toFtsQuery(query);
+  const qflags = { stopwords: opts.stopwords, orJoin: opts.orJoin, prefix: opts.prefix };
+  const q = toFtsQuery(query, qflags);
   if (opts.stats) {
     opts.stats.ftsQuery = q;
     opts.stats.candidates = 0;
@@ -230,7 +241,7 @@ export function search(
   // opts.synonyms === false disables the round (ablation / benchmarking).
   if (raw.length < limit && opts.synonyms !== false) {
     const expandedQuery = expandQueryWithSynonyms(query);
-    const q2 = expandedQuery === query ? "" : toFtsQuery(expandedQuery);
+    const q2 = expandedQuery === query ? "" : toFtsQuery(expandedQuery, qflags);
     if (q2 && q2 !== q) {
       const seen = new Set(raw.map((r) => r.id));
       for (const r of fetchFts(q2)) {

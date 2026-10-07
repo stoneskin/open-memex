@@ -30,8 +30,14 @@ const dataPath = args[args.indexOf("--data") + 1] ?? "";
 const limitIdx = args.indexOf("--limit");
 const LIMIT = limitIdx === -1 ? Infinity : Number(args[limitIdx + 1]);
 const POOLED = args.includes("--pooled");
+const variantIdx = args.indexOf("--variant");
+const VARIANT = variantIdx === -1 ? "baseline" : args[variantIdx + 1];
 if (!dataPath) {
   console.error("missing --data <longmemeval_s_cleaned.json>");
+  process.exit(1);
+}
+if (!["baseline", "no-stopwords", "and", "no-prefix", "no-synonyms"].includes(VARIANT)) {
+  console.error(`unknown --variant ${VARIANT}`);
   process.exit(1);
 }
 
@@ -60,22 +66,34 @@ import { search } from "../src/retrieve/search.ts";
 import { memoriesDirPath } from "../src/paths.ts";
 import { db } from "../src/store/db.ts";
 
-const K = 10;
+const K = (() => {
+  const li = args.indexOf("--search-limit");
+  return li === -1 ? 10 : Number(args[li + 1]);
+})();
+
+const SEARCH_OPTS = {
+  synonyms: VARIANT !== "no-synonyms",
+  stopwords: VARIANT !== "no-stopwords",
+  orJoin: VARIANT !== "and",
+  prefix: VARIANT !== "no-prefix",
+};
 
 interface Agg {
   n: number;
   r1: number;
+  r3: number;
   r5: number;
   r10: number;
   mrr: number;
 }
-const fresh = (): Agg => ({ n: 0, r1: 0, r5: 0, r10: 0, mrr: 0 });
-const byType = new Map<string, { on: Agg; off: Agg }>();
-const total = { on: fresh(), off: fresh() };
+const fresh = (): Agg => ({ n: 0, r1: 0, r3: 0, r5: 0, r10: 0, mrr: 0 });
+const byType = new Map<string, Agg>();
+const total = fresh();
 
 function record(agg: Agg, rank: number) {
   agg.n++;
   if (rank === 0) agg.r1++;
+  if (rank !== -1 && rank < 3) agg.r3++;
   if (rank !== -1 && rank < 5) agg.r5++;
   if (rank !== -1 && rank < 10) agg.r10++;
   if (rank !== -1) agg.mrr += 1 / (rank + 1);
@@ -127,17 +145,16 @@ let round2rescues = 0;
 
 function rankOf(
   q: LMEItem,
-  synonyms: boolean,
   isGold: (id: string) => boolean,
 ): number {
   const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, secondRound: false };
   const hits = search(q.question, {
     scopeKeys: ["personal"],
     limit: K,
-    synonyms,
     stats,
+    ...SEARCH_OPTS,
   });
-  if (synonyms && stats.secondRound) {
+  if (stats.secondRound) {
     round2fires++;
     for (let r = 0; r < hits.length; r++) {
       if (isGold(hits[r].id)) {
@@ -198,17 +215,14 @@ for (const q of questions) {
     continue;
   }
 
-  const rOn = rankOf(q, true, isGold);
-  const rOff = rankOf(q, false, isGold);
+  const r = rankOf(q, isGold);
   let t = byType.get(q.question_type);
   if (!t) {
-    t = { on: fresh(), off: fresh() };
+    t = fresh();
     byType.set(q.question_type, t);
   }
-  record(total.on, rOn);
-  record(total.off, rOff);
-  record(t.on, rOn);
-  record(t.off, rOff);
+  record(total, r);
+  record(t, r);
 
   done++;
   qi++;
@@ -219,16 +233,16 @@ function pct(a: Agg, f: (x: Agg) => number): string {
   return ((f(a) / a.n) * 100).toFixed(1) + "%";
 }
 function show(name: string, a: Agg) {
-  console.log(
-    `  ${name.padEnd(28)} n=${a.n}  R@1 ${pct(a, (x) => x.r1)}  R@5 ${pct(a, (x) => x.r5)}  R@10 ${pct(a, (x) => x.r10)}  MRR ${(a.mrr / a.n).toFixed(3)}`,
-  );
+  const cells = [`n=${a.n}`, `R@1 ${pct(a, (x) => x.r1)}`];
+  if (K >= 3) cells.push(`R@3 ${pct(a, (x) => x.r3)}`);
+  if (K >= 5) cells.push(`R@5 ${pct(a, (x) => x.r5)}`);
+  if (K >= 10) cells.push(`R@10 ${pct(a, (x) => x.r10)}`);
+  cells.push(`MRR@${K} ${(a.mrr / a.n).toFixed(3)}`);
+  console.log(`  ${name.padEnd(28)} ${cells.join("  ")}`);
 }
 
 console.log(`\n==== LongMemEval-S retrieval (${POOLED ? "pooled 23k corpus" : "per-question isolated corpus"}) ====`);
+console.log(`variant=${VARIANT} search-limit=${K}`);
 console.log(`round2 fired on ${round2fires} queries, gold in round-2 results ${round2rescues}x`);
-console.log("-- synonyms ON (D79):");
-show("overall", total.on);
-for (const [t, a] of [...byType.entries()].sort()) show(t, a.on);
-console.log("-- synonyms OFF (ablation):");
-show("overall", total.off);
-for (const [t, a] of [...byType.entries()].sort()) show(t, a.off);
+show("overall", total);
+for (const [t, a] of [...byType.entries()].sort()) show(t, a);

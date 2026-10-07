@@ -29,6 +29,7 @@ const args = process.argv.slice(2);
 const dataPath = args[args.indexOf("--data") + 1] ?? "";
 const limitIdx = args.indexOf("--limit");
 const LIMIT = limitIdx === -1 ? Infinity : Number(args[limitIdx + 1]);
+const POOLED = args.includes("--pooled");
 if (!dataPath) {
   console.error("missing --data <longmemeval_s_cleaned.json>");
   process.exit(1);
@@ -80,9 +81,25 @@ function record(agg: Agg, rank: number) {
   if (rank !== -1) agg.mrr += 1 / (rank + 1);
 }
 
-let done = 0;
-for (const q of questions) {
-  // Isolated corpus: wipe the personal scope and reseed per question.
+function writeSession(
+  dir: string,
+  id: string,
+  turns: Array<{ role: string; content: string }>,
+  label: string,
+) {
+  const body =
+    `[${label}]\n\n` + turns.map((t) => `${t.role}: ${t.content}`).join("\n\n");
+  const fm = normalizeFrontmatter({
+    id,
+    scope: "personal",
+    type: "fact",
+    tags: ["longmemeval"],
+    source: "longmemeval-s",
+  });
+  fs.writeFileSync(path.join(dir, `${id}.md`), serialize(fm, body), "utf8");
+}
+
+function wipeScope() {
   db()
     .prepare("DELETE FROM memories WHERE scope_key = 'personal'")
     .run();
@@ -92,45 +109,97 @@ for (const q of questions) {
   const dir = memoriesDirPath("personal");
   fs.mkdirSync(dir, { recursive: true });
   for (const f of fs.readdirSync(dir)) fs.unlinkSync(path.join(dir, f));
+  return dir;
+}
 
+// question-local gold: session indices within this question's haystack
+function goldIdxFor(q: LMEItem): Set<number> {
   const sidToIdx = new Map(q.haystack_session_ids.map((sid, i) => [sid, i]));
-  const goldIdx = new Set(
+  return new Set(
     q.answer_session_ids
       .map((sid) => sidToIdx.get(sid))
       .filter((i): i is number => i !== undefined),
   );
-  if (goldIdx.size === 0) continue;
+}
 
-  q.haystack_sessions.forEach((turns, i) => {
-    const body =
-      `[session ${i} — ${q.haystack_dates[i] ?? "unknown date"}]\n\n` +
-      turns.map((t) => `${t.role}: ${t.content}`).join("\n\n");
-    const fm = normalizeFrontmatter({
-      id: `sess-${i}`,
-      scope: "personal",
-      type: "fact",
-      tags: ["longmemeval"],
-      source: "longmemeval-s",
-    });
-    fs.writeFileSync(path.join(dir, `sess-${i}.md`), serialize(fm, body), "utf8");
+let round2fires = 0;
+let round2rescues = 0;
+
+function rankOf(
+  q: LMEItem,
+  synonyms: boolean,
+  isGold: (id: string) => boolean,
+): number {
+  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, secondRound: false };
+  const hits = search(q.question, {
+    scopeKeys: ["personal"],
+    limit: K,
+    synonyms,
+    stats,
   });
-  syncScope("personal");
-
-  const rankOf = (synonyms: boolean): number => {
-    const hits = search(q.question, {
-      scopeKeys: ["personal"],
-      limit: K,
-      synonyms,
-    });
+  if (synonyms && stats.secondRound) {
+    round2fires++;
     for (let r = 0; r < hits.length; r++) {
-      const m = /^sess-(\d+)$/.exec(hits[r].id);
-      if (m && goldIdx.has(Number(m[1]))) return r;
+      if (isGold(hits[r].id)) {
+        round2rescues++;
+        break;
+      }
     }
-    return -1;
-  };
+  }
+  for (let r = 0; r < hits.length; r++) {
+    if (isGold(hits[r].id)) return r;
+  }
+  return -1;
+}
 
-  const rOn = rankOf(true);
-  const rOff = rankOf(false);
+if (POOLED) {
+  // One big corpus: every session of every question (~23.5k memories).
+  const dir = wipeScope();
+  let qi = 0;
+  for (const q of questions) {
+    q.haystack_sessions.forEach((turns, i) => {
+      writeSession(dir, `q${qi}-s${i}`, turns, `question ${qi}, session ${i} — ${q.haystack_dates[i] ?? "unknown date"}`);
+    });
+    qi++;
+  }
+  syncScope("personal");
+  console.log(`pooled corpus: ${(db().prepare("SELECT COUNT(*) c FROM memories").get() as { c: number }).c} memories`);
+}
+
+let done = 0;
+let qi = 0;
+for (const q of questions) {
+  const gold = goldIdxFor(q);
+  let isGold: (id: string) => boolean;
+  if (POOLED) {
+    const myQi = qi;
+    isGold = (id) => {
+      const m = /^q(\d+)-s(\d+)$/.exec(id);
+      return !!m && Number(m[1]) === myQi && gold.has(Number(m[2]));
+    };
+  } else {
+    // Isolated corpus: wipe the personal scope and reseed per question.
+    const dir = wipeScope();
+    if (gold.size === 0) {
+      qi++;
+      continue;
+    }
+    q.haystack_sessions.forEach((turns, i) => {
+      writeSession(dir, `sess-${i}`, turns, `session ${i} — ${q.haystack_dates[i] ?? "unknown date"}`);
+    });
+    syncScope("personal");
+    isGold = (id) => {
+      const m = /^sess-(\d+)$/.exec(id);
+      return !!m && gold.has(Number(m[1]));
+    };
+  }
+  if (gold.size === 0) {
+    qi++;
+    continue;
+  }
+
+  const rOn = rankOf(q, true, isGold);
+  const rOff = rankOf(q, false, isGold);
   let t = byType.get(q.question_type);
   if (!t) {
     t = { on: fresh(), off: fresh() };
@@ -142,6 +211,7 @@ for (const q of questions) {
   record(t.off, rOff);
 
   done++;
+  qi++;
   if (done % 50 === 0) console.log(`  ... ${done}/${questions.length}`);
 }
 
@@ -154,7 +224,8 @@ function show(name: string, a: Agg) {
   );
 }
 
-console.log("\n==== LongMemEval-S retrieval (per-question isolated corpus) ====");
+console.log(`\n==== LongMemEval-S retrieval (${POOLED ? "pooled 23k corpus" : "per-question isolated corpus"}) ====`);
+console.log(`round2 fired on ${round2fires} queries, gold in round-2 results ${round2rescues}x`);
 console.log("-- synonyms ON (D79):");
 show("overall", total.on);
 for (const [t, a] of [...byType.entries()].sort()) show(t, a.on);

@@ -516,6 +516,17 @@ time for the rest. Both top-N counts are configurable (see [Config](#config)).
 For MCP clients this block is delivered as handshake guidance the agent follows;
 the opencode plugin injects it directly on the first turn.
 
+### Retrieval evaluation
+
+We measure recall on a checked-in synthetic fixture instead of asserting it:
+48 memories + 34 queries (exact terms, paraphrases, synonyms, Chinese, and
+cross-language hard cases) — reproduce with
+`node --experimental-strip-types scripts/retrieval-eval.ts`.
+Current FTS5 baseline: **recall@1 0.85, recall@5 0.97, MRR 0.90**.
+Small synthetic corpus, so read it as a regression guard and a starting point,
+not a real-world claim. The single miss is an English query against a
+Chinese-only memory — the known hard case for lexical search.
+
 ## Security & data
 
 - **Local-first:** everything lives on your machine (`%APPDATA%\open-memex` on

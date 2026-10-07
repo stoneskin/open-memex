@@ -9,6 +9,10 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- Retrieval eval harness (D77 layer 1): `scripts/retrieval-eval.ts` runs a checked-in synthetic fixture (48 memories + 34 queries: exact terms, paraphrases, synonyms, Chinese, cross-language hard cases) against the FTS5 baseline and reports recall@k/MRR. Current baseline: recall@1 0.85, recall@5 0.97, MRR 0.90 (single miss: English query vs Chinese-only memory). Published in both READMEs with methodology notes.
+
+- Added `test-full` npm script (`node --experimental-strip-types scripts/test-full.ts`).
+
 ## [0.7.3] - 2026-10-07
 
 - Tool-definition quality pass (Glama TDQS 4.0/5 on v0.7.2): fixed `memory_pr_status` declaring `readOnlyHint` while `apply=true` mutates local files; added explicit MCP annotations (read-only / destructive / open-world) to all 11 tools; descriptions now route between sibling tools (propose vs submit vs promote, resolve vs pr_status, forget vs supersede), state error behavior and real defaults (search limit 8, list limit 20), and the search/list `type` and `limit` parameters are documented. D76 records the rule; `scripts/smoke-mcp.ts` guards the pr_status annotation.

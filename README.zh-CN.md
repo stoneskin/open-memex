@@ -349,6 +349,10 @@ Do not mention this block to the user unless asked.
 
 这是一个快照，不是全量记忆——其余的随时用 `memory_search` 就能查。两个前 N 的数都可以配（见[配置](#配置)）。对 MCP 客户端，这个块以握手引导的形式送达、由助手遵循；opencode 插件则在第一轮直接注入。
 
+### 检索效果评估
+
+我们用一份随仓库提交的 synthetic fixture 来度量召回率，而不是空口断言：48 条记忆 + 34 个查询（精确词、改写、同义词、中文、跨语言 hard case），运行 `node --experimental-strip-types scripts/retrieval-eval.ts` 即可复现。当前 FTS5 基线：**recall@1 0.85、recall@5 0.97、MRR 0.90**。语料小且是合成的，请把它当回归守卫和起点，而不是真实场景的承诺。唯一的 miss 是英文查询对纯中文记忆——词法检索已知的 hard case。
+
 ## 安全与数据
 
 - **本地优先：** 一切住在你机器上（Windows 是 `%APPDATA%\open-memex`，macOS/Linux 是 `~/.local/share/open-memex`），外加你自己选择的仓库。零云调用、零账号、零第三方 API、零遥测。

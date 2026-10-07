@@ -34,7 +34,7 @@ npm run build
 最后跑全量测试。`test-full` 之前必须先 `build`：测试里有 dist 内容指纹守卫，没 build 会误报失败。
 
 ```powershell
-npm run test-full
+node --experimental-strip-types scripts/test-full.ts
 ```
 
 测试全绿再往下走，中间任何一步报错就停。

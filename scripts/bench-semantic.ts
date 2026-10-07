@@ -29,7 +29,10 @@ const dataIdx = args.indexOf("--data");
 const dataPath = dataIdx === -1 ? "" : args[dataIdx + 1];
 const limitIdx = args.indexOf("--limit");
 const LIMIT = limitIdx === -1 ? Infinity : Number(args[limitIdx + 1]);
-const MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+const MODEL = (() => {
+  const i = args.indexOf("--model");
+  return i === -1 ? "Xenova/paraphrase-multilingual-MiniLM-L12-v2" : args[i + 1];
+})();
 const K = 10;
 const DEPTH = 50;
 

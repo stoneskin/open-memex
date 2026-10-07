@@ -21,7 +21,8 @@
     "claude-code",
     "vscode",
     "knowledge-management",
-    "developer-tools"
+    "developer-tools",
+    "synonyms"
   ],
   "type": "module",
   "license": "Apache-2.0",

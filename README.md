@@ -22,6 +22,10 @@ memory on your machine.
   explicitly share it.
 - **One memory, every agent**: wire up several editors with one command; they
   share the same memory instead of keeping separate silos.
+- **Precise synonym search**: `ship` finds `deploy`, `单点登录` finds `SSO` —
+  a curated multilingual map of equivalents is indexed with every memory at
+  write time, so no related wording misses the right answer. Deterministic
+  and auditable, no embedding model required.
 
 ![Terminal demo: two memories saved on Monday, recalled by search in a fresh session on Friday](./docs/assets/open-memex-demo.svg)
 

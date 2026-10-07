@@ -1,6 +1,6 @@
 {
   "name": "open-memex",
-  "version": "0.7.3",
+  "version": "0.8.0-alpha.1",
   "mcpName": "io.github.stoneskin/open-memex",
   "description": "Local-first memory layer and protocol for AI coding agents. Markdown source of truth, SQLite FTS5 index, zero cloud.",
   "keywords": [
@@ -40,7 +40,8 @@
     "mcp": "node --experimental-strip-types src/mcp.ts",
     "build": "tsc -p tsconfig.build.json && node scripts/build-stamp.mjs",
     "prepublishOnly": "npm run build",
-    "postinstall": "node scripts/postinstall.js"
+    "postinstall": "node scripts/postinstall.js",
+    "test-full": "node --experimental-strip-types scripts/test-full.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.1",

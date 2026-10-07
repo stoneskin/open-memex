@@ -1,5 +1,6 @@
 import { db } from "../store/db.ts";
 import { toFtsQuery } from "./query.ts";
+import { expandQueryWithSynonyms } from "./synonyms.ts";
 
 export interface SearchHit {
   id: string;
@@ -88,6 +89,8 @@ export interface SearchStats {
   candidates: number;
   hiddenSuperseded: number;
   hiddenExcluded: number;
+  /** D79: true when the synonym second-chance round ran and added rows. */
+  secondRound: boolean;
 }
 
 /**
@@ -166,6 +169,7 @@ export function search(
     opts.stats.candidates = 0;
     opts.stats.hiddenSuperseded = 0;
     opts.stats.hiddenExcluded = 0;
+    opts.stats.secondRound = false;
   }
   if (!q) return [];
   const limit = Math.max(1, Math.min(opts.limit ?? 8, 50));
@@ -190,14 +194,7 @@ export function search(
     ORDER BY score ASC
     LIMIT ?
   `;
-  const params: unknown[] = [q];
-  if (opts.scopeKeys && opts.scopeKeys.length > 0) params.push(...opts.scopeKeys);
-  if (opts.type) params.push(opts.type);
-  params.push(fetchLimit);
-
-  const rows = db()
-    .prepare(sql)
-    .all(...(params as any[])) as Array<{
+  type Row = {
     id: string;
     scope_key: string;
     project_name: string;
@@ -211,10 +208,40 @@ export function search(
     created_at: number;
     snippet: string;
     score: number;
-  }>;
+  };
+  const fetchFts = (matchExpr: string): RawRow[] => {
+    const params: unknown[] = [matchExpr];
+    if (opts.scopeKeys && opts.scopeKeys.length > 0) params.push(...opts.scopeKeys);
+    if (opts.type) params.push(opts.type);
+    params.push(fetchLimit);
+    const rows = db()
+      .prepare(sql)
+      .all(...(params as any[])) as Row[];
+    // FTS5 bm25: lower = better; invert for intuition.
+    return rows.map((r) => ({ ...r, score: -r.score }));
+  };
 
-  // FTS5 bm25: lower = better; invert for intuition.
-  const raw: RawRow[] = rows.map((r) => ({ ...r, score: -r.score }));
+  const raw: RawRow[] = fetchFts(q);
+
+  // D79 second-chance round: when the first pass is thin, re-run with
+  // curated synonym variants OR-ed in (see synonyms.ts). Round-two rows
+  // only fill gaps — round-one rows keep their ids/scores, so a strong
+  // first-pass ranking is never diluted by the expansion.
+  if (raw.length < limit) {
+    const expandedQuery = expandQueryWithSynonyms(query);
+    const q2 = expandedQuery === query ? "" : toFtsQuery(expandedQuery);
+    if (q2 && q2 !== q) {
+      const seen = new Set(raw.map((r) => r.id));
+      for (const r of fetchFts(q2)) {
+        if (!seen.has(r.id)) {
+          seen.add(r.id);
+          raw.push(r);
+        }
+      }
+      if (opts.stats) opts.stats.secondRound = true;
+    }
+  }
+
   if (opts.stats) opts.stats.candidates = raw.length;
   return resolveVisible(raw, limit, opts.stats);
 }

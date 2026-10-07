@@ -1008,7 +1008,7 @@ async function main() {
           : [project.key, PERSONAL_SCOPE.key];
     const explain = flags.explain === "true";
     const stats = explain
-      ? { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0 }
+      ? { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, secondRound: false }
       : undefined;
     const hits = search(query, {
       scopeKeys: keys,
@@ -1019,7 +1019,8 @@ async function main() {
     if (explain && stats) {
       console.log(`fts: ${stats.ftsQuery || "(empty query)"}`);
       console.log(
-        `candidates: ${stats.candidates}, hidden by lifecycle: ${stats.hiddenSuperseded} superseded, ${stats.hiddenExcluded} retracted/archived`,
+        `candidates: ${stats.candidates}, hidden by lifecycle: ${stats.hiddenSuperseded} superseded, ${stats.hiddenExcluded} retracted/archived` +
+          (stats.secondRound ? " (synonym second-chance round ran)" : ""),
       );
     }
     if (hits.length === 0) {

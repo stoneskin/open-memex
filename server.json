@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.stoneskin/open-memex",
   "title": "open-memex",
-  "description": "Local-first memory for AI coding agents \u2014 Markdown + SQLite FTS5, shared across editors via MCP.",
-  "version": "0.7.2",
+  "description": "Local-first memory for AI coding agents — Markdown + SQLite FTS5, shared across editors via MCP.",
+  "version": "0.7.3",
   "repository": {
     "url": "https://github.com/stoneskin/open-memex",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "open-memex",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "runtimeHint": "npx",
       "packageArguments": [
         {

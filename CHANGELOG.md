@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-07
+
 - Tool-definition quality pass (Glama TDQS 4.0/5 on v0.7.2): fixed `memory_pr_status` declaring `readOnlyHint` while `apply=true` mutates local files; added explicit MCP annotations (read-only / destructive / open-world) to all 11 tools; descriptions now route between sibling tools (propose vs submit vs promote, resolve vs pr_status, forget vs supersede), state error behavior and real defaults (search limit 8, list limit 20), and the search/list `type` and `limit` parameters are documented. D76 records the rule; `scripts/smoke-mcp.ts` guards the pr_status annotation.
 
 - Design doc maintenance (D75): pruned resolved Open Questions (decided in D56/D57/D61/D68, plus the shipped retrieval-robustness layers) and recorded four competitor-scan directions — retrieval evaluation gate, per-client trust levels, cold-start import, and a `doctor` mis-registration check.

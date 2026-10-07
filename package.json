@@ -1,6 +1,6 @@
 {
   "name": "open-memex",
-  "version": "0.7.3-alpha.2",
+  "version": "0.7.3",
   "mcpName": "io.github.stoneskin/open-memex",
   "description": "Local-first memory layer and protocol for AI coding agents. Markdown source of truth, SQLite FTS5 index, zero cloud.",
   "keywords": [

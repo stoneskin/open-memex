@@ -36,7 +36,8 @@ const DEPTH = 50;
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), "sem-bench-"));
 process.env.OPEN_MEMEX_HOME = HOME;
 
-import { pipeline } from "transformers";
+import pkg from "transformers";
+const { pipeline } = pkg as any;
 import { serialize, normalizeFrontmatter } from "../src/store/markdown.ts";
 import { syncScope } from "../src/store/sync.ts";
 import { search } from "../src/retrieve/search.ts";

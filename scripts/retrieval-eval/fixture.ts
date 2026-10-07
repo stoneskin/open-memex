@@ -148,4 +148,9 @@ export const QUERIES: FixtureQuery[] = [
   { query: "oncall handoff", gold: ["mem-042"], note: "exact" },
   { query: "monorepo or polyrepo", gold: ["mem-029"], note: "exact" },
   { query: "timestamps UTC or local", gold: ["mem-044"], note: "paraphrase" },
+
+  // ---- synonym-only queries (round 1 sees none of these words; round 2 must catch them) ----
+  { query: "how do we ship", gold: ["mem-001"], note: "synonym-only: ship→deploy/release" },
+  { query: "pager schedule", gold: ["mem-042"], note: "synonym-only: pager→oncall" },
+  { query: "my token got exposed", gold: ["mem-017"], note: "synonym-only: token→secret" },
 ];

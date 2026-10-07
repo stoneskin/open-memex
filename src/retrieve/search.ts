@@ -161,7 +161,7 @@ function resolveVisible(rows: RawRow[], limit: number, stats?: SearchStats): Sea
  */
 export function search(
   query: string,
-  opts: { scopeKeys?: string[]; limit?: number; type?: string; stats?: SearchStats } = {},
+  opts: { scopeKeys?: string[]; limit?: number; type?: string; stats?: SearchStats; synonyms?: boolean } = {},
 ): SearchHit[] {
   const q = toFtsQuery(query);
   if (opts.stats) {
@@ -227,7 +227,8 @@ export function search(
   // curated synonym variants OR-ed in (see synonyms.ts). Round-two rows
   // only fill gaps — round-one rows keep their ids/scores, so a strong
   // first-pass ranking is never diluted by the expansion.
-  if (raw.length < limit) {
+  // opts.synonyms === false disables the round (ablation / benchmarking).
+  if (raw.length < limit && opts.synonyms !== false) {
     const expandedQuery = expandQueryWithSynonyms(query);
     const q2 = expandedQuery === query ? "" : toFtsQuery(expandedQuery);
     if (q2 && q2 !== q) {

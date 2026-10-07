@@ -91,7 +91,13 @@ npm publish
 ```
 
 3. 把版本号告诉小沐（例如"0.7.2 published"）：小沐核验 npm latest，然后打 git tag `vX.Y.Z` 并建 GitHub Release。
-4. 同步 MCP Registry。**必须等 npm 新版生效后再跑**：registry 会去 npm 抓新版本的实际包验 `mcpName` 和版本。`npm publish` 成功后先等 1–2 分钟，再执行发布（登录态过期时才需要先重跑 `login github`，也是一条一条来）：
+4. 同步 MCP Registry。**必须等 npm 新版生效后再跑**：registry 会去 npm 抓新版本的实际包验 `mcpName` 和版本。`npm publish` 成功后先等 1–2 分钟，再执行发布（一条一条来）。如果登录态过期（`publish` 报认证错误），先重跑登录：
+
+```powershell
+& "$env:USERPROFILE\tools\mcp-publisher\mcp-publisher.exe" login github
+```
+
+登录态没过期就跳过这一步，直接发布：
 
 ```powershell
 & "$env:USERPROFILE\tools\mcp-publisher\mcp-publisher.exe" publish

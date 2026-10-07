@@ -202,7 +202,8 @@ breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.
   languages in sync); behavior changes → both READMEs
   and the frozen `docs/V2-DESIGN.md` (append a `D<n>` decision entry, never rewrite history);
   new commands → README CLI sections + this file's Commands. A change without its docs
-  is not done.
+  is not done. Anything deferred as "later" goes into the near-term backlog in
+  `docs/V2-DESIGN.md` §18 the same day — unwritten later means never.
 - **Version bumps ship with features.** `package.json` + `package-lock.json` carry the
   in-development version. New features on a dev branch bump the minor on the alpha
   line (`0.3.0` → `0.4.0-alpha.1`); fixes bump the patch (`-alpha.1` → `-alpha.2`).

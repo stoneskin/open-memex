@@ -14,7 +14,7 @@
 import { cjkQueryExpr, hasCjk } from "./cjk.ts";
 
 /** English function words that carry no retrieval signal in questions. */
-const LATIN_STOPWORDS = new Set([
+export const LATIN_STOPWORDS = new Set([
   "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
   "without", "is", "are", "was", "were", "be", "been", "do", "does", "did",
   "how", "what", "why", "when", "where", "which", "who", "whom", "we", "i",

@@ -519,15 +519,23 @@ the opencode plugin injects it directly on the first turn.
 ### Retrieval evaluation
 
 We measure recall on a checked-in synthetic fixture instead of asserting it:
-48 memories + 37 queries (exact terms, paraphrases, synonyms, Chinese,
-cross-language hard cases, and synonym-only queries the first pass cannot
-see) — reproduce with
+51 memories + 41 queries (exact terms, paraphrases, synonyms, Chinese,
+cross-language hard cases, and synonym-only queries) — reproduce with
 `node --experimental-strip-types scripts/retrieval-eval.ts`.
-Current baseline, with the synonym second-chance round (D79):
-**recall@1 0.81, recall@5 0.95, MRR 0.87**.
+Current baseline, with index-time synonym/translation expansion (D80):
+**recall@1 0.76, recall@5 0.98, MRR 0.86**.
 Small synthetic corpus, so read it as a regression guard and a starting point,
-not a real-world claim. The single miss is an English query against a
-Chinese-only memory — the known hard case for lexical search.
+not a real-world claim.
+
+Three layers, each covering what the others miss: **BM25 keyword search**
+(SQLite FTS5 — exact words, fast, explainable via `search --explain`);
+**index-time synonym/translation expansion** (D80 — a curated, checked-in map
+of dev-domain equivalents and EN↔ZH translation pairs expanded into the index
+at write time, so `ship` finds `deploy` and `单点登录` finds `SSO` in a plain
+single-round query; deterministic, no model download); and **semantic vectors**
+as an opt-in experiment (local multilingual embeddings measured at R@5 92.7%
+on the cross-lingual fixture slice — see `docs/retrieval-ablation-study.md`
+§4.7; no embedding model is ever downloaded without your explicit opt-in).
 
 External check on public data: the same pipeline scores **recall@5 97.0% /
 MRR 0.909** on LongMemEval-S (470 questions, retrieval stage only — no answer

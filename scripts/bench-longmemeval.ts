@@ -14,8 +14,10 @@
  * The 30 abstention questions (*_abs) are excluded, per LongMemEval's own
  * retrieval-eval protocol (nothing in the history answers them).
  *
- * Runs every question twice: synonyms on (default) vs off — the ablation
- * for D79.
+ * Historical OFAT variants: no-stopwords / and / no-prefix. The no-synonyms
+ * variant was retired by D80 (expansion moved to index time; a search-time
+ * toggle is meaningless) — its 2026-10-07 measurement (effect 0.000) stands
+ * in docs/retrieval-ablation-study.md.
  *
  * Usage:
  *   node --experimental-strip-types scripts/bench-longmemeval.ts \
@@ -36,7 +38,7 @@ if (!dataPath) {
   console.error("missing --data <longmemeval_s_cleaned.json>");
   process.exit(1);
 }
-if (!["baseline", "no-stopwords", "and", "no-prefix", "no-synonyms"].includes(VARIANT)) {
+if (!["baseline", "no-stopwords", "and", "no-prefix"].includes(VARIANT)) {
   console.error(`unknown --variant ${VARIANT}`);
   process.exit(1);
 }
@@ -73,7 +75,6 @@ const K = (() => {
 })();
 
 const SEARCH_OPTS = {
-  synonyms: VARIANT !== "no-synonyms",
   stopwords: VARIANT !== "no-stopwords",
   orJoin: VARIANT !== "and",
   prefix: VARIANT !== "no-prefix",
@@ -141,29 +142,18 @@ function goldIdxFor(q: LMEItem): Set<number> {
   );
 }
 
-let round2fires = 0;
-let round2rescues = 0;
 
 function rankOf(
   q: LMEItem,
   isGold: (id: string) => boolean,
 ): number {
-  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, secondRound: false };
+  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0 };
   const hits = search(q.question, {
     scopeKeys: ["personal"],
     limit: K,
     stats,
     ...SEARCH_OPTS,
   });
-  if (stats.secondRound) {
-    round2fires++;
-    for (let r = 0; r < hits.length; r++) {
-      if (isGold(hits[r].id)) {
-        round2rescues++;
-        break;
-      }
-    }
-  }
   for (let r = 0; r < hits.length; r++) {
     if (isGold(hits[r].id)) return r;
   }
@@ -260,9 +250,9 @@ if (RESCUE) {
       };
       goldText = [...gold].map((i) => q.haystack_sessions[i].map((t) => t.content).join(" ")).join(" ");
     }
-    const r1 = search(q.question, { scopeKeys: ["personal"], limit: RD, synonyms: false });
+    const r1 = search(q.question, { scopeKeys: ["personal"], limit: RD });
     const qx = expandQueryWithSynonyms(q.question);
-    const r2 = qx === q.question ? r1 : search(qx, { scopeKeys: ["personal"], limit: RD, synonyms: false });
+    const r2 = qx === q.question ? r1 : search(qx, { scopeKeys: ["personal"], limit: RD });
     const ids1 = r1.map((h) => h.id);
     const in1 = new Set(ids1);
     const aTop = ids1.slice(0, K);
@@ -348,6 +338,5 @@ function show(name: string, a: Agg) {
 
 console.log(`\n==== LongMemEval-S retrieval (${POOLED ? "pooled 23k corpus" : "per-question isolated corpus"}) ====`);
 console.log(`variant=${VARIANT} search-limit=${K}`);
-console.log(`round2 fired on ${round2fires} queries, gold in round-2 results ${round2rescues}x`);
 show("overall", total);
 for (const [t, a] of [...byType.entries()].sort()) show(t, a);

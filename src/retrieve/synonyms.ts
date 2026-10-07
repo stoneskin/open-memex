@@ -1,37 +1,64 @@
 /**
- * Query-time synonym expansion (D79).
+ * Index-time synonym/translation expansion (D80).
  *
- * Pure logic, no sqlite — same discipline as query.ts. A curated,
- * checked-in map: dev-domain vocabulary plus general equivalents, EN and
- * ZH. Used for the second-chance retrieval round (see search.ts): when
- * the first FTS pass returns fewer candidates than requested, the query
- * is re-run with synonym variants OR-ed in.
+ * Stone's rule: solve vocabulary mismatch at write time, so any related
+ * word finds the answer with a plain round-1 query. At sync/index time
+ * every memory's keywords are expanded through a curated, checked-in
+ * equivalence map and the variants are written into the indexed `aliases`
+ * column (FTS + CJK bigram columns both pick them up via sync.ts). The
+ * query side stays simple: one FTS round, no trigger, no second chance.
  *
  * Deliberately NOT an embedding model or an LLM call: deterministic,
  * auditable, zero dependencies, and the failure mode (a bad synonym)
  * is a visible line in this file, not a silent vector.
  *
  * Groups are bidirectional — any member expands to the other members.
- * Keep groups tight: an over-broad synonym ("sync" for meetings) costs
- * precision on every query. When in doubt, leave it out.
+ * Keep groups tight: an over-broad synonym costs precision on every
+ * query, and at index time a bad entry pollutes every document instead
+ * of one query. When in doubt, leave it out. A map update only reaches
+ * already-indexed memories after a reindex.
+ *
+ * Design note (D80): the map covers the *precise* slice — EN↔ZH
+ * translation pairs and dev-domain equivalents where embeddings are
+ * fuzzy (ship/deploy are neighbors in vector space but "单点登录"/SSO
+ * is an exact pair no embedding guarantees). Embeddings cover the
+ * semantic long tail; this map covers what must never be missed.
  */
+
+import { LATIN_STOPWORDS } from "./query.ts";
 
 type Group = string[];
 
-/** English synonym groups (all lowercase; matched against lowered terms). */
-const EN_GROUPS: Group[] = [
-  ["deploy", "ship", "release", "rollout", "publish"],
-  ["test", "testing", "tests"],
+const CJK_RE = /[\u4e00-\u9fff]/;
+
+/**
+ * Curated equivalence groups. EN dev-domain vocabulary, ZH equivalents,
+ * and EN↔ZH translation pairs live in one bidirectional group: any member
+ * expands to all the others, in either direction.
+ */
+const GROUPS: Group[] = [
+  ["deploy", "ship", "release", "rollout", "publish", "部署", "发布", "上线"],
+  ["test", "testing", "tests", "测试", "单测", "集成测试"],
+  ["regression test", "回归测试"],
+  ["rollback", "revert", "回滚", "撤回", "撤销", "回退"],
+  ["incident", "outage", "postmortem", "故障", "事故", "宕机"],
+  ["auth", "authentication", "login", "sso", "single sign-on", "单点登录", "登录"],
+  ["secret", "secrets", "credential", "credentials", "token", "密钥"],
+  ["database", "db", "数据库"],
+  ["backup", "restore", "备份", "恢复"],
+  ["retention", "保留"],
+  ["production", "生产", "生产环境"],
+  ["staging", "预发布环境", "预发布"],
+  ["wipe", "wipes", "清空", "清除"],
+  ["nightly", "night", "每晚"],
+  ["thursday", "周四", "星期四"],
+  ["mandatory", "强制", "必须"],
   ["flaky", "flake", "unreliable", "intermittent"],
   ["bug", "defect", "issue"],
   ["ci", "pipeline"],
-  ["rollback", "revert"],
   ["cache", "caching", "cached"],
   ["invalidate", "invalidation", "expire", "expiry"],
-  ["incident", "outage", "postmortem"],
   ["oncall", "on-call", "pager"],
-  ["auth", "authentication", "login", "sso"],
-  ["secret", "secrets", "credential", "credentials", "token"],
   ["migration", "migrate", "migrating"],
   ["index", "indexing", "indexed"],
   ["slow", "latency", "performance", "perf"],
@@ -39,43 +66,41 @@ const EN_GROUPS: Group[] = [
   ["merge", "merging"],
   ["branch", "branches"],
   ["commit", "commits"],
-  ["review", "code review"],
+  ["review", "code review", "评审", "代码评审"],
   ["mock", "stub"],
   ["debug", "debugging", "troubleshoot", "troubleshooting"],
   ["log", "logs", "logging"],
   ["monitor", "monitoring", "alert", "alerting"],
-  ["backup", "restore"],
   ["scale", "scaling"],
   ["timeout", "timeouts"],
   ["retry", "retries"],
   ["queue", "job", "worker"],
   ["api", "endpoint"],
-  ["database", "db"],
   ["docker", "container", "image"],
   ["kubernetes", "k8s"],
   ["env", "environment"],
   ["config", "configuration", "setting", "settings"],
   ["hotfix", "hot fix"],
   ["estimate", "estimation"],
-];
-
-/** Chinese synonym groups (substring-matched against the raw query). */
-const ZH_GROUPS: Group[] = [
-  ["部署", "发布", "上线"],
-  ["测试", "单测", "集成测试"],
-  ["回滚", "撤回", "撤销"],
-  ["故障", "事故", "宕机"],
   ["乱码", "编码问题"],
   ["并发", "并行"],
   ["重构"],
-  ["评审", "代码评审"],
   ["规范", "约定"],
-  ["回退", "回滚"],
 ];
 
-const enLookup = new Map<string, string[]>();
-for (const g of EN_GROUPS) {
-  for (const m of g) enLookup.set(m, g.filter((x) => x !== m));
+const termLookup = new Map<string, string[]>();
+const phraseEntries: Array<{ phrase: string; siblings: string[] }> = [];
+const cjkEntries: Array<{ keys: string[]; siblings: string[] }> = [];
+
+for (const g of GROUPS) {
+  const cjkKeys = g.filter((m) => CJK_RE.test(m));
+  if (cjkKeys.length > 0) cjkEntries.push({ keys: cjkKeys, siblings: [...g] });
+  for (const m of g) {
+    if (CJK_RE.test(m)) continue;
+    const siblings = g.filter((x) => x !== m);
+    if (m.includes(" ")) phraseEntries.push({ phrase: m.toLowerCase(), siblings });
+    else termLookup.set(m.toLowerCase(), siblings);
+  }
 }
 
 /**
@@ -83,14 +108,62 @@ for (const g of EN_GROUPS) {
  * itself). Empty array when the term has no curated synonyms.
  */
 export function synonymVariants(term: string): string[] {
-  return enLookup.get(term.toLowerCase()) ?? [];
+  return termLookup.get(term.toLowerCase()) ?? [];
+}
+
+/** Cap on auto-generated variants per memory — bounds index growth. */
+export const MAX_AUTO_VARIANTS = 32;
+
+/**
+ * Index-time expansion for one memory's text (body + tags). Keyword-
+ * centric (Stone): extract content terms, expand each through the
+ * curated map, return variants not already present in the text.
+ * Pure logic — safe to unit test, runs once per memory at sync time.
+ */
+export function expansionVariantsForDoc(text: string): string[] {
+  const lower = text.toLowerCase();
+  // Content terms only: function words carry no signal (same filter the
+  // query builder applies, so both sides agree on what a keyword is).
+  const latinTokens = new Set(
+    (lower.match(/[a-z0-9_.\-]+/g) ?? []).filter(
+      (t) => t.length > 1 && !LATIN_STOPWORDS.has(t),
+    ),
+  );
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (v: string) => {
+    const key = v.toLowerCase();
+    if (seen.has(key) || out.length >= MAX_AUTO_VARIANTS) return;
+    seen.add(key);
+    out.push(v);
+  };
+  // A variant is "already present" when the doc has it as a token (Latin),
+  // as a substring (Latin phrase), or as a substring (CJK — no tokenizer).
+  const present = (v: string): boolean =>
+    CJK_RE.test(v)
+      ? text.includes(v)
+      : v.includes(" ")
+        ? lower.includes(v.toLowerCase())
+        : latinTokens.has(v.toLowerCase());
+
+  for (const t of latinTokens) {
+    for (const v of termLookup.get(t) ?? []) if (!present(v)) push(v);
+  }
+  for (const { phrase, siblings } of phraseEntries) {
+    if (!lower.includes(phrase)) continue;
+    for (const v of siblings) if (!present(v)) push(v);
+  }
+  for (const { keys, siblings } of cjkEntries) {
+    if (!keys.some((k) => text.includes(k))) continue;
+    for (const v of siblings) if (!present(v)) push(v);
+  }
+  return out;
 }
 
 /**
- * Expand a raw query string with synonym variants: every EN term with
- * curated synonyms contributes its variants, and every ZH group key
- * found in the query contributes its siblings. Returns the query
- * unchanged when nothing expands (so the caller can skip round two).
+ * Expand a raw query string with synonym variants (legacy query-time
+ * helper, kept for bench scripts). The product no longer expands at
+ * query time — D80 moved expansion to the index.
  */
 export function expandQueryWithSynonyms(q: string): string {
   const extra = new Set<string>();
@@ -98,9 +171,9 @@ export function expandQueryWithSynonyms(q: string): string {
   for (const t of latinTerms) {
     for (const s of synonymVariants(t)) extra.add(s);
   }
-  for (const g of ZH_GROUPS) {
-    if (g.some((m) => q.includes(m))) {
-      for (const m of g) extra.add(m);
+  for (const { keys, siblings } of cjkEntries) {
+    if (keys.some((k) => q.includes(k))) {
+      for (const s of siblings) extra.add(s);
     }
   }
   // Don't re-add terms already in the query.

@@ -48,11 +48,10 @@ console.log(`seeded ${MEMORIES.length} memories (indexed: ${stats.added})\n`);
 let r1 = 0;
 let r5 = 0;
 let mrr = 0;
-let round2runs = 0;
 const misses: string[] = [];
 
 for (const q of QUERIES) {
-  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, secondRound: false };
+  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0 };
   const hits = search(q.query, { scopeKeys: ["personal"], limit: 50, stats });
   const ids = hits.map((h) => h.id);
   let rank = -1;
@@ -60,13 +59,12 @@ for (const q of QUERIES) {
     const i = ids.indexOf(g);
     if (i !== -1 && (rank === -1 || i < rank)) rank = i;
   }
-  if (stats.secondRound) round2runs++;
   if (rank === 0) r1++;
   if (rank !== -1 && rank < K) r5++;
   if (rank !== -1) mrr += 1 / (rank + 1);
-  else misses.push(`  MISS  rank=-  query="${q.query}" gold=${q.gold.join(",")} [${q.note}]${stats.secondRound ? " (round2 ran)" : ""}`);
+  else misses.push(`  MISS  rank=-  query="${q.query}" gold=${q.gold.join(",")} [${q.note}]`);
   if (rank > 0) {
-    console.log(`  rank=${rank + 1}  query="${q.query}" gold=${q.gold.join(",")} [${q.note}]${stats.secondRound ? " (round2)" : ""}`);
+    console.log(`  rank=${rank + 1}  query="${q.query}" gold=${q.gold.join(",")} [${q.note}]`);
   }
 }
 
@@ -77,7 +75,6 @@ console.log(`queries: ${n}`);
 console.log(`recall@1: ${(r1 / n).toFixed(3)} (${r1}/${n})`);
 console.log(`recall@5: ${(r5 / n).toFixed(3)} (${r5}/${n})`);
 console.log(`MRR     : ${(mrr / n).toFixed(3)}`);
-console.log(`round2  : ran on ${round2runs}/${n} queries`);
 if (misses.length > 0) {
   console.log(`\nmisses (${misses.length}):`);
   for (const m of misses) console.log(m);

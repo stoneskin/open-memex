@@ -1,6 +1,5 @@
 import { db } from "../store/db.ts";
 import { toFtsQuery } from "./query.ts";
-import { expandQueryWithSynonyms } from "./synonyms.ts";
 
 export interface SearchHit {
   id: string;
@@ -89,8 +88,6 @@ export interface SearchStats {
   candidates: number;
   hiddenSuperseded: number;
   hiddenExcluded: number;
-  /** D79: true when the synonym second-chance round ran and added rows. */
-  secondRound: boolean;
 }
 
 /**
@@ -166,7 +163,6 @@ export function search(
     limit?: number;
     type?: string;
     stats?: SearchStats;
-    synonyms?: boolean;
     /** Ablation toggles for query construction (default = shipped behavior). */
     stopwords?: boolean;
     orJoin?: boolean;
@@ -180,7 +176,6 @@ export function search(
     opts.stats.candidates = 0;
     opts.stats.hiddenSuperseded = 0;
     opts.stats.hiddenExcluded = 0;
-    opts.stats.secondRound = false;
   }
   if (!q) return [];
   const limit = Math.max(1, Math.min(opts.limit ?? 8, 50));
@@ -234,26 +229,9 @@ export function search(
 
   const raw: RawRow[] = fetchFts(q);
 
-  // D79 second-chance round: when the first pass is thin, re-run with
-  // curated synonym variants OR-ed in (see synonyms.ts). Round-two rows
-  // only fill gaps — round-one rows keep their ids/scores, so a strong
-  // first-pass ranking is never diluted by the expansion.
-  // opts.synonyms === false disables the round (ablation / benchmarking).
-  if (raw.length < limit && opts.synonyms !== false) {
-    const expandedQuery = expandQueryWithSynonyms(query);
-    const q2 = expandedQuery === query ? "" : toFtsQuery(expandedQuery, qflags);
-    if (q2 && q2 !== q) {
-      const seen = new Set(raw.map((r) => r.id));
-      for (const r of fetchFts(q2)) {
-        if (!seen.has(r.id)) {
-          seen.add(r.id);
-          raw.push(r);
-        }
-      }
-      if (opts.stats) opts.stats.secondRound = true;
-    }
-  }
-
+  // D80: vocabulary mismatch is solved at index time (synonyms.ts expands
+  // curated variants into the aliases column at sync time), so the query
+  // side is a single FTS round — no trigger, no second chance.
   if (opts.stats) opts.stats.candidates = raw.length;
   return resolveVisible(raw, limit, opts.stats);
 }

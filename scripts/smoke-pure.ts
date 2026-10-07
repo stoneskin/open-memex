@@ -8,6 +8,7 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, pickScopeRoot, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
+import { expansionVariantsForDoc, MAX_AUTO_VARIANTS } from "../src/retrieve/synonyms.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
 import {
   MIN_NODE_VERSION,
@@ -865,6 +866,32 @@ ok("cursor keeps skill", shouldInstallSkill("cursor", false) === true);
   }, "personal", now);
   ok("inventory line shows project state + late update", proj.includes("[draft]") && proj.includes("updated=1h"), proj);
   ok("truncation note speaks only when cut", truncationNote(20, 54)?.includes("34 more") === true && truncationNote(20, 20) === null);
+}
+
+console.log("== D80 index-time expansion ==");
+{
+  // EN term expands to its group siblings, minus what's already in the text.
+  const v1 = expansionVariantsForDoc("Deploy to production only from the release branch.");
+  ok("ship expands from deploy", v1.includes("ship"), v1.join(","));
+  ok("no dupes of present terms", !v1.includes("deploy") && !v1.includes("release"), v1.join(","));
+  ok("function words are not keywords", !v1.includes("to") && !v1.includes("the"), v1.join(","));
+  // ZH substring expands both directions: doc has 数据库 → database indexed.
+  const v2 = expansionVariantsForDoc("数据库备份每天凌晨两点执行，全量保留三十天。");
+  ok("database indexed from 数据库", v2.includes("database"), v2.join(","));
+  ok("backup indexed from 备份", v2.includes("backup"), v2.join(","));
+  ok("retention indexed from 保留", v2.includes("retention"), v2.join(","));
+  // EN doc gets ZH variants: staging → 预发布环境.
+  const v3 = expansionVariantsForDoc("The staging environment wipes itself every night at midnight.");
+  ok("预发布环境 indexed from staging", v3.includes("预发布环境"), v3.join(","));
+  ok("wipes inflects to wipe group", v3.includes("清空"), v3.join(","));
+  // Multi-word Latin phrase: regression test.
+  const v4 = expansionVariantsForDoc("上线前必须跑完全量回归测试。");
+  ok("regression test indexed from 回归测试", v4.includes("regression test"), v4.join(","));
+  // Cap bounds index growth.
+  const v5 = expansionVariantsForDoc("test deploy bug cache queue api docker config log mock review commit merge branch");
+  ok("variant cap respected", v5.length <= MAX_AUTO_VARIANTS, String(v5.length));
+  // Empty / no-match input.
+  ok("no curated terms → no variants", expansionVariantsForDoc("hello world").length === 0);
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);

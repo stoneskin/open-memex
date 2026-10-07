@@ -171,7 +171,9 @@ Measure first, then change: the pipeline's BM25 core is strong (level with publi
 # per-question baseline (limit 10)
 node --experimental-strip-types scripts/bench-longmemeval.ts \
   --data <longmemeval_s_cleaned.json> --variant baseline --search-limit 10
-# OFAT: --variant no-stopwords | and | no-prefix | no-synonyms
+# OFAT: --variant no-stopwords | and | no-prefix
+#   (no-synonyms retired by D80 — expansion is index-time now; its 2026-10-07
+#   measurement, effect 0.000, stands in the paper)
 # limit sweep: --search-limit 1|3|5|10|20|50
 # pooled stress: add --pooled
 # rescue experiment: --rescue --search-limit <K> --out-rows <tsv> [--pooled]

@@ -409,6 +409,11 @@ question worded differently still finds the memory — "vacation days" finds the
 holiday policy. `init` asks once whether to enable this (default on); turn it
 off any time with `open-memex config set captureAliases false`.
 
+Separately, a curated synonym/translation map is expanded into the index
+automatically at write time (D80) — `ship` finds `deploy` even with no
+aliases on the memory. See [Retrieval: how memories come
+back](#retrieval-how-memories-come-back).
+
 **Redaction.** Wrap anything sensitive in `<private>…</private>` and it is
 stripped before saving. Recognized secrets (API keys, tokens, high-entropy
 credentials) are masked in place — the first 4 characters are kept so you can
@@ -572,11 +577,13 @@ asserted. Reproduce with
 
 Honest edges, so nothing surprises you:
 
-- **Keyword search, not semantic.** Retrieval is BM25 keyword matching: search
-  finds the words you saved, not paraphrases. (Plain questions are fine —
-  "how do we…" / "请问…" wording is filtered out before matching, so asking
-  naturally doesn't dilute the results.) No embedding model is ever
-  downloaded without your explicit opt-in.
+- **Keyword search, not semantic.** Retrieval is BM25 keyword matching, plus a
+  curated synonym map expanded into the index at write time (`ship` finds
+  `deploy`, `单点登录` finds `SSO`). Paraphrases outside the curated map
+  don't match — that's what the opt-in semantic layer is for. (Plain
+  questions are fine — "how do we…" / "请问…" wording is filtered out before
+  matching, so asking naturally doesn't dilute the results.) No embedding
+  model is ever downloaded without your explicit opt-in.
 - **One machine.** Editors on the same machine share memory; there is no
   cross-machine sync. `export` / `import` bundles (below) move memory between
   machines manually.

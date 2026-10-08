@@ -905,10 +905,12 @@ export async function initProject(opts: {
     );
     if (injectOnFirstTurn !== DEFAULT_CONFIG.injectOnFirstTurn)
       patch.injectOnFirstTurn = injectOnFirstTurn;
-    // D61: capture-time aliases — agents attach alternate phrasings to each
-    // memory so differently-worded questions still find it.
+    // D61: capture-time aliases — the agent may attach its own alternate
+    // phrasings to each memory so differently-worded questions still find it.
+    // Distinct from D80's automatic index-time synonym expansion, which
+    // applies regardless of this setting.
     const captureAliases = await askBool(
-      "Attach alternate phrasings (aliases) to memories so reworded questions still find them?",
+      "Let the agent attach its own alternate phrasings (aliases) to memories? (The built-in synonym map applies regardless.)",
       DEFAULT_CONFIG.captureAliases,
     );
     if (captureAliases !== DEFAULT_CONFIG.captureAliases)

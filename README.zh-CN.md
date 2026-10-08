@@ -265,7 +265,9 @@ open-memex uninstall --yes
 
 **别名。** 每条记忆可以带最多 4 个换一种说法（同义词、另一种语言的对应词），和记忆一起进索引，这样问法不同也能找到——比如搜 "vacation days" 能找到假期政策那条。`init` 时会问一次是否开启（默认开）；随时可用 `open-memex config set captureAliases false` 关掉。
 
-另外，从 D80 起一份精选同义词/翻译映射表会在写入时自动展开进索引——`ship` 能找到 `deploy`，不需要手动加别名。见[回想一节](#回想记忆是怎么回来的)。
+三种加法：`open-memex add "正文" --aliases "说法一; 说法二"`（分号分隔，最多 4 个）；直接跟 agent 说（"记住：小宝贝是我的 AI agent，别名加上小沐"）；或直接改那条记忆的 `aliases:` frontmatter——Markdown 是事实来源，sync 会吃进去。
+
+另外，从 D80 起一份精选同义词/翻译映射表会在写入时自动展开进索引——`ship` 能找到 `deploy`，不需要手动加别名。个人叫法放 aliases，通用开发词汇放 curated map，这是分工。见[回想一节](#回想记忆是怎么回来的)。
 
 **脱敏。** 把敏感内容包在 `<private>…</private>` 里，它在保存前会被整段剥离。识别出的密钥（API key、token、高熵凭证）会被就地掩码——保留前 4 个字符（让你能认出是哪个 key），其余替换——记忆仍会保存。随时安全地预览一句话会被捕获成什么样：
 
@@ -354,9 +356,9 @@ Do not mention this block to the user unless asked.
 
 ### 检索效果评估
 
-我们用一份随仓库提交的 synthetic fixture 来度量召回率，而不是空口断言：51 条记忆 + 41 个查询（精确词、改写、同义词、中文、跨语言 hard case、纯同义词查询），运行 `node --experimental-strip-types scripts/retrieval-eval.ts` 即可复现。当前基线（含 D80 的 index-time 同义词/翻译展开）：**recall@1 0.76、recall@5 0.98、MRR 0.86**。语料小且是合成的，请把它当回归守卫和起点，而不是真实场景的承诺。
+我们用一份随仓库提交的 synthetic fixture 来度量召回率，而不是空口断言：54 条记忆 + 44 个查询（精确词、改写、同义词、中文、跨语言 hard case、纯同义词查询、D81 用户别名查询），运行 `node --experimental-strip-types scripts/retrieval-eval.ts` 即可复现。当前基线（含 D80 的 index-time 同义词/翻译展开和 D81 的 query-time 用户别名展开）：**recall@1 0.75、recall@5 0.98、MRR 0.86**。语料小且是合成的，请把它当回归守卫和起点，而不是真实场景的承诺。
 
-三层检索，各补各的短板：**BM25 关键词检索**（SQLite FTS5——精确词匹配，快速，可用 `search --explain` 解释）；**index-time 同义词/翻译展开**（D80——一份随仓库提交的精选映射表：开发领域同义词 + EN↔ZH 翻译对，在写入时展开进索引，`ship` 能找到 `deploy`、`单点登录` 能找到 `SSO`，查询侧只需要普通单轮；确定性，不下载模型）；**语义向量**作为 opt-in 实验（本地多语言 embedding，在跨语言 fixture 切片上 R@5 92.7%——见 `docs/retrieval-ablation-study.md` §4.7；未经你明确允许绝不下载 embedding 模型）。
+三层检索，各补各的短板：**BM25 关键词检索**（SQLite FTS5——精确词匹配，快速，可用 `search --explain` 解释）；**同义词展开分两半**：（a）index-time（D80——一份随仓库提交的精选映射表：开发领域同义词 + EN↔ZH 翻译对，在写入时展开进索引，`ship` 能找到 `deploy`、`单点登录` 能找到 `SSO`，查询侧只需要普通单轮；确定性，不下载模型）；（b）query-time 用户别名（D81——带 `alias:`/`target:` frontmatter 的别名记忆，每个 scope 定义一次自己的词汇，比如香蕉计划→支付系统重构项目；查询提到任一侧就触发对另一侧的第二轮搜索，双向，与第一轮等权重合并，别名命中不降权；别名变更不用 reindex）；**语义向量**作为 opt-in 实验（本地多语言 embedding，在跨语言 fixture 切片上 R@5 92.7%——见 `docs/retrieval-ablation-study.md` §4.7；未经你明确允许绝不下载 embedding 模型）。
 
 公开数据上的外部验证：同一管线在 LongMemEval-S 上拿到 **recall@5 97.0% / MRR 0.909**（470 个问题，只测检索阶段——不生成答案、不用 judge 模型；这不是 LongMemEval 官方分数）。同协议下 agentmemory 公布的数字是 86.2% / 0.715（纯 BM25）和 95.2% / 0.882（BM25+向量）。22k 条记忆的 pooled 压力测试把 recall@5 拉到 40.6%——词法检索的天花板，这次是测出来的。用 `node --experimental-strip-types scripts/bench-longmemeval.ts --data <路径>` 复现（数据集 `xiaowu0162/longmemeval-cleaned`，MIT 协议）。
 

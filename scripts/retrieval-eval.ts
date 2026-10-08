@@ -37,6 +37,8 @@ for (const m of MEMORIES) {
     type: m.type,
     tags: m.tags,
     aliases: m.aliases,
+    alias: m.alias,
+    target: m.target,
     source: "retrieval-eval fixture",
   });
   fs.writeFileSync(path.join(dir, `${m.id}.md`), serialize(fm, m.body), "utf8");
@@ -51,7 +53,7 @@ let mrr = 0;
 const misses: string[] = [];
 
 for (const q of QUERIES) {
-  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0 };
+  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, aliasExpansions: [] as string[] };
   const hits = search(q.query, { scopeKeys: ["personal"], limit: 50, stats });
   const ids = hits.map((h) => h.id);
   let rank = -1;

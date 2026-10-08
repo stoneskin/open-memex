@@ -15,8 +15,8 @@ import { projectRoot, paths } from "../paths.ts";
 import { loadConfig } from "../config.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, aliases, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, aliases, alias, target, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
     scope        = excluded.scope,
@@ -28,6 +28,8 @@ const UPSERT_SQL = `
     status       = excluded.status,
     tags         = excluded.tags,
     aliases      = excluded.aliases,
+    alias        = excluded.alias,
+    target       = excluded.target,
     content      = excluded.content,
     cjk          = excluded.cjk,
     content_hash = excluded.content_hash,
@@ -74,6 +76,7 @@ function writeRow(mf: MemoryFile, mtimeMs: number): void {
     (a) => !have.has(a.toLowerCase()),
   );
   const aliases = [...supplied, ...auto].join(",");
+  // D81: user-defined alias vocabulary (single nickname → referent pair).
   db().prepare(UPSERT_SQL).run(
     fm.id,
     fm.scope_key,
@@ -86,6 +89,8 @@ function writeRow(mf: MemoryFile, mtimeMs: number): void {
     fm.status,
     tags,
     aliases,
+    fm.alias ?? "",
+    fm.target ?? "",
     body,
     cjkIndexText(body + "\n" + tags + "\n" + aliases),
     contentHash(body),

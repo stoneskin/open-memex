@@ -124,7 +124,7 @@ Example:
 
   add: `Save a fact, preference, decision, or note to local memory.
 
-Usage: open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2] [--aliases "a;b"]
+Usage: open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2] [--aliases "a;b"] [--alias NICK --target REFERENT]
 
 Flags:
   --scope    project (default) or personal (personal never leaves this machine)
@@ -135,6 +135,11 @@ Flags:
              with ; (commas also accepted — use ; when an alias itself
              contains one). Stored only when capture aliases are enabled
              (init default)
+  --alias --target  D81: define user vocabulary once — e.g. --alias 香蕉计划
+             --target 支付系统重构项目. Later queries mentioning either side
+             trigger a second search round on the other side (both
+             directions), scoped like the memory itself. Not gated by
+             capture aliases.
 
 Example:
   open-memex add "We deploy on Fridays" --scope project --tag process`,
@@ -1008,7 +1013,7 @@ async function main() {
           : [project.key, PERSONAL_SCOPE.key];
     const explain = flags.explain === "true";
     const stats = explain
-      ? { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0 }
+      ? { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, aliasExpansions: [] as string[] }
       : undefined;
     const hits = search(query, {
       scopeKeys: keys,
@@ -1021,6 +1026,9 @@ async function main() {
       console.log(
         `candidates: ${stats.candidates}, hidden by lifecycle: ${stats.hiddenSuperseded} superseded, ${stats.hiddenExcluded} retracted/archived`,
       );
+      if (stats.aliasExpansions.length > 0) {
+        console.log(`alias rounds: ${stats.aliasExpansions.map((q) => `"${q}"`).join(" → ")}`);
+      }
     }
     if (hits.length === 0) {
       console.log("(no matches)");
@@ -1082,6 +1090,14 @@ async function main() {
                 .filter(Boolean),
             ),
           }
+        : {}),
+      // D81: --alias/--target define user vocabulary (not gated by capture
+      // aliases — this is deliberate, like typing the words yourself).
+      ...(typeof flags.alias === "string" && flags.alias !== "true" && flags.alias.trim()
+        ? { alias: redact(flags.alias.trim(), cfg.redactPatterns).content }
+        : {}),
+      ...(typeof flags.target === "string" && flags.target !== "true" && flags.target.trim()
+        ? { target: redact(flags.target.trim(), cfg.redactPatterns).content }
         : {}),
       source: "cli",
       created_at: rfc,

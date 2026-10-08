@@ -147,7 +147,7 @@ function rankOf(
   q: LMEItem,
   isGold: (id: string) => boolean,
 ): number {
-  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0 };
+  const stats = { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, aliasExpansions: [] as string[] };
   const hits = search(q.question, {
     scopeKeys: ["personal"],
     limit: K,

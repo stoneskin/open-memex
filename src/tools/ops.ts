@@ -113,6 +113,18 @@ export const memoryAddArgs = {
   scope: scopeArg,
   tags: z.array(z.string()).optional().describe("Optional tags for filtering."),
   aliases: aliasesArg,
+  alias: z
+    .string()
+    .optional()
+    .describe(
+      "D81: nickname this memory defines (e.g. 香蕉计划). Pairs with `target`: the alias memory expands queries in its scope at search time, both directions, no reindex. Explicit vocabulary — always stored, not gated by capture aliases.",
+    ),
+  target: z
+    .string()
+    .optional()
+    .describe(
+      "D81: what `alias` refers to (e.g. 支付系统重构项目). Only meaningful with `alias`.",
+    ),
   source: z
     .string()
     .optional()
@@ -163,6 +175,18 @@ export const memorySupersedeArgs = {
     .describe("Category of the new memory. Defaults to the old memory's type."),
   tags: z.array(z.string()).optional().describe("Optional tags for the new memory."),
   aliases: aliasesArg,
+  alias: z
+    .string()
+    .optional()
+    .describe(
+      "D81: nickname the new memory defines (e.g. 香蕉计划). Omitted = inherit the old memory's alias.",
+    ),
+  target: z
+    .string()
+    .optional()
+    .describe(
+      "D81: what `alias` refers to (e.g. 支付系统重构项目). Omitted = inherit.",
+    ),
 };
 export type MemorySupersedeArgs = z.infer<z.ZodObject<typeof memorySupersedeArgs>>;
 
@@ -242,6 +266,8 @@ function buildFrontmatter(
     type: Frontmatter["type"];
     tags: string[];
     aliases?: string[];
+    alias?: string;
+    target?: string;
     source: Frontmatter["source"];
   },
 ): Frontmatter {
@@ -259,6 +285,11 @@ function buildFrontmatter(
     status: "active",
     tags: body.tags,
     ...(body.aliases && body.aliases.length > 0 ? { aliases: body.aliases } : {}),
+    // D81: explicit alias vocabulary — single trimmed strings, dropped
+    // when empty. Not gated by captureAliases (that gates agent-invented
+    // phrasings; this is deliberate vocabulary).
+    ...(body.alias?.trim() ? { alias: body.alias.trim() } : {}),
+    ...(body.target?.trim() ? { target: body.target.trim() } : {}),
     source: body.source,
     created_at: rfc,
     updated_at: rfc,
@@ -328,6 +359,14 @@ export async function addMemory(
           (args.aliases ?? []).map((a) => redact(a, cfg.redactPatterns).content),
         )
       : [],
+    // D81: explicit alias vocabulary — same redaction as content, never
+    // gated by captureAliases.
+    alias: args.alias?.trim()
+      ? redact(args.alias.trim(), cfg.redactPatterns).content
+      : undefined,
+    target: args.target?.trim()
+      ? redact(args.target.trim(), cfg.redactPatterns).content
+      : undefined,
     source: args.source ?? "tool",
   });
   const { filePath } = writeMemoryFile(fm, redacted);
@@ -446,6 +485,16 @@ export async function supersedeMemory(
           ? normalizeAliases(
               args.aliases.map((a) => redact(a, cfg.redactPatterns).content),
             )
+          : undefined,
+      // D81: explicit alias vocabulary — omitted inherits the old memory's
+      // pair; same redaction as content; never gated by captureAliases.
+      alias:
+        args.alias !== undefined
+          ? redact(args.alias, cfg.redactPatterns).content || undefined
+          : undefined,
+      target:
+        args.target !== undefined
+          ? redact(args.target, cfg.redactPatterns).content || undefined
           : undefined,
       source: "tool",
     });

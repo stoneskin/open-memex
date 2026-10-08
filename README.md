@@ -409,10 +409,16 @@ question worded differently still finds the memory — "vacation days" finds the
 holiday policy. `init` asks once whether to enable this (default on); turn it
 off any time with `open-memex config set captureAliases false`.
 
+Three ways to add them: `open-memex add "text" --aliases "phrase one; phrase
+two"` (semicolon-separated, up to 4); ask the agent ("remember: 小宝贝 is my
+AI agent, alias it as 小沐"); or edit the memory's `aliases:` frontmatter
+directly — Markdown is the source of truth and sync picks it up.
+
 Separately, a curated synonym/translation map is expanded into the index
 automatically at write time (D80) — `ship` finds `deploy` even with no
-aliases on the memory. See [Retrieval: how memories come
-back](#retrieval-how-memories-come-back).
+aliases on the memory. Personal nicknames belong in aliases; shared
+dev-domain vocabulary belongs in the curated map. See [Retrieval: how
+memories come back](#retrieval-how-memories-come-back).
 
 **Redaction.** Wrap anything sensitive in `<private>…</private>` and it is
 stripped before saving. Recognized secrets (API keys, tokens, high-entropy
@@ -528,20 +534,28 @@ the opencode plugin injects it directly on the first turn.
 ### Retrieval evaluation
 
 We measure recall on a checked-in synthetic fixture instead of asserting it:
-51 memories + 41 queries (exact terms, paraphrases, synonyms, Chinese,
-cross-language hard cases, and synonym-only queries) — reproduce with
+54 memories + 44 queries (exact terms, paraphrases, synonyms, Chinese,
+cross-language hard cases, synonym-only queries, and D81 user-defined
+alias queries) — reproduce with
 `node --experimental-strip-types scripts/retrieval-eval.ts`.
-Current baseline, with index-time synonym/translation expansion (D80):
-**recall@1 0.76, recall@5 0.98, MRR 0.86**.
+Current baseline, with index-time synonym/translation expansion (D80) and
+query-time user alias expansion (D81):
+**recall@1 0.75, recall@5 0.98, MRR 0.86**.
 Small synthetic corpus, so read it as a regression guard and a starting point,
 not a real-world claim.
 
 Three layers, each covering what the others miss: **BM25 keyword search**
 (SQLite FTS5 — exact words, fast, explainable via `search --explain`);
-**index-time synonym/translation expansion** (D80 — a curated, checked-in map
-of dev-domain equivalents and EN↔ZH translation pairs expanded into the index
-at write time, so `ship` finds `deploy` and `单点登录` finds `SSO` in a plain
-single-round query; deterministic, no model download); and **semantic vectors**
+**synonym expansion in two halves** — (a) index-time (D80: a curated,
+checked-in map of dev-domain equivalents and EN↔ZH translation pairs
+expanded into the index at write time, so `ship` finds `deploy` and
+`单点登录` finds `SSO` in a plain single-round query; deterministic, no
+model download); (b) query-time user aliases (D81: an alias memory carrying
+`alias:`/`target:` frontmatter defines your vocabulary once per scope —
+e.g. 香蕉计划 → 支付系统重构项目 — and a query mentioning either side
+triggers a second round on the other side, both directions, merged evenly
+with round one so alias hits are never down-weighted; no reindex when the
+alias changes); and **semantic vectors**
 as an opt-in experiment (local multilingual embeddings measured at R@5 92.7%
 on the cross-lingual fixture slice — see `docs/retrieval-ablation-study.md`
 §4.7; no embedding model is ever downloaded without your explicit opt-in).

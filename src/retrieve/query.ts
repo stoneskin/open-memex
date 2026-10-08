@@ -32,7 +32,7 @@ const CJK_QUESTION_BIGRAMS = new Set([
 
 const MAX_TERMS = 24;
 
-function latinTerms(q: string, useStopwords = true): string[] {
+export function latinTerms(q: string, useStopwords = true): string[] {
   const raw = q.toLowerCase().match(/[a-z0-9_.\-]+/g) ?? [];
   const kept = useStopwords
     ? raw.filter((t) => t.length > 1 && !LATIN_STOPWORDS.has(t))

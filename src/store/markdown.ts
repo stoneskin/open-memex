@@ -60,6 +60,17 @@ export interface Frontmatter {
    * Optional and additive: files without it parse unchanged.
    */
   aliases?: string[];
+  /**
+   * D81: user-defined alias vocabulary — `alias` is the nickname
+   * (e.g. 香蕉计划), `target` is what it refers to
+   * (e.g. 支付系统重构项目). Unlike D61 per-memory aliases (alternate
+   * phrasings of one memory), an alias memory defines vocabulary once and
+   * the query-time expansion (retrieve/alias-memory.ts) applies it to every
+   * search in its scope — no reindex when the alias changes. Optional;
+   * files without it parse unchanged.
+   */
+  alias?: string;
+  target?: string;
   source: string;
   created_at: string; // RFC 3339, never bare epoch (§3)
   updated_at: string; // RFC 3339
@@ -246,6 +257,13 @@ export function normalizeFrontmatter(
           );
           return aliases.length > 0 ? { aliases } : {};
         })()
+      : {}),
+    // D81: alias vocabulary — single trimmed strings, dropped when empty.
+    ...(typeof raw.alias === "string" && raw.alias.trim()
+      ? { alias: raw.alias.trim() }
+      : {}),
+    ...(typeof raw.target === "string" && raw.target.trim()
+      ? { target: raw.target.trim() }
       : {}),
     source: typeof raw.source === "string" ? raw.source : "",
     created_at: msToRfc3339(timeToMs(raw.created_at)),

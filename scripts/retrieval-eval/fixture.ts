@@ -1,11 +1,13 @@
 /**
  * Synthetic retrieval-eval fixture (D77).
  *
- * 48 personal-scope memories + 36 queries with gold ids. Written BEFORE
+ * 54 personal-scope memories + 44 queries with gold ids. Written BEFORE
  * running the eval — the fixture is the test, not tuned to the results.
  * All memories share one scope/tier so the measured ranking is pure BM25.
  * Mixed EN/ZH; includes paraphrase and synonym queries (the hard cases
- * from the retrieval-robustness question) and near-duplicate distractors.
+ * from the retrieval-robustness question), near-duplicate distractors,
+ * and D81 user-defined alias vocabulary (bidirectional query-time
+ * expansion: 香蕉计划 ↔ 支付系统重构项目).
  */
 
 export interface FixtureMemory {
@@ -13,6 +15,9 @@ export interface FixtureMemory {
   type: string;
   tags: string[];
   aliases?: string[];
+  /** D81: user-defined alias vocabulary (nickname → referent). */
+  alias?: string;
+  target?: string;
   body: string;
 }
 
@@ -103,6 +108,11 @@ export const MEMORIES: FixtureMemory[] = [
   { id: "mem-049", type: "fact", tags: ["备份", "数据库"], body: "数据库备份每天凌晨两点执行，全量保留三十天，恢复演练每个季度做一次。" },
   { id: "mem-050", type: "decision", tags: ["发布", "测试"], body: "上线前必须跑完全量回归测试，测试报告要贴到发布群里，TL 确认后才能发。" },
   { id: "mem-051", type: "gotcha", tags: ["staging"], body: "The staging environment wipes itself every night at midnight. Never leave test data there overnight — it will be gone by morning." },
+
+  // ---- D81 user-defined alias vocabulary (query-time expansion) ----
+  { id: "mem-052", type: "fact", tags: ["alias"], alias: "香蕉计划", target: "支付系统重构项目", body: "香蕉计划是支付系统重构项目的内部代号，团队日常用香蕉计划指代这个项目。" },
+  { id: "mem-053", type: "decision", tags: ["backend"], body: "支付系统重构项目决定用 Go 重写网关层，Q4 启动。" },
+  { id: "mem-054", type: "fact", tags: ["planning"], body: "香蕉计划下周一启动评审，材料周五前提交。" },
 ];
 
 export const QUERIES: FixtureQuery[] = [
@@ -164,4 +174,9 @@ export const QUERIES: FixtureQuery[] = [
   { query: "how do we ship", gold: ["mem-001"], note: "synonym-only: ship→deploy/release" },
   { query: "pager schedule", gold: ["mem-042"], note: "synonym-only: pager→oncall" },
   { query: "my token got exposed", gold: ["mem-017"], note: "synonym-only: token→secret" },
+
+  // ---- D81 alias-memory queries (bidirectional query-time expansion) ----
+  { query: "香蕉计划用什么语言重写网关", gold: ["mem-053"], note: "alias→target: round 2 must find mem-053 via 支付系统重构项目" },
+  { query: "支付系统重构项目什么时候启动评审", gold: ["mem-054"], note: "target→alias: round 2 must find mem-054 via 香蕉计划" },
+  { query: "香蕉计划是哪个项目的代号", gold: ["mem-052"], note: "alias memory itself, round 1" },
 ];

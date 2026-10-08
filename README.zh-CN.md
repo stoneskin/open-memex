@@ -263,7 +263,7 @@ open-memex uninstall --yes
 - **检查点提议**：一个任务收尾时，助手会提议 1–3 条从这轮工作里提炼的候选记忆——决定及其理由、约定、踩过的坑、走过又放弃的路——只有你点头的那几条才存。不会有任何东西在你不知情时被写下来。
 - **CLI**：`open-memex add "…"`，可选 `--scope` / `--tag` / `--type` / `--aliases`。
 
-**别名。** 每条记忆可以带最多 4 个换一种说法（同义词、另一种语言的对应词），和记忆一起进索引，这样问法不同也能找到——比如搜 "vacation days" 能找到假期政策那条。`init` 时会问一次是否开启（默认开）；随时可用 `open-memex config set captureAliases false` 关掉。
+**别名。** 每条记忆可以带最多 4 个换一种说法（同义词、另一种语言的对应词），和记忆一起进索引，这样问法不同也能找到——比如搜 "vacation days" 能找到假期政策那条。永远开启：agent 每条记忆最多可附 4 个，你也可以用 `open-memex add --aliases` 自己加。
 
 三种加法：`open-memex add "正文" --aliases "说法一; 说法二"`（分号分隔，最多 4 个）；直接跟 agent 说（"记住：小宝贝是我的 AI agent，别名加上小沐"）；或直接改那条记忆的 `aliases:` frontmatter——Markdown 是事实来源，sync 会吃进去。
 

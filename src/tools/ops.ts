@@ -101,7 +101,7 @@ export const aliasesArg = z
   .array(z.string())
   .optional()
   .describe(
-    "Optional: alternate phrasings of this fact — synonyms, another way a question might be worded, equivalents in the user's other language (e.g. 节假日 for 'public holidays'). They are indexed with the memory so differently-worded questions still match. Only used when the install has capture aliases enabled (init default). Send at most 4; extras and blanks are dropped silently, never an error.",
+    "Optional: alternate phrasings of this fact — synonyms, another way a question might be worded, equivalents in the user's other language (e.g. 节假日 for 'public holidays'). They are indexed with the memory so differently-worded questions still match. Always on. Send at most 4; extras and blanks are dropped silently, never an error.",
   );
 
 export const memoryAddArgs = {
@@ -350,8 +350,8 @@ export async function addMemory(
   const fm = buildFrontmatter(s, {
     type: args.type ?? "fact",
     tags: args.tags ?? [],
-    // D61: aliases are stored only when the install enables them (init
-    // asks once, default on); normalize caps at 4 and drops junk silently.
+    // D61: aliases are always stored (Stone 2026-10-07: init no longer asks;
+    // default on). Normalize caps at 4 and drops junk silently.
     // Aliases pass through the same redaction as content (write-path
     // invariant) — an alias carrying a token gets masked, not stored raw.
     aliases: cfg.captureAliases

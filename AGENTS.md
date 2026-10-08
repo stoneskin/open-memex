@@ -144,8 +144,9 @@ Every write path (tool, keyword hook, CLI `add`) must:
 
 Capture-time aliases (D61): `memory_add`/`supersede` may carry up to 4
 `aliases` (alternate phrasings) into frontmatter; they index in their own FTS
-column. Only when `cfg.captureAliases` is on (init asks once, default on) —
-when off, passed aliases are dropped. Always pass them through
+column. Always on since 2026-10-07 (Stone: init no longer asks) —
+`cfg.captureAliases` still gates them for backward compatibility with
+installs that set it manually, but new installs never see the question. Always pass them through
 `normalizeAliases`; the keyword-capture path (no agent in the loop) never
 invents aliases. Checkpoint-proposal guidance (propose, never auto-draft) is
 copy, not mechanism: keep the rubric wording in sync across the skill, the

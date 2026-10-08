@@ -406,8 +406,8 @@ Three ways memories get in:
 **Aliases.** Each saved memory can carry up to 4 alternate phrasings
 (synonyms, another language's equivalent) that are indexed with it, so a
 question worded differently still finds the memory — "vacation days" finds the
-holiday policy. `init` asks once whether to enable this (default on); turn it
-off any time with `open-memex config set captureAliases false`.
+holiday policy. Always on — the agent may attach up to 4 per memory, and you
+can pass your own via `open-memex add --aliases`.
 
 Three ways to add them: `open-memex add "text" --aliases "phrase one; phrase
 two"` (semicolon-separated, up to 4); ask the agent ("remember: 小宝贝 is my

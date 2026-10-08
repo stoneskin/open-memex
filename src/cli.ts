@@ -133,8 +133,7 @@ Flags:
   --aliases  alternate phrasings of this fact (up to 4), indexed with the
              memory so differently-worded searches still match; separate
              with ; (commas also accepted — use ; when an alias itself
-             contains one). Stored only when capture aliases are enabled
-             (init default)
+             contains one). Always on.
   --alias --target  D81: define user vocabulary once — e.g. --alias 香蕉计划
              --target 支付系统重构项目. Later queries mentioning either side
              trigger a second search round on the other side (both

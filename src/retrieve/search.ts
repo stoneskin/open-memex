@@ -1,10 +1,14 @@
 import { db } from "../store/db.ts";
 import { toFtsQuery } from "./query.ts";
+import { BM25_WEIGHTS } from "./weights.ts";
 import {
   loadAliasEntries,
   planAliasExpansions,
   mergeRounds,
 } from "./alias-memory.ts";
+
+/** D83: which indexed column a hit's match came from. */
+export type MatchedVia = "body" | "alias" | "expansion" | "other";
 
 export interface SearchHit {
   id: string;
@@ -12,8 +16,13 @@ export interface SearchHit {
   project_name: string;
   type: string;
   tags: string[];
-  /** D61: capture-time aliases stored on this memory (search hits only). */
+  /** D61: capture-time aliases stored on this memory (search hits only).
+   *  D83: user/authored only — D80 derived variants live in `expansions`. */
   aliases: string[];
+  /** D83: which FTS column produced this hit's match — `body`, `alias`,
+   *  `expansion`, or `other` (tags/type/cjk). Surfaces in `search --explain`
+   *  so a surprising rank can be traced to the column that caused it. */
+  matchedVia: MatchedVia;
   snippet: string;
   score: number;
   updated_at: number;
@@ -31,6 +40,11 @@ interface RawRow {
   type: string;
   tags: string;
   aliases?: string;
+  /** D83: D80 index-time synonym/translation variants — derived, never user-authored. */
+  expansions?: string;
+  /** D83: per-column FTS highlight, so attribution knows which column matched. */
+  alias_hl?: string;
+  exp_hl?: string;
   updated_at: number;
   snippet: string;
   score: number;
@@ -44,10 +58,34 @@ interface RawRow {
 function toHit(r: RawRow): SearchHit {
   const aliases = r.aliases ? r.aliases.split(",").map((a) => a.trim()).filter(Boolean) : [];
   let snippet = r.snippet ?? "";
-  // D61: the snippet highlights matches in the body column only. When the
-  // match came through an alias (body shows no highlight), say so — the
-  // hit otherwise looks unrelated to the query.
-  if (aliases.length > 0 && !/\[[^\]]+\]/.test(snippet)) {
+  // D83: attribution is per-column now. The aliases column holds only
+  // user/authored phrasings (D61); the expansions column holds D80 derived
+  // variants. Say which one matched — the hit otherwise looks unrelated to
+  // the query when the body shows no highlight.
+  const hlTerms = (s: string | undefined): string[] => {
+    if (!s) return [];
+    const m = s.match(/\[([^\]]+)\]/g);
+    return m ? [...new Set(m.map((x) => x.slice(1, -1)))] : [];
+  };
+  const aliasTerms = hlTerms(r.alias_hl);
+  const expTerms = hlTerms(r.exp_hl);
+  // D83: attribute the hit to the column that matched, so `--explain` can
+  // trace an unexpected rank. Order matters: a body highlight is the most
+  // direct evidence, then an authored alias, then a derived expansion.
+  const matchedVia: MatchedVia = /\[[^\]]+\]/.test(snippet)
+    ? "body"
+    : aliasTerms.length > 0
+      ? "alias"
+      : expTerms.length > 0
+        ? "expansion"
+        : "other";
+  if (aliasTerms.length > 0 && aliases.length > 0) {
+    snippet += ` (aka: ${aliases.join(", ")})`;
+  } else if (expTerms.length > 0) {
+    snippet += ` (synonym: ${expTerms.join(", ")})`;
+  } else if (aliases.length > 0 && !/\[[^\]]+\]/.test(snippet)) {
+    // Match came through another column (tags/type/cjk) — the authored
+    // aliases are still honest context for the hit.
     snippet += ` (aka: ${aliases.join(", ")})`;
   }
   return {
@@ -57,6 +95,7 @@ function toHit(r: RawRow): SearchHit {
     type: r.type,
     tags: r.tags ? r.tags.split(",").filter(Boolean) : [],
     aliases,
+    matchedVia,
     snippet,
     score: r.score,
     updated_at: r.updated_at,
@@ -86,6 +125,9 @@ export function hitStateLabel(h: Pick<SearchHit, "scope_key" | "review_state">):
   if (h.scope_key === "personal") return "";
   return ` [${h.review_state || "draft"}]`;
 }
+
+// D83: BM25_WEIGHTS / DEFAULT_EXPANSIONS_WEIGHT live in ./weights.ts, not
+// here — smoke-pure.ts guards them and must stay free of any sqlite import.
 
 /** Optional diagnostics out-param for `search --explain` (D57). */
 export interface SearchStats {
@@ -174,6 +216,12 @@ export function search(
     stopwords?: boolean;
     orJoin?: boolean;
     prefix?: boolean;
+    /**
+     * D83: override the BM25 weight of the `expansions` column. Omitted =
+     * `DEFAULT_EXPANSIONS_WEIGHT`. An ablation knob — it exists so the
+     * fixture can pick the value; not a per-call tuning surface.
+     */
+    expansionsWeight?: number;
   } = {},
 ): SearchHit[] {
   const qflags = { stopwords: opts.stopwords, orJoin: opts.orJoin, prefix: opts.prefix };
@@ -198,10 +246,12 @@ export function search(
   const typeFilter = opts.type ? ` AND m.type = ?` : "";
 
   const sql = `
-    SELECT m.id, m.scope_key, m.project_name, m.type, m.tags, m.aliases, m.updated_at,
+    SELECT m.id, m.scope_key, m.project_name, m.type, m.tags, m.aliases, m.expansions, m.updated_at,
            m.status, m.superseded_by, m.review_state, m.source, m.created_at,
            snippet(memories_fts, 0, '[', ']', ' ... ', 12) AS snippet,
-           bm25(memories_fts) AS score
+           highlight(memories_fts, 2, '[', ']') AS alias_hl,
+           highlight(memories_fts, 3, '[', ']') AS exp_hl,
+           bm25(memories_fts, ?, ?, ?, ?, ?, ?) AS score
     FROM memories_fts
     JOIN memories m ON m.rowid = memories_fts.rowid
     WHERE memories_fts MATCH ?${scopeFilter}${typeFilter}
@@ -214,6 +264,10 @@ export function search(
     project_name: string;
     type: string;
     tags: string;
+    aliases?: string;
+    expansions?: string;
+    alias_hl?: string;
+    exp_hl?: string;
     updated_at: number;
     status: string;
     superseded_by: string | null;
@@ -223,8 +277,15 @@ export function search(
     snippet: string;
     score: number;
   };
+  // D83: the weight vector is bound per statement, so it leads the parameter
+  // list (it appears in the SELECT list, before the WHERE's MATCH).
+  const weights =
+    opts.expansionsWeight === undefined
+      ? BM25_WEIGHTS
+      : BM25_WEIGHTS.map((w, i) => (i === 3 ? opts.expansionsWeight! : w));
   const fetchFts = (matchExpr: string): RawRow[] => {
-    const params: unknown[] = [matchExpr];
+    const params: unknown[] = [...weights];
+    params.push(matchExpr);
     if (opts.scopeKeys && opts.scopeKeys.length > 0) params.push(...opts.scopeKeys);
     if (opts.type) params.push(opts.type);
     params.push(fetchLimit);
@@ -244,7 +305,6 @@ export function search(
   const aliasEntries = loadAliasEntries(opts.scopeKeys);
   const expansions = planAliasExpansions(query, aliasEntries);
   let merged: RawRow[] = raw;
-  let finalLimit = limit;
   if (expansions.length > 0) {
     const rounds: RawRow[][] = [raw];
     for (const eq of expansions) {
@@ -255,20 +315,21 @@ export function search(
     // divided by that round's best, so an alias-side champion competes
     // evenly with a literal-side champion — no down-weighting for being
     // from a later round.
+    //
+    // The merged pool is deliberately wider than `limit` (each round already
+    // over-fetches by fetchLimit) so round-2 hits are never starved the way
+    // D79's slice-to-K starved them. #53: that headroom is for RANKING only —
+    // the return is still cut to the caller's `limit`, since `limit` is a cap
+    // on what every caller (tools, MCP, cli) receives, not a hint.
     merged = mergeRounds(rounds).map((m) => ({ ...m.doc, score: m.score }));
-    // Cut to [1.5K, 2K] — never back to K, or round-2 hits would be
-    // starved the way D79's slice-to-K starved them.
-    const pool = merged.length;
-    finalLimit = Math.min(pool, 2 * limit);
-    finalLimit = Math.max(finalLimit, Math.min(pool, Math.ceil(1.5 * limit)));
     if (opts.stats) opts.stats.aliasExpansions = expansions;
   }
 
   // D80: the curated static map is solved at index time (synonyms.ts
-  // expands variants into the aliases column at sync time), so without a
-  // user alias the query side stays a single FTS round.
+  // expands variants into the indexed aliases column at sync time), so
+  // without a user alias the query side stays a single FTS round.
   if (opts.stats) opts.stats.candidates = merged.length;
-  return resolveVisible(merged, finalLimit, opts.stats);
+  return resolveVisible(merged, limit, opts.stats);
 }
 
 export function list(

@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS memories (
   status       TEXT NOT NULL DEFAULT 'active',
   tags         TEXT NOT NULL DEFAULT '',
   aliases      TEXT NOT NULL DEFAULT '',
+  expansions   TEXT NOT NULL DEFAULT '',
   alias        TEXT NOT NULL DEFAULT '',
   target       TEXT NOT NULL DEFAULT '',
   content      TEXT NOT NULL,
@@ -66,6 +67,19 @@ CREATE INDEX IF NOT EXISTS idx_memories_scope_updated
   ON memories(scope_key, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
 CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
+-- D81: the alias registry (retrieve/alias-memory.ts) runs on every search().
+-- The predicate is a full table scan without this — the rows carrying a
+-- defined alias pair are a tiny subset of a corpus that may be tens of
+-- thousands. A partial index keeps the lookup proportional to the number of
+-- aliases defined, not the size of the store.
+--
+-- No SCHEMA_VERSION bump: TABLE_SCHEMA runs on every db open (see db()), so
+-- existing installs pick this up on next open. Deliberately NOT a result
+-- cache — the alias registry must be re-read per query so a newly saved
+-- alias memory applies on the very next query. This index accelerates the
+-- lookup without caching results.
+CREATE INDEX IF NOT EXISTS idx_memories_alias
+  ON memories(scope_key) WHERE alias <> '' AND target <> '';
 `;
 
 // The `cjk` column holds pre-tokenized CJK unigrams+bigrams (see
@@ -78,6 +92,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
   content,
   tags,
   aliases,
+  expansions,
   type,
   cjk,
   scope_key UNINDEXED,
@@ -87,25 +102,25 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
 );
 
 CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-  INSERT INTO memories_fts(rowid, content, tags, aliases, type, cjk, scope_key)
-  VALUES (new.rowid, new.content, new.tags, new.aliases, new.type, new.cjk, new.scope_key);
+  INSERT INTO memories_fts(rowid, content, tags, aliases, expansions, type, cjk, scope_key)
+  VALUES (new.rowid, new.content, new.tags, new.aliases, new.expansions, new.type, new.cjk, new.scope_key);
 END;
 
 CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-  INSERT INTO memories_fts(memories_fts, rowid, content, tags, aliases, type, cjk, scope_key)
-  VALUES ('delete', old.rowid, old.content, old.tags, old.aliases, old.type, old.cjk, old.scope_key);
+  INSERT INTO memories_fts(memories_fts, rowid, content, tags, aliases, expansions, type, cjk, scope_key)
+  VALUES ('delete', old.rowid, old.content, old.tags, old.aliases, old.expansions, old.type, old.cjk, old.scope_key);
 END;
 
 CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-  INSERT INTO memories_fts(memories_fts, rowid, content, tags, aliases, type, cjk, scope_key)
-  VALUES ('delete', old.rowid, old.content, old.tags, old.aliases, old.type, old.cjk, old.scope_key);
-  INSERT INTO memories_fts(rowid, content, tags, aliases, type, cjk, scope_key)
-  VALUES (new.rowid, new.content, new.tags, new.aliases, new.type, new.cjk, new.scope_key);
+  INSERT INTO memories_fts(memories_fts, rowid, content, tags, aliases, expansions, type, cjk, scope_key)
+  VALUES ('delete', old.rowid, old.content, old.tags, old.aliases, old.expansions, old.type, old.cjk, old.scope_key);
+  INSERT INTO memories_fts(rowid, content, tags, aliases, expansions, type, cjk, scope_key)
+  VALUES (new.rowid, new.content, new.tags, new.aliases, new.expansions, new.type, new.cjk, new.scope_key);
 END;
 `;
 
 /** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 function userVersion(d: AnyDatabase): number {
   const row = d.prepare("PRAGMA user_version").get() as { user_version: number };

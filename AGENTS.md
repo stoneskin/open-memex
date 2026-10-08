@@ -205,6 +205,10 @@ breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.
   new commands → README CLI sections + this file's Commands. A change without its docs
   is not done. Anything deferred as "later" goes into the near-term backlog in
   `docs/V2-DESIGN.md` §18 the same day — unwritten later means never.
+- **Measurement before mechanism.** A retrieval change lands its fixture +
+  baseline number in a commit with no retrieval change at all, so the delta is
+  unambiguous. `scripts/retrieval-eval.ts` is the gate: no retrieval PR merges
+  without before/after recall@k + MRR on the checked-in fixture.
 - **Version bumps ship with features.** `package.json` + `package-lock.json` carry the
   in-development version. A new alpha line starts with a minor bump after the
   previous minor shipped (`0.3.0` → `0.4.0-alpha.1`); while that minor is still

@@ -410,8 +410,8 @@ holiday policy. Always on — the agent may attach up to 4 per memory, and you
 can pass your own via `open-memex add --aliases`.
 
 Three ways to add them: `open-memex add "text" --aliases "phrase one; phrase
-two"` (semicolon-separated, up to 4); ask the agent ("remember: 小宝贝 is my
-AI agent, alias it as 小沐"); or edit the memory's `aliases:` frontmatter
+two"` (semicolon-separated, up to 4); ask the agent ("remember: Fluffy is my
+AI agent, alias it as Momo"); or edit the memory's `aliases:` frontmatter
 directly — Markdown is the source of truth and sync picks it up.
 
 Separately, a curated synonym/translation map is expanded into the index
@@ -549,10 +549,10 @@ Three layers, each covering what the others miss: **BM25 keyword search**
 **synonym expansion in two halves** — (a) index-time (D80: a curated,
 checked-in map of dev-domain equivalents and EN↔ZH translation pairs
 expanded into the index at write time, so `ship` finds `deploy` and
-`单点登录` finds `SSO` in a plain single-round query; deterministic, no
+`bug` finds `defect` in a plain single-round query; deterministic, no
 model download); (b) query-time user aliases (D81: an alias memory carrying
 `alias:`/`target:` frontmatter defines your vocabulary once per scope —
-e.g. 香蕉计划 → 支付系统重构项目 — and a query mentioning either side
+e.g. Banana Plan → payment system refactor project — and a query mentioning either side
 triggers a second round on the other side, both directions, merged evenly
 with round one so alias hits are never down-weighted; no reindex when the
 alias changes); and **semantic vectors**
@@ -593,7 +593,7 @@ Honest edges, so nothing surprises you:
 
 - **Keyword search, not semantic.** Retrieval is BM25 keyword matching, plus a
   curated synonym map expanded into the index at write time (`ship` finds
-  `deploy`, `单点登录` finds `SSO`). Paraphrases outside the curated map
+  `deploy`, `bug` finds `defect`). Paraphrases outside the curated map
   don't match — that's what the opt-in semantic layer is for. (Plain
   questions are fine — "how do we…" / "请问…" wording is filtered out before
   matching, so asking naturally doesn't dilute the results.) No embedding
@@ -695,7 +695,7 @@ open-memex config                                  # print effective config
 open-memex config set <key> <value>                # change a setting
 open-memex doctor                                  # environment health check (incl. plugin entry)
 open-memex audit                                   # memory health check (duplicates, stale, broken chains)
-open-memex capture --dry-run "记住我喜欢简洁的回答"  # preview keyword capture
+open-memex capture --dry-run "remember that I like concise answers"  # preview keyword capture
 open-memex mcp --print-config vscode|cursor|claude|opencode|visualstudio
 open-memex --help      # this reference
 open-memex <command> --help  # help for one command

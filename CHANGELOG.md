@@ -9,6 +9,7 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- D83 (design, for #56): D80 index-time expansion variants move out of the `aliases` column into a dedicated `expansions` index column (own BM25 weight; `SearchHit.aliases` and `(aka: …)` surface only user-authored aliases; `--explain` reports which column matched). Schema v8 → v9 with rebuild-from-Markdown migration.
 - `memory_search` / `memory_list` `type` is now a closed enum (D82, closes #51): a misspelled type is rejected at the schema (MCP -32602) instead of silently returning zero results. The opencode plugin shares the same args objects, so both surfaces tighten together; `scripts/smoke-mcp.ts` guards the rejection.
 
 ## [0.8.0] - 2026-10-07

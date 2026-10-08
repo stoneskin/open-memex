@@ -244,7 +244,6 @@ export function search(
   const aliasEntries = loadAliasEntries(opts.scopeKeys);
   const expansions = planAliasExpansions(query, aliasEntries);
   let merged: RawRow[] = raw;
-  let finalLimit = limit;
   if (expansions.length > 0) {
     const rounds: RawRow[][] = [raw];
     for (const eq of expansions) {
@@ -255,20 +254,21 @@ export function search(
     // divided by that round's best, so an alias-side champion competes
     // evenly with a literal-side champion — no down-weighting for being
     // from a later round.
+    //
+    // The merged pool is deliberately wider than `limit` (each round already
+    // over-fetches by fetchLimit) so round-2 hits are never starved the way
+    // D79's slice-to-K starved them. #53: that headroom is for RANKING only —
+    // the return is still cut to the caller's `limit`, since `limit` is a cap
+    // on what every caller (tools, MCP, cli) receives, not a hint.
     merged = mergeRounds(rounds).map((m) => ({ ...m.doc, score: m.score }));
-    // Cut to [1.5K, 2K] — never back to K, or round-2 hits would be
-    // starved the way D79's slice-to-K starved them.
-    const pool = merged.length;
-    finalLimit = Math.min(pool, 2 * limit);
-    finalLimit = Math.max(finalLimit, Math.min(pool, Math.ceil(1.5 * limit)));
     if (opts.stats) opts.stats.aliasExpansions = expansions;
   }
 
   // D80: the curated static map is solved at index time (synonyms.ts
-  // expands variants into the aliases column at sync time), so without a
-  // user alias the query side stays a single FTS round.
+  // expands variants into the indexed aliases column at sync time), so
+  // without a user alias the query side stays a single FTS round.
   if (opts.stats) opts.stats.candidates = merged.length;
-  return resolveVisible(merged, finalLimit, opts.stats);
+  return resolveVisible(merged, limit, opts.stats);
 }
 
 export function list(

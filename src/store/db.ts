@@ -66,6 +66,19 @@ CREATE INDEX IF NOT EXISTS idx_memories_scope_updated
   ON memories(scope_key, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
 CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
+-- D81: the alias registry (retrieve/alias-memory.ts) runs on every search().
+-- The predicate is a full table scan without this — the rows carrying a
+-- defined alias pair are a tiny subset of a corpus that may be tens of
+-- thousands. A partial index keeps the lookup proportional to the number of
+-- aliases defined, not the size of the store.
+--
+-- No SCHEMA_VERSION bump: TABLE_SCHEMA runs on every db open (see db()), so
+-- existing installs pick this up on next open. Deliberately NOT a result
+-- cache — the alias registry must be re-read per query so a newly saved
+-- alias memory applies on the very next query. This index accelerates the
+-- lookup without caching results.
+CREATE INDEX IF NOT EXISTS idx_memories_alias
+  ON memories(scope_key) WHERE alias <> '' AND target <> '';
 `;
 
 // The `cjk` column holds pre-tokenized CJK unigrams+bigrams (see

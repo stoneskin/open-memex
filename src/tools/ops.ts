@@ -143,7 +143,12 @@ export const memorySearchArgs = {
     .enum(["project", "personal", "both"])
     .optional()
     .describe("Which scope(s) to search. Default: both."),
-  type: z.string().optional().describe("Restrict to memories of this type (e.g. decision, preference, gotcha)."),
+  type: z
+    .enum(MEMORY_TYPE_TAXONOMY)
+    .optional()
+    .describe(
+      "Restrict to memories of this type. Closed taxonomy — a misspelled type is rejected, never silently empty.",
+    ),
   limit: z.number().int().min(1).max(50).optional().describe("Max results to return (default 8)."),
 };
 export type MemorySearchArgs = z.infer<z.ZodObject<typeof memorySearchArgs>>;
@@ -155,7 +160,12 @@ export const memoryListArgs = {
     .describe(
       "Which scope(s) to list. `project` = tied to this repo. `personal` = global across all your projects. `both` lists each scope's newest. Default: project.",
     ),
-  type: z.string().optional().describe("Only list memories of this type (e.g. decision, preference, gotcha)."),
+  type: z
+    .enum(MEMORY_TYPE_TAXONOMY)
+    .optional()
+    .describe(
+      "Only list memories of this type. Closed taxonomy — a misspelled type is rejected, never silently empty.",
+    ),
   limit: z.number().int().min(1).max(100).optional().describe("Max entries to list, newest first (default 20)."),
   include: z
     .enum(["active", "all"])

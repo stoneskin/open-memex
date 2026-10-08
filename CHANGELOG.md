@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- `memory_search` / `memory_list` `type` is now a closed enum (D82, closes #51): a misspelled type is rejected at the schema (MCP -32602) instead of silently returning zero results. The opencode plugin shares the same args objects, so both surfaces tighten together; `scripts/smoke-mcp.ts` guards the rejection.
+
 ## [0.8.0] - 2026-10-07
 
 - User-defined alias vocabulary as query-time expansion (D81): any memory type may now carry `alias:` (nickname, e.g. 香蕉计划) and `target:` (referent, e.g. 支付系统重构项目) frontmatter — an alias memory defines vocabulary once per scope. At query time, query terms hit the alias registry (exact match, one cheap SELECT per search) and the query is rewritten with the other side of the relation — bidirectional, depth < 3, cycle-safe — then re-run as round 2/3. Rounds merge by normalized-max (`mergeRounds` in `src/retrieve/alias-memory.ts`): each round's BM25 scores are divided by that round's best, so an alias-side champion competes evenly with a literal-side champion; the merged pool is re-ranked and cut to [1.5K, 2K], never back to K. No reindex when an alias changes. Creation: `memory_add` alias/target params, CLI `add --alias/--target`, or frontmatter edit (v1: user-explicit only). Fixture grows to 54 memories / 44 queries (3 bidirectional alias queries): recall@1 0.750, recall@5 **0.977**, MRR 0.857. Also removes the init `captureAliases` and keyword-capture questions — both are now always on (Stone 2026-10-07).

@@ -133,6 +133,18 @@ try {
   const listBoth = await req("tools/call", { name: "memory_list", arguments: { scope: "both" } });
   const listBothText = listBoth.result?.content?.[0]?.text ?? "";
   check("memory_list both scopes (D68)", listBothText.includes("About you"));
+  // D82: closed type taxonomy — a misspelled type is rejected at the schema,
+  // never silently empty.
+  const badType = await req("tools/call", {
+    name: "memory_search",
+    arguments: { query: "mcp e2e probe", type: "decisions" },
+  });
+  const badTypeText: string = badType.result?.content?.[0]?.text ?? "";
+  check(
+    "memory_search rejects misspelled type (D82)",
+    /-32602/.test(badTypeText) && /Invalid option/.test(badTypeText),
+    badTypeText.slice(0, 160),
+  );
   // D70: numbers run across the whole listing, so "delete #3" names one memory.
   // Needs a personal entry too, or there is only one section to number.
   const personalAdd = await req("tools/call", {

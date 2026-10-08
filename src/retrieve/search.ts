@@ -1,10 +1,14 @@
 import { db } from "../store/db.ts";
 import { toFtsQuery } from "./query.ts";
+import { BM25_WEIGHTS } from "./weights.ts";
 import {
   loadAliasEntries,
   planAliasExpansions,
   mergeRounds,
 } from "./alias-memory.ts";
+
+/** D83: which indexed column a hit's match came from. */
+export type MatchedVia = "body" | "alias" | "expansion" | "other";
 
 export interface SearchHit {
   id: string;
@@ -15,6 +19,10 @@ export interface SearchHit {
   /** D61: capture-time aliases stored on this memory (search hits only).
    *  D83: user/authored only — D80 derived variants live in `expansions`. */
   aliases: string[];
+  /** D83: which FTS column produced this hit's match — `body`, `alias`,
+   *  `expansion`, or `other` (tags/type/cjk). Surfaces in `search --explain`
+   *  so a surprising rank can be traced to the column that caused it. */
+  matchedVia: MatchedVia;
   snippet: string;
   score: number;
   updated_at: number;
@@ -61,6 +69,16 @@ function toHit(r: RawRow): SearchHit {
   };
   const aliasTerms = hlTerms(r.alias_hl);
   const expTerms = hlTerms(r.exp_hl);
+  // D83: attribute the hit to the column that matched, so `--explain` can
+  // trace an unexpected rank. Order matters: a body highlight is the most
+  // direct evidence, then an authored alias, then a derived expansion.
+  const matchedVia: MatchedVia = /\[[^\]]+\]/.test(snippet)
+    ? "body"
+    : aliasTerms.length > 0
+      ? "alias"
+      : expTerms.length > 0
+        ? "expansion"
+        : "other";
   if (aliasTerms.length > 0 && aliases.length > 0) {
     snippet += ` (aka: ${aliases.join(", ")})`;
   } else if (expTerms.length > 0) {
@@ -77,6 +95,7 @@ function toHit(r: RawRow): SearchHit {
     type: r.type,
     tags: r.tags ? r.tags.split(",").filter(Boolean) : [],
     aliases,
+    matchedVia,
     snippet,
     score: r.score,
     updated_at: r.updated_at,
@@ -106,6 +125,9 @@ export function hitStateLabel(h: Pick<SearchHit, "scope_key" | "review_state">):
   if (h.scope_key === "personal") return "";
   return ` [${h.review_state || "draft"}]`;
 }
+
+// D83: BM25_WEIGHTS / DEFAULT_EXPANSIONS_WEIGHT live in ./weights.ts, not
+// here — smoke-pure.ts guards them and must stay free of any sqlite import.
 
 /** Optional diagnostics out-param for `search --explain` (D57). */
 export interface SearchStats {
@@ -194,6 +216,12 @@ export function search(
     stopwords?: boolean;
     orJoin?: boolean;
     prefix?: boolean;
+    /**
+     * D83: override the BM25 weight of the `expansions` column. Omitted =
+     * `DEFAULT_EXPANSIONS_WEIGHT`. An ablation knob — it exists so the
+     * fixture can pick the value; not a per-call tuning surface.
+     */
+    expansionsWeight?: number;
   } = {},
 ): SearchHit[] {
   const qflags = { stopwords: opts.stopwords, orJoin: opts.orJoin, prefix: opts.prefix };
@@ -223,7 +251,7 @@ export function search(
            snippet(memories_fts, 0, '[', ']', ' ... ', 12) AS snippet,
            highlight(memories_fts, 2, '[', ']') AS alias_hl,
            highlight(memories_fts, 3, '[', ']') AS exp_hl,
-           bm25(memories_fts) AS score
+           bm25(memories_fts, ?, ?, ?, ?, ?, ?) AS score
     FROM memories_fts
     JOIN memories m ON m.rowid = memories_fts.rowid
     WHERE memories_fts MATCH ?${scopeFilter}${typeFilter}
@@ -249,8 +277,15 @@ export function search(
     snippet: string;
     score: number;
   };
+  // D83: the weight vector is bound per statement, so it leads the parameter
+  // list (it appears in the SELECT list, before the WHERE's MATCH).
+  const weights =
+    opts.expansionsWeight === undefined
+      ? BM25_WEIGHTS
+      : BM25_WEIGHTS.map((w, i) => (i === 3 ? opts.expansionsWeight! : w));
   const fetchFts = (matchExpr: string): RawRow[] => {
-    const params: unknown[] = [matchExpr];
+    const params: unknown[] = [...weights];
+    params.push(matchExpr);
     if (opts.scopeKeys && opts.scopeKeys.length > 0) params.push(...opts.scopeKeys);
     if (opts.type) params.push(opts.type);
     params.push(fetchLimit);

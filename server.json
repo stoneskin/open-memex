@@ -3,7 +3,7 @@
   "name": "io.github.stoneskin/open-memex",
   "title": "open-memex",
   "description": "Local-first memory for AI coding agents — Markdown + SQLite FTS5, shared across editors via MCP.",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "repository": {
     "url": "https://github.com/stoneskin/open-memex",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "open-memex",
-      "version": "0.8.0",
+      "version": "0.8.1",
       "runtimeHint": "npx",
       "packageArguments": [
         {

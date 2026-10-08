@@ -15,8 +15,8 @@ import { projectRoot, paths } from "../paths.ts";
 import { loadConfig } from "../config.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, aliases, alias, target, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, aliases, expansions, alias, target, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
     scope        = excluded.scope,
@@ -28,6 +28,7 @@ const UPSERT_SQL = `
     status       = excluded.status,
     tags         = excluded.tags,
     aliases      = excluded.aliases,
+    expansions   = excluded.expansions,
     alias        = excluded.alias,
     target       = excluded.target,
     content      = excluded.content,
@@ -66,16 +67,20 @@ export function upsertFromFile(mf: MemoryFile): void {
 function writeRow(mf: MemoryFile, mtimeMs: number): void {
   const { fm, body, filePath } = mf;
   const tags = (fm.tags ?? []).join(",");
-  // D80 index-time expansion: curated synonym/translation variants for the
-  // memory's keywords are indexed in the aliases column (and therefore the
-  // CJK bigram column below), so any related word matches in round one.
-  // Derived at sync time — the Markdown file stays the source of truth.
+  // D80 index-time expansion, D83: curated synonym/translation variants for
+  // the memory's keywords are indexed in their own `expansions` column —
+  // never mixed into `aliases`, which holds only user/authored alternate
+  // phrasings (so `(aka: …)` attribution stays honest). The CJK bigram
+  // column still covers expansions, so CJK variants stay substring-
+  // searchable. Derived at sync time — the Markdown file stays the source
+  // of truth.
   const supplied = fm.aliases ?? [];
   const have = new Set(supplied.map((a) => a.toLowerCase()));
   const auto = expansionVariantsForDoc(body + "\n" + tags).filter(
     (a) => !have.has(a.toLowerCase()),
   );
-  const aliases = [...supplied, ...auto].join(",");
+  const aliases = supplied.join(",");
+  const expansions = auto.join(",");
   // D81: user-defined alias vocabulary (single nickname → referent pair).
   db().prepare(UPSERT_SQL).run(
     fm.id,
@@ -89,10 +94,11 @@ function writeRow(mf: MemoryFile, mtimeMs: number): void {
     fm.status,
     tags,
     aliases,
+    expansions,
     fm.alias ?? "",
     fm.target ?? "",
     body,
-    cjkIndexText(body + "\n" + tags + "\n" + aliases),
+    cjkIndexText(body + "\n" + tags + "\n" + aliases + "\n" + expansions),
     contentHash(body),
     fm.superseded_by ?? null,
     fm.source ?? "",

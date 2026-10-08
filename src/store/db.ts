@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS memories (
   status       TEXT NOT NULL DEFAULT 'active',
   tags         TEXT NOT NULL DEFAULT '',
   aliases      TEXT NOT NULL DEFAULT '',
+  expansions   TEXT NOT NULL DEFAULT '',
   alias        TEXT NOT NULL DEFAULT '',
   target       TEXT NOT NULL DEFAULT '',
   content      TEXT NOT NULL,
@@ -91,6 +92,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
   content,
   tags,
   aliases,
+  expansions,
   type,
   cjk,
   scope_key UNINDEXED,
@@ -100,25 +102,25 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
 );
 
 CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-  INSERT INTO memories_fts(rowid, content, tags, aliases, type, cjk, scope_key)
-  VALUES (new.rowid, new.content, new.tags, new.aliases, new.type, new.cjk, new.scope_key);
+  INSERT INTO memories_fts(rowid, content, tags, aliases, expansions, type, cjk, scope_key)
+  VALUES (new.rowid, new.content, new.tags, new.aliases, new.expansions, new.type, new.cjk, new.scope_key);
 END;
 
 CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-  INSERT INTO memories_fts(memories_fts, rowid, content, tags, aliases, type, cjk, scope_key)
-  VALUES ('delete', old.rowid, old.content, old.tags, old.aliases, old.type, old.cjk, old.scope_key);
+  INSERT INTO memories_fts(memories_fts, rowid, content, tags, aliases, expansions, type, cjk, scope_key)
+  VALUES ('delete', old.rowid, old.content, old.tags, old.aliases, old.expansions, old.type, old.cjk, old.scope_key);
 END;
 
 CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-  INSERT INTO memories_fts(memories_fts, rowid, content, tags, aliases, type, cjk, scope_key)
-  VALUES ('delete', old.rowid, old.content, old.tags, old.aliases, old.type, old.cjk, old.scope_key);
-  INSERT INTO memories_fts(rowid, content, tags, aliases, type, cjk, scope_key)
-  VALUES (new.rowid, new.content, new.tags, new.aliases, new.type, new.cjk, new.scope_key);
+  INSERT INTO memories_fts(memories_fts, rowid, content, tags, aliases, expansions, type, cjk, scope_key)
+  VALUES ('delete', old.rowid, old.content, old.tags, old.aliases, old.expansions, old.type, old.cjk, old.scope_key);
+  INSERT INTO memories_fts(rowid, content, tags, aliases, expansions, type, cjk, scope_key)
+  VALUES (new.rowid, new.content, new.tags, new.aliases, new.expansions, new.type, new.cjk, new.scope_key);
 END;
 `;
 
 /** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 function userVersion(d: AnyDatabase): number {
   const row = d.prepare("PRAGMA user_version").get() as { user_version: number };

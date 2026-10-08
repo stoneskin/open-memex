@@ -597,10 +597,10 @@ Honest edges, so nothing surprises you:
   don't match — that's what the opt-in semantic layer is for. (Plain
   questions are fine — "how do we…" / "请问…" wording is filtered out before
   matching, so asking naturally doesn't dilute the results.) No embedding
-  model is ever downloaded without your explicit opt-in. (The synonym
-  expansions share one index column with your own aliases, so on queries that
-  already matched well the extra variants can slightly dilute ranking —
-  a known trade-off being fixed by giving expansions their own column.)
+  model is ever downloaded without your explicit opt-in. (Synonym expansions
+  live in their own index column, separate from your own aliases — but a
+  query matching only via an expansion can still rank below direct matches;
+  that's inherent BM25 length-norm behaviour, not a bug.)
 - **One machine.** Editors on the same machine share memory; there is no
   cross-machine sync. `export` / `import` bundles (below) move memory between
   machines manually.

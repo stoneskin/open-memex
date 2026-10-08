@@ -144,8 +144,9 @@ Every write path (tool, keyword hook, CLI `add`) must:
 
 Capture-time aliases (D61): `memory_add`/`supersede` may carry up to 4
 `aliases` (alternate phrasings) into frontmatter; they index in their own FTS
-column. Only when `cfg.captureAliases` is on (init asks once, default on) —
-when off, passed aliases are dropped. Always pass them through
+column. Always on since 2026-10-07 (Stone: init no longer asks) —
+`cfg.captureAliases` still gates them for backward compatibility with
+installs that set it manually, but new installs never see the question. Always pass them through
 `normalizeAliases`; the keyword-capture path (no agent in the loop) never
 invents aliases. Checkpoint-proposal guidance (propose, never auto-draft) is
 copy, not mechanism: keep the rubric wording in sync across the skill, the
@@ -202,10 +203,14 @@ breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.
   languages in sync); behavior changes → both READMEs
   and the frozen `docs/V2-DESIGN.md` (append a `D<n>` decision entry, never rewrite history);
   new commands → README CLI sections + this file's Commands. A change without its docs
-  is not done.
+  is not done. Anything deferred as "later" goes into the near-term backlog in
+  `docs/V2-DESIGN.md` §18 the same day — unwritten later means never.
 - **Version bumps ship with features.** `package.json` + `package-lock.json` carry the
-  in-development version. New features on a dev branch bump the minor on the alpha
-  line (`0.3.0` → `0.4.0-alpha.1`); fixes bump the patch (`-alpha.1` → `-alpha.2`).
+  in-development version. A new alpha line starts with a minor bump after the
+  previous minor shipped (`0.3.0` → `0.4.0-alpha.1`); while that minor is still
+  unreleased, further features AND fixes on the same line only bump the alpha
+  suffix (`0.8.0-alpha.2` → `-alpha.3`) — never jump to the next minor before
+  the current one is released.
   The bump goes in the same commit as the feature, never as an afterthought.
   The version number serves the publish: no publish, no mandatory bump. But once a
   version has been pushed to the remote (shared), later changes must bump — two

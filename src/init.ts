@@ -893,26 +893,20 @@ export async function initProject(opts: {
     // Install-time settings (D19). Non-default answers persist to the JSONC
     // config file; `open-memex config set` changes them later.
     const patch: Record<string, unknown> = {};
-    const keywordCaptureEnabled = await askBool(
-      "Auto-capture keywords like remember… / note that… into memory?",
-      DEFAULT_CONFIG.keywordCaptureEnabled,
-    );
-    if (keywordCaptureEnabled !== DEFAULT_CONFIG.keywordCaptureEnabled)
-      patch.keywordCaptureEnabled = keywordCaptureEnabled;
+    // Keyword auto-capture is always on (Stone 2026-10-07): no init
+    // question — there is no reason to turn it off. The
+    // `keywordCaptureEnabled` config key is still honored if set manually.
     const injectOnFirstTurn = await askBool(
       "Inject relevant memories when a session starts?",
       DEFAULT_CONFIG.injectOnFirstTurn,
     );
     if (injectOnFirstTurn !== DEFAULT_CONFIG.injectOnFirstTurn)
       patch.injectOnFirstTurn = injectOnFirstTurn;
-    // D61: capture-time aliases — agents attach alternate phrasings to each
-    // memory so differently-worded questions still find it.
-    const captureAliases = await askBool(
-      "Attach alternate phrasings (aliases) to memories so reworded questions still find them?",
-      DEFAULT_CONFIG.captureAliases,
-    );
-    if (captureAliases !== DEFAULT_CONFIG.captureAliases)
-      patch.captureAliases = captureAliases;
+    // D61 capture-time aliases are always on (Stone 2026-10-07): the agent
+    // may always attach its own alternate phrasings — no init question.
+    // (Distinct from D80's automatic index-time synonym expansion, which
+    // also always applies.) The `captureAliases` config key is still
+    // honored if someone sets it manually; init just never asks anymore.
     if (Object.keys(patch).length > 0) {
       const file = saveConfig(patch);
       console.log(

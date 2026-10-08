@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS memories (
   status       TEXT NOT NULL DEFAULT 'active',
   tags         TEXT NOT NULL DEFAULT '',
   aliases      TEXT NOT NULL DEFAULT '',
+  alias        TEXT NOT NULL DEFAULT '',
+  target       TEXT NOT NULL DEFAULT '',
   content      TEXT NOT NULL,
   cjk          TEXT NOT NULL DEFAULT '',
   content_hash TEXT NOT NULL DEFAULT '',
@@ -103,7 +105,7 @@ END;
 `;
 
 /** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 function userVersion(d: AnyDatabase): number {
   const row = d.prepare("PRAGMA user_version").get() as { user_version: number };

@@ -8,6 +8,13 @@ import { DEFAULT_CONFIG } from "../src/config.ts";
 import { resolveProjectScope, resolveCwdScope, pickScopeRoot, PERSONAL_SCOPE } from "../src/scope.ts";
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
+import { expansionVariantsForDoc, MAX_AUTO_VARIANTS } from "../src/retrieve/synonyms.ts";
+import {
+  planAliasExpansions,
+  rewriteQueryOnce,
+  mergeRounds,
+  type AliasEntry,
+} from "../src/retrieve/alias-memory.ts";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
 import {
   MIN_NODE_VERSION,
@@ -865,6 +872,81 @@ ok("cursor keeps skill", shouldInstallSkill("cursor", false) === true);
   }, "personal", now);
   ok("inventory line shows project state + late update", proj.includes("[draft]") && proj.includes("updated=1h"), proj);
   ok("truncation note speaks only when cut", truncationNote(20, 54)?.includes("34 more") === true && truncationNote(20, 20) === null);
+}
+
+console.log("== D80 index-time expansion ==");
+{
+  // EN term expands to its group siblings, minus what's already in the text.
+  const v1 = expansionVariantsForDoc("Deploy to production only from the release branch.");
+  ok("ship expands from deploy", v1.includes("ship"), v1.join(","));
+  ok("no dupes of present terms", !v1.includes("deploy") && !v1.includes("release"), v1.join(","));
+  ok("function words are not keywords", !v1.includes("to") && !v1.includes("the"), v1.join(","));
+  // ZH substring expands both directions: doc has 数据库 → database indexed.
+  const v2 = expansionVariantsForDoc("数据库备份每天凌晨两点执行，全量保留三十天。");
+  ok("database indexed from 数据库", v2.includes("database"), v2.join(","));
+  ok("backup indexed from 备份", v2.includes("backup"), v2.join(","));
+  ok("retention indexed from 保留", v2.includes("retention"), v2.join(","));
+  // EN doc gets ZH variants: staging → 预发布环境.
+  const v3 = expansionVariantsForDoc("The staging environment wipes itself every night at midnight.");
+  ok("预发布环境 indexed from staging", v3.includes("预发布环境"), v3.join(","));
+  ok("wipes inflects to wipe group", v3.includes("清空"), v3.join(","));
+  // Multi-word Latin phrase: regression test.
+  const v4 = expansionVariantsForDoc("上线前必须跑完全量回归测试。");
+  ok("regression test indexed from 回归测试", v4.includes("regression test"), v4.join(","));
+  // Cap bounds index growth.
+  const v5 = expansionVariantsForDoc("test deploy bug cache queue api docker config log mock review commit merge branch");
+  ok("variant cap respected", v5.length <= MAX_AUTO_VARIANTS, String(v5.length));
+  // Empty / no-match input.
+  ok("no curated terms → no variants", expansionVariantsForDoc("hello world").length === 0);
+}
+
+console.log("== D81 alias-memory query-time expansion ==");
+{
+  const entries: AliasEntry[] = [
+    { id: "a1", scope_key: "personal", alias: "香蕉计划", target: "支付系统重构项目" },
+    { id: "a2", scope_key: "personal", alias: "小宝贝", target: "AI agent" },
+  ];
+  // alias → target.
+  const r1 = rewriteQueryOnce("香蕉计划进展如何", entries);
+  ok("alias rewrites to target", r1 === "支付系统重构项目进展如何", String(r1));
+  // target → alias (bidirectional).
+  const r2 = rewriteQueryOnce("支付系统重构项目什么时候评审", entries);
+  ok("target rewrites to alias", r2 === "香蕉计划什么时候评审", String(r2));
+  // Latin token match (whole token, not substring).
+  const r3 = rewriteQueryOnce("ask 小宝贝 for help", entries);
+  ok("latin alias rewrites", r3 === "ask AI agent for help", String(r3));
+  ok("latin substring does not match", rewriteQueryOnce("association meeting", [{ id: "x", scope_key: "p", alias: "sso", target: "单点登录" }]) === null);
+  // No match → null.
+  ok("no alias term → null", rewriteQueryOnce("今天天气不错", entries) === null);
+  // Depth < 3: at most two expansion rounds.
+  const chained: AliasEntry[] = [
+    { id: "c1", scope_key: "p", alias: "alpha", target: "beta" },
+    { id: "c2", scope_key: "p", alias: "beta", target: "gamma" },
+    { id: "c3", scope_key: "p", alias: "gamma", target: "delta" },
+  ];
+  const plan = planAliasExpansions("alpha status", chained);
+  ok("depth capped below 3", plan.length === 2, JSON.stringify(plan));
+  // Cycle-safe: alpha↔beta oscillates back to the seen query and stops.
+  const cyclic: AliasEntry[] = [
+    { id: "x1", scope_key: "p", alias: "alpha", target: "beta" },
+    { id: "x2", scope_key: "p", alias: "beta", target: "alpha" },
+  ];
+  ok("cycle stops", planAliasExpansions("alpha status", cyclic).length <= 1);
+
+  // Normalized-max merge: an alias-side champion (n=1.0) outranks a mediocre
+  // literal match (n=0.4) — no down-weighting for being from a later round.
+  const merged = mergeRounds([
+    [{ id: "lit-best", score: 10 }, { id: "lit-mid", score: 4 }],
+    [{ id: "alias-best", score: 5 }, { id: "lit-best", score: 2 }],
+  ]);
+  const order = merged.map((m) => m.doc.id);
+  ok("alias champion ties literal champion", merged[0].score === 1 && merged[1].score === 1, JSON.stringify(merged.map((m) => [m.doc.id, m.score]))),
+  ok("multi-round doc wins ties", order[0] === "lit-best", order.join(","));
+  ok("alias-only doc keeps full weight", order[1] === "alias-best", order.join(","));
+  ok("mediocre literal ranks last", order[2] === "lit-mid", order.join(","));
+  // Single round degrades to plain ordering.
+  const single = mergeRounds([[{ id: "a", score: 3 }, { id: "b", score: 9 }]]);
+  ok("single round orders by score", single[0].doc.id === "b" && single[0].score === 1, JSON.stringify(single.map((m) => [m.doc.id, m.score])));
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);

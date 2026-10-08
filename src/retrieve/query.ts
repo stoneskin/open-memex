@@ -14,7 +14,7 @@
 import { cjkQueryExpr, hasCjk } from "./cjk.ts";
 
 /** English function words that carry no retrieval signal in questions. */
-const LATIN_STOPWORDS = new Set([
+export const LATIN_STOPWORDS = new Set([
   "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
   "without", "is", "are", "was", "were", "be", "been", "do", "does", "did",
   "how", "what", "why", "when", "where", "which", "who", "whom", "we", "i",
@@ -32,9 +32,11 @@ const CJK_QUESTION_BIGRAMS = new Set([
 
 const MAX_TERMS = 24;
 
-function latinTerms(q: string): string[] {
+export function latinTerms(q: string, useStopwords = true): string[] {
   const raw = q.toLowerCase().match(/[a-z0-9_.\-]+/g) ?? [];
-  const kept = raw.filter((t) => t.length > 1 && !LATIN_STOPWORDS.has(t));
+  const kept = useStopwords
+    ? raw.filter((t) => t.length > 1 && !LATIN_STOPWORDS.has(t))
+    : raw.filter((t) => t.length > 1);
   const chosen = kept.length > 0 ? kept : raw;
   return [...new Set(chosen)].slice(0, MAX_TERMS);
 }
@@ -44,15 +46,27 @@ function latinTerms(q: string): string[] {
  * Latin tokens keep the old behavior (prefix match on content/tags/type).
  * CJK runs become an OR of bigrams against the `cjk` column (see cjk.ts).
  * Mixed queries OR the two parts together.
+ *
+ * Flags are ablation toggles (all default to the shipped behavior):
+ * - stopwords: false  → skip function-word filtering
+ * - orJoin: false     → AND the terms instead of OR
+ * - prefix: false     → exact term match instead of `term*`
  */
-export function toFtsQuery(q: string): string {
-  const latin = latinTerms(q)
-    .map((t) => `"${t.replace(/"/g, '""')}"*`)
-    .join(" OR ");
+export function toFtsQuery(
+  q: string,
+  flags: { stopwords?: boolean; orJoin?: boolean; prefix?: boolean } = {},
+): string {
+  const useStopwords = flags.stopwords !== false;
+  const useOr = flags.orJoin !== false;
+  const usePrefix = flags.prefix !== false;
+  const joiner = useOr ? " OR " : " AND ";
+  const latin = latinTerms(q, useStopwords)
+    .map((t) => (usePrefix ? `"${t.replace(/"/g, '""')}"*` : `"${t.replace(/"/g, '""')}"`))
+    .join(joiner);
   const cjk = hasCjk(q)
-    ? cjkQueryExpr(q, { dropBigrams: CJK_QUESTION_BIGRAMS, maxTerms: MAX_TERMS })
+    ? cjkQueryExpr(q, { dropBigrams: useStopwords ? CJK_QUESTION_BIGRAMS : undefined, maxTerms: MAX_TERMS })
     : "";
-  if (latin && cjk) return `(${latin}) OR {cjk}:(${cjk})`;
+  if (latin && cjk) return `(${latin}) ${useOr ? "OR" : "AND"} {cjk}:(${cjk})`;
   if (cjk) return `{cjk}:(${cjk})`;
   return latin;
 }

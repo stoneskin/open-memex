@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db.ts";
 import { cjkIndexText } from "../retrieve/cjk.ts";
+import { expansionVariantsForDoc } from "../retrieve/synonyms.ts";
 import { contentHash, repairChain } from "./lifecycle.ts";
 import {
   iterMemoryFiles,
@@ -14,8 +15,8 @@ import { projectRoot, paths } from "../paths.ts";
 import { loadConfig } from "../config.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, aliases, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, aliases, alias, target, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
     scope        = excluded.scope,
@@ -27,6 +28,8 @@ const UPSERT_SQL = `
     status       = excluded.status,
     tags         = excluded.tags,
     aliases      = excluded.aliases,
+    alias        = excluded.alias,
+    target       = excluded.target,
     content      = excluded.content,
     cjk          = excluded.cjk,
     content_hash = excluded.content_hash,
@@ -63,7 +66,17 @@ export function upsertFromFile(mf: MemoryFile): void {
 function writeRow(mf: MemoryFile, mtimeMs: number): void {
   const { fm, body, filePath } = mf;
   const tags = (fm.tags ?? []).join(",");
-  const aliases = (fm.aliases ?? []).join(",");
+  // D80 index-time expansion: curated synonym/translation variants for the
+  // memory's keywords are indexed in the aliases column (and therefore the
+  // CJK bigram column below), so any related word matches in round one.
+  // Derived at sync time — the Markdown file stays the source of truth.
+  const supplied = fm.aliases ?? [];
+  const have = new Set(supplied.map((a) => a.toLowerCase()));
+  const auto = expansionVariantsForDoc(body + "\n" + tags).filter(
+    (a) => !have.has(a.toLowerCase()),
+  );
+  const aliases = [...supplied, ...auto].join(",");
+  // D81: user-defined alias vocabulary (single nickname → referent pair).
   db().prepare(UPSERT_SQL).run(
     fm.id,
     fm.scope_key,
@@ -76,6 +89,8 @@ function writeRow(mf: MemoryFile, mtimeMs: number): void {
     fm.status,
     tags,
     aliases,
+    fm.alias ?? "",
+    fm.target ?? "",
     body,
     cjkIndexText(body + "\n" + tags + "\n" + aliases),
     contentHash(body),

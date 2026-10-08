@@ -260,6 +260,9 @@ export interface SupersedeInput {
   type?: string;
   tags?: string[];
   aliases?: string[];
+  /** D81: undefined = inherit the old memory's pair. */
+  alias?: string;
+  target?: string;
   source?: string;
 }
 
@@ -288,6 +291,9 @@ export function supersede(
     tags: input.tags ?? oldMf.fm.tags,
     // D61: aliases carry forward unless the caller replaces them.
     aliases: input.aliases ?? oldMf.fm.aliases,
+    // D81: alias vocabulary carries forward the same way.
+    alias: input.alias ?? oldMf.fm.alias,
+    target: input.target ?? oldMf.fm.target,
     source: input.source ?? oldMf.fm.source,
     status: "active",
     created_at: now,

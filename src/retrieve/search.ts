@@ -1,5 +1,10 @@
 import { db } from "../store/db.ts";
 import { toFtsQuery } from "./query.ts";
+import {
+  loadAliasEntries,
+  planAliasExpansions,
+  mergeRounds,
+} from "./alias-memory.ts";
 
 export interface SearchHit {
   id: string;
@@ -88,6 +93,8 @@ export interface SearchStats {
   candidates: number;
   hiddenSuperseded: number;
   hiddenExcluded: number;
+  /** D81: query-time alias expansions actually run (rounds 2+, raw text). */
+  aliasExpansions: string[];
 }
 
 /**
@@ -158,14 +165,25 @@ function resolveVisible(rows: RawRow[], limit: number, stats?: SearchStats): Sea
  */
 export function search(
   query: string,
-  opts: { scopeKeys?: string[]; limit?: number; type?: string; stats?: SearchStats } = {},
+  opts: {
+    scopeKeys?: string[];
+    limit?: number;
+    type?: string;
+    stats?: SearchStats;
+    /** Ablation toggles for query construction (default = shipped behavior). */
+    stopwords?: boolean;
+    orJoin?: boolean;
+    prefix?: boolean;
+  } = {},
 ): SearchHit[] {
-  const q = toFtsQuery(query);
+  const qflags = { stopwords: opts.stopwords, orJoin: opts.orJoin, prefix: opts.prefix };
+  const q = toFtsQuery(query, qflags);
   if (opts.stats) {
     opts.stats.ftsQuery = q;
     opts.stats.candidates = 0;
     opts.stats.hiddenSuperseded = 0;
     opts.stats.hiddenExcluded = 0;
+    opts.stats.aliasExpansions = [];
   }
   if (!q) return [];
   const limit = Math.max(1, Math.min(opts.limit ?? 8, 50));
@@ -190,14 +208,7 @@ export function search(
     ORDER BY score ASC
     LIMIT ?
   `;
-  const params: unknown[] = [q];
-  if (opts.scopeKeys && opts.scopeKeys.length > 0) params.push(...opts.scopeKeys);
-  if (opts.type) params.push(opts.type);
-  params.push(fetchLimit);
-
-  const rows = db()
-    .prepare(sql)
-    .all(...(params as any[])) as Array<{
+  type Row = {
     id: string;
     scope_key: string;
     project_name: string;
@@ -211,12 +222,53 @@ export function search(
     created_at: number;
     snippet: string;
     score: number;
-  }>;
+  };
+  const fetchFts = (matchExpr: string): RawRow[] => {
+    const params: unknown[] = [matchExpr];
+    if (opts.scopeKeys && opts.scopeKeys.length > 0) params.push(...opts.scopeKeys);
+    if (opts.type) params.push(opts.type);
+    params.push(fetchLimit);
+    const rows = db()
+      .prepare(sql)
+      .all(...(params as any[])) as Row[];
+    // FTS5 bm25: lower = better; invert for intuition.
+    return rows.map((r) => ({ ...r, score: -r.score }));
+  };
 
-  // FTS5 bm25: lower = better; invert for intuition.
-  const raw: RawRow[] = rows.map((r) => ({ ...r, score: -r.score }));
-  if (opts.stats) opts.stats.candidates = raw.length;
-  return resolveVisible(raw, limit, opts.stats);
+  const raw: RawRow[] = fetchFts(q);
+
+  // D81: user-defined alias vocabulary — query-time expansion rounds.
+  // Round 1 is the query as-is; each further round rewrites alias terms to
+  // the other side of the relation (bidirectional, depth < 3). The trigger
+  // is an exact registry hit (loadAliasEntries), not a count heuristic.
+  const aliasEntries = loadAliasEntries(opts.scopeKeys);
+  const expansions = planAliasExpansions(query, aliasEntries);
+  let merged: RawRow[] = raw;
+  let finalLimit = limit;
+  if (expansions.length > 0) {
+    const rounds: RawRow[][] = [raw];
+    for (const eq of expansions) {
+      const mq = toFtsQuery(eq, qflags);
+      if (mq) rounds.push(fetchFts(mq));
+    }
+    // Normalized-max merge (alias-memory.ts): each round's scores are
+    // divided by that round's best, so an alias-side champion competes
+    // evenly with a literal-side champion — no down-weighting for being
+    // from a later round.
+    merged = mergeRounds(rounds).map((m) => ({ ...m.doc, score: m.score }));
+    // Cut to [1.5K, 2K] — never back to K, or round-2 hits would be
+    // starved the way D79's slice-to-K starved them.
+    const pool = merged.length;
+    finalLimit = Math.min(pool, 2 * limit);
+    finalLimit = Math.max(finalLimit, Math.min(pool, Math.ceil(1.5 * limit)));
+    if (opts.stats) opts.stats.aliasExpansions = expansions;
+  }
+
+  // D80: the curated static map is solved at index time (synonyms.ts
+  // expands variants into the aliases column at sync time), so without a
+  // user alias the query side stays a single FTS round.
+  if (opts.stats) opts.stats.candidates = merged.length;
+  return resolveVisible(merged, finalLimit, opts.stats);
 }
 
 export function list(

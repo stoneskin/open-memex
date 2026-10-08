@@ -10,6 +10,7 @@ import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatR
 import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
 import { search, list, countList, hitStateLabel } from "./retrieve/search.ts";
+import { DEFAULT_EXPANSIONS_WEIGHT } from "./retrieve/weights.ts";
 import { formatInventoryLine, truncationNote } from "./retrieve/display.ts";
 import {
   writeMemoryFile,
@@ -1027,6 +1028,20 @@ async function main() {
       );
       if (stats.aliasExpansions.length > 0) {
         console.log(`alias rounds: ${stats.aliasExpansions.map((q) => `"${q}"`).join(" → ")}`);
+      }
+      // D83: which indexed column each hit matched on. `expansion` means the
+      // hit only surfaced through a D80 derived variant, so it ranks below an
+      // equal body match by construction (BM25_WEIGHTS) — this is how a
+      // surprising rank gets traced instead of guessed at.
+      if (hits.length > 0) {
+        const via = hits.reduce<Record<string, number>>((acc, h) => {
+          acc[h.matchedVia] = (acc[h.matchedVia] ?? 0) + 1;
+          return acc;
+        }, {});
+        console.log(
+          `matched via: ${Object.entries(via).map(([k, n]) => `${k}=${n}`).join(", ")}` +
+            `   (bm25 weights: content=1 tags=1 aliases=1 expansions=${DEFAULT_EXPANSIONS_WEIGHT} type=1 cjk=1)`,
+        );
       }
     }
     if (hits.length === 0) {

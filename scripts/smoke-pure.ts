@@ -9,6 +9,7 @@ import { resolveProjectScope, resolveCwdScope, pickScopeRoot, PERSONAL_SCOPE } f
 import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
 import { expansionVariantsForDoc, MAX_AUTO_VARIANTS } from "../src/retrieve/synonyms.ts";
+import { BM25_WEIGHTS, DEFAULT_EXPANSIONS_WEIGHT } from "../src/retrieve/weights.ts";
 import {
   planAliasExpansions,
   rewriteQueryOnce,
@@ -947,6 +948,21 @@ console.log("== D81 alias-memory query-time expansion ==");
   // Single round degrades to plain ordering.
   const single = mergeRounds([[{ id: "a", score: 3 }, { id: "b", score: 9 }]]);
   ok("single round orders by score", single[0].doc.id === "b" && single[0].score === 1, JSON.stringify(single.map((m) => [m.doc.id, m.score])));
+}
+
+console.log("== D83 expansions BM25 weight + matchedVia ==");
+{
+  // The weight vector must stay in memories_fts declaration order:
+  // [content, tags, aliases, expansions, type, cjk]. A mis-ordered vector
+  // silently down-weights the wrong column, so pin the shape.
+  ok("BM25_WEIGHTS has one entry per fts column", BM25_WEIGHTS.length === 6, JSON.stringify(BM25_WEIGHTS));
+  ok("expansions is index 3", BM25_WEIGHTS[3] === DEFAULT_EXPANSIONS_WEIGHT, JSON.stringify(BM25_WEIGHTS));
+  // D83: expansions sits strictly below aliases, so a body match outranks an
+  // expansion-only match by construction instead of by tiebreak.
+  ok("expansions weighted below aliases", BM25_WEIGHTS[3] < BM25_WEIGHTS[2], `${BM25_WEIGHTS[3]} vs ${BM25_WEIGHTS[2]}`);
+  ok("expansions keeps non-zero weight (D80 rescue slice must survive)",
+    BM25_WEIGHTS[3] > 0, String(BM25_WEIGHTS[3]));
+  ok("body stays the strongest column", BM25_WEIGHTS[0] >= BM25_WEIGHTS[3], JSON.stringify(BM25_WEIGHTS));
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);

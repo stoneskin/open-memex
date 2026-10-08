@@ -205,8 +205,11 @@ breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.
   is not done. Anything deferred as "later" goes into the near-term backlog in
   `docs/V2-DESIGN.md` §18 the same day — unwritten later means never.
 - **Version bumps ship with features.** `package.json` + `package-lock.json` carry the
-  in-development version. New features on a dev branch bump the minor on the alpha
-  line (`0.3.0` → `0.4.0-alpha.1`); fixes bump the patch (`-alpha.1` → `-alpha.2`).
+  in-development version. A new alpha line starts with a minor bump after the
+  previous minor shipped (`0.3.0` → `0.4.0-alpha.1`); while that minor is still
+  unreleased, further features AND fixes on the same line only bump the alpha
+  suffix (`0.8.0-alpha.2` → `-alpha.3`) — never jump to the next minor before
+  the current one is released.
   The bump goes in the same commit as the feature, never as an afterthought.
   The version number serves the publish: no publish, no mandatory bump. But once a
   version has been pushed to the remote (shared), later changes must bump — two

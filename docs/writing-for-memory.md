@@ -42,7 +42,8 @@ Progressive disclosure applied to storage: split what every retrieval needs from
 what only some retrievals need.
 
 - [ ] Every entry carries a one-line tldr: the whole point, self-contained.
-      Retrieval returns the tldr layer first; the body loads on demand.
+      Retrieval would return the tldr layer first; the body would load on
+      demand. (Proposed storage design — Phase 5 candidate, not built yet.)
 - [ ] Inline in the tldr what every branch needs; push branch-specific detail
       into the body.
 - [ ] Never bury the action: if the entry exists to change behavior, the tldr
@@ -69,8 +70,8 @@ nothing. Each entry must answer, on its own:
 - [ ] Distinct from duplication: repeating one meaning in two entries is a merge
       candidate; fragmenting one meaning across entries is the failure mode.
 - [ ] Prefer editing the existing entry over appending a contradicting one.
-      Contradictions without resolution are retrieval poison — resolve or retire
-      (soft-retire, never hard-delete).
+      Contradictions without resolution are retrieval poison — resolve,
+      supersede, or deprecate (`status: deprecated`); never hard-delete.
 
 ## 6. Curation bar — what earns a place in long-term memory
 
@@ -80,9 +81,9 @@ stays only if it clears both:
 1. **Recorded from a real session.** What happened, what was decided, what went
    wrong — with a date and source. A hypothetical ("it would be nice to
    remember…") does not clear this bar.
-2. **Retrieval earns its keep.** D77 counters (`retrieved_count`/`useful_count`)
-   are the instrument: entries with sustained zero-reuse are prune/merge
-   candidates. Attention, not sentiment, decides.
+2. **Retrieval earns its keep.** D77 counters (`retrieved_count`/`useful_count`,
+   not yet built — near-term backlog) are the instrument: entries with sustained
+   zero-reuse are prune/merge candidates. Attention, not sentiment, decides.
 
 ## 7. Glossary discipline — shared vocabulary as first-class memory
 

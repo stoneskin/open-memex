@@ -89,7 +89,7 @@ open-memex doctor
 
 ## Core concepts
 
-Three ideas explain almost everything open-memex does.
+Four ideas explain almost everything open-memex does.
 
 ![open-memex architecture: your editors share one local memory — Markdown files as the source of truth, an SQLite FTS5 index for search, personal scope that never leaves the machine, and project scope shared through git PRs](docs/assets/open-memex-architecture-en.png)
 
@@ -117,6 +117,15 @@ grep them. The SQLite index next to them is just a search accelerator and
 rebuilds from the files at any time (`open-memex reindex`). Team sharing, when
 you want it, goes through the same review flow as code: nothing is shared
 automatically (see [Team workflow](#team-workflow-sharing-memories-through-git)).
+
+**4. Knowledge stays current.**
+Facts change: decisions get reversed, tools get replaced, yesterday's gotcha
+gets fixed. open-memex doesn't let the old version quietly linger —
+`memory_supersede` replaces a memory with its newer version and keeps the
+chain, so retrieval serves the current fact while the history stays auditable.
+Merely stale memories can be deprecated, and `open-memex audit` reports
+duplicates, stale entries, and broken chains. Pruning is a feature, not
+housekeeping: shared memory rots without it.
 
 ## Which editors, which features
 
@@ -159,6 +168,7 @@ instruction set only made agents chatty.
 |---|---|---|---|---|
 | Where it lives | Your machine + your repos | In the repo | Vendor servers | Gone when the chat ends |
 | Who maintains it | Captured as you work; you review | You write and update by hand | The service | — |
+| When facts change | Superseded, not silently stale — retrieval serves the current version, chain preserved | You hand-edit; stale copies linger | Varies; often silently stale | — |
 | Works across AI tools | Yes — any MCP client (same machine) | One file per tool convention | Per-integration | No |
 | Review before sharing | Yes — outbox + pull request | Yes — it's just files | Varies | No |
 | Human-readable | Plain Markdown files | Yes | Dashboard / API | No |

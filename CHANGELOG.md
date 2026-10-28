@@ -9,6 +9,8 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+- fix: the legacy-scope warning on plugin load now suggests the migrate command with an explicit `--to <current-scope>`. Without it, `--to` defaults to the scope of the directory the command runs from, so running the suggested command from the open-memex checkout would move the memories into the wrong scope. No behavior change: the warning condition and the migrate contract are untouched.
+
 ## [0.8.1] - 2026-10-07
 
 - D83 follow-up: the two D83 clauses that shipped as design but not as code. (1) **BM25 weight for the `expansions` column** — `bm25(memories_fts, …)` now takes an explicit weight vector (`src/retrieve/weights.ts`, order `[content, tags, aliases, expansions, type, cjk]`) instead of the implicit all-1.0. `expansions` is `0.75`: measured on equal-length docs, a direct body match and an expansion-only match score *identically* at weight 1.0 (`-3.983` vs `-3.983`), leaving the order to tiebreaks — any weight below 1.0 breaks that tie in the right direction. `0.75` is the highest value the fixture cannot distinguish from 1.0 (sweep: 1.0/0.9/0.75 all give R@1 0.750 / R@5 0.977 / MRR 0.857; 0.5 costs MRR, below 0.35 R@5 breaks). Exposed as `opts.expansionsWeight` so the sweep stays measurable; `smoke-pure.ts` pins the vector's shape and ordering. (2) **`search --explain` per-column attribution** — reports `matched via: body=N alias=N expansion=N other=N` plus the active weights. Does **not** fix the D80 `how do we ship` rank-8 case: that is per-column length norm, not weighting. Fixture unchanged at R@1 0.750 / R@5 0.977 / MRR 0.857.

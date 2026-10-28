@@ -66,7 +66,7 @@ export function bootstrapPlugin(root: string): PluginState {
       console.warn(
         `[open-memex] found memories under legacy scope key "${cwdScope.key}". ` +
           `Current project scope is "${scope.key}". ` +
-          `To move them: npm run cli -- migrate --from ${cwdScope.key}`,
+          `To move them: npm run cli -- migrate --from ${cwdScope.key} --to ${scope.key}`,
       );
     }
   } catch (err) {

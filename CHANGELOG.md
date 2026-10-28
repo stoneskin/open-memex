@@ -10,6 +10,7 @@ the `@alpha` tag are development snapshots and are not listed individually.
 ## [Unreleased]
 
 - fix: the legacy-scope warning on plugin load now suggests the migrate command with an explicit `--to <current-scope>`. Without it, `--to` defaults to the scope of the directory the command runs from, so running the suggested command from the open-memex checkout would move the memories into the wrong scope. No behavior change: the warning condition and the migrate contract are untouched.
+- fix: a pre-D81 index store (SCHEMA_VERSION 7, ≤0.7.x) no longer wedges every open with `no such column: alias` (D87). D85's partial index references the `alias`/`target` columns D81 added, and `CREATE TABLE IF NOT EXISTS` adds no columns to an existing table — so the index creation threw inside `db()` before the version-check rebuild could run. `db()` now rebuilds a stale table *before* creating the schema; the Markdown files are the source of truth, so the rebuild is lossless. Regression test in `scripts/test-full.ts` §9 builds a faithful v7 store and asserts the open succeeds and the schema lands at version 9.
 
 ## [0.8.1] - 2026-10-07
 

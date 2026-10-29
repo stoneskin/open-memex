@@ -78,6 +78,11 @@ CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
 -- cache — the alias registry must be re-read per query so a newly saved
 -- alias memory applies on the very next query. This index accelerates the
 -- lookup without caching results.
+-- D87 correction to the "no bump" reasoning above: it holds only for stores
+-- whose tables already have the alias/target columns. A pre-D81 store's
+-- table lacks them, CREATE TABLE IF NOT EXISTS adds none, and creating this
+-- index throws "no such column: alias" before the version check runs. db()
+-- now rebuilds a stale table before creating the schema.
 CREATE INDEX IF NOT EXISTS idx_memories_alias
   ON memories(scope_key) WHERE alias <> '' AND target <> '';
 `;
@@ -162,6 +167,18 @@ export function db(): AnyDatabase {
   d.exec("PRAGMA busy_timeout = 5000;");
   d.exec("PRAGMA synchronous = NORMAL;");
   d.exec("PRAGMA foreign_keys = ON;");
+  // D87: a stale on-disk table predates columns that TABLE_SCHEMA's partial
+  // index references (D85's idx_memories_alias needs alias/target, added by
+  // D81). CREATE TABLE IF NOT EXISTS adds no columns to an existing table,
+  // so creating that index first throws "no such column: alias" — and the
+  // version check below never runs, wedging every open on a pre-D81 store.
+  // When the table exists but the version is old, rebuild first: the table
+  // exists, so rebuild's DELETE has something to delete. Fresh stores have
+  // no table and fall through to creation below, exactly as before.
+  const hasTable = d
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memories'")
+    .get() as { name: string } | undefined;
+  if (hasTable && userVersion(d) < SCHEMA_VERSION) rebuildIndexSchema(d);
   d.exec(TABLE_SCHEMA);
   d.exec(FTS_SCHEMA);
   if (userVersion(d) < SCHEMA_VERSION) rebuildIndexSchema(d);

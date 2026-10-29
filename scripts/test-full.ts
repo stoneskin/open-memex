@@ -9,6 +9,7 @@
 // parsed, and crash-prone commands retry up to 5 times.
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -413,6 +414,54 @@ ok("migrate personal→project runs", r.code === 0, (r.err || r.out).slice(0, 15
   };
   walk(memRoot);
   ok("migrated file is now scope: project", /^scope: project$/m.test(moved), moved.slice(0, 200));
+}
+// D87: a pre-D81 index.db (SCHEMA_VERSION 7 — no alias/target/expansions
+// columns) must open and migrate instead of wedging every command with
+// "no such column: alias": D85's partial index throws before the version
+// check runs. Build a faithful v7 store, then any command that opens the
+// DB must succeed and leave the schema at version 9.
+{
+  const require = createRequire(import.meta.url);
+  const Database = require("better-sqlite3");
+  fs.rmSync(dbPath, { force: true });
+  fs.rmSync(dbPath + "-wal", { force: true });
+  fs.rmSync(dbPath + "-shm", { force: true });
+  const old = new Database(dbPath);
+  old.exec(`CREATE TABLE memories (
+  id           TEXT PRIMARY KEY,
+  scope_key    TEXT NOT NULL,
+  scope        TEXT NOT NULL,
+  visibility   TEXT NOT NULL DEFAULT 'private',
+  project_name TEXT NOT NULL DEFAULT '',
+  type         TEXT NOT NULL DEFAULT 'fact',
+  role         TEXT NOT NULL DEFAULT 'knowledge',
+  importance   TEXT NOT NULL DEFAULT 'normal',
+  status       TEXT NOT NULL DEFAULT 'active',
+  tags         TEXT NOT NULL DEFAULT '',
+  aliases      TEXT NOT NULL DEFAULT '',
+  content      TEXT NOT NULL,
+  cjk          TEXT NOT NULL DEFAULT '',
+  content_hash TEXT NOT NULL DEFAULT '',
+  superseded_by TEXT,
+  source       TEXT NOT NULL DEFAULT '',
+  file_path    TEXT NOT NULL,
+  mtime_ms     REAL NOT NULL,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  review_state TEXT NOT NULL DEFAULT 'draft'
+);`);
+  old.exec("PRAGMA user_version = 7");
+  old.prepare("INSERT INTO memories (id, scope_key, scope, file_path, mtime_ms, created_at, updated_at, content) VALUES (?,?,?,?,?,?,?,?)")
+    .run("01D87OLD", "personal", "personal", path.join(T, "gone.md"), 1, 1, 1, "stale v7 row");
+  old.close();
+  r = cliRetry(["list", "--scope", "personal"], PROJ);
+  ok("D87: pre-D81 index.db opens instead of wedging", r.code === 0 && !/no such column/.test(r.out + r.err), (r.err || r.out).slice(0, 200));
+  const after = new Database(dbPath, { readonly: true });
+  const ver = (after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  const cols = (after.prepare("PRAGMA table_info(memories)").all() as { name: string }[]).map((c) => c.name);
+  after.close();
+  ok("D87: stale store migrates to schema v9", ver === 9, `user_version=${ver}`);
+  ok("D87: migrated table has alias/target/expansions", ["alias", "target", "expansions"].every((c) => cols.includes(c)), cols.join(","));
 }
 
 // ---------- 10. capture / doctor / mcp --print-config / init ----------

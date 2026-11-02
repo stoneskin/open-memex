@@ -173,9 +173,9 @@ Context injection happens exactly once per session in `experimental.chat.system.
 
 ## Design constraints — read the frozen design first
 
-`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D74; open questions tracked at the end of the doc). Per its §12:
+`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D88 — log in `docs/design/decisions.md`; open questions tracked at the end of the doc). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
-built this way" (principles, iron rules, the append-only decision log, currently D1–D74). Before changing
+built this way" (principles, iron rules, the append-only decision log in `docs/design/decisions.md`, currently D1–D88). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
 schema, MCP tools, CLI contract), read the relevant design section — the decision
 log records what was already considered and rejected.
@@ -201,7 +201,7 @@ breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.
 - **Docs ship with code.** Every code change updates the docs it affects in the same commit:
   new/changed tools → `README.md` + `README.zh-CN.md` tool tables + MCP section (keep both
   languages in sync); behavior changes → both READMEs
-  and the frozen `docs/V2-DESIGN.md` (append a `D<n>` decision entry, never rewrite history);
+  and the frozen design (append a `D<n>` decision entry to `docs/design/decisions.md`, never rewrite history);
   new commands → README CLI sections + this file's Commands. A change without its docs
   is not done. Anything deferred as "later" goes into the near-term backlog in
   `docs/V2-DESIGN.md` §18 the same day — unwritten later means never.

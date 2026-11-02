@@ -493,30 +493,35 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
 
 - **Phase 0 — Design freeze + validation (now).** Freeze this doc (protocol v0.2). Verify: company
   VS Code MCP-server support; corporate Copilot local-tool support. **Hard gate before Phase 2.**
+  *Status (2026-11-02): 部分实现 — design frozen; VS Code validation evidenced, corporate-Copilot validation has no recorded artifact.*
 - **Phase 1 — Local hardening (1–2 wks).** CJK default (bigram+FTS5) · v1→v2 migration · dedup +
   lifecycle · redaction hardening · scope docs. No external dependencies.
+  *Status (2026-11-02): 已实现 — all five items shipped (0.3.0–0.8.1).*
 - **Phase 2A — MCP server (shipped 2026-09-27, D15).** Core/adapters split
   (`src/tools/ops.ts`) · MCP server (`src/mcp.ts`, stdio) exposing all eleven memory tools —
   read-only-first phasing dropped per D15 · query-aware injection stays host-side.
   Ships in **`0.3.0-alpha`** (with bin/npx user-friendliness polish per §17 adoption path).
+  *Status (2026-11-02): 已实现 — shipped 2026-09-27 (0.3.0).*
 - **Phase 2B — Team sync.** GitProvider · `propose/promote/resolve` · in-repo dir · 1–2 colleague pilot
   (pilot project selection is maintainer-private, not tracked in this doc).
   Ships in **`0.4.0`** (was labeled `0.3.0-beta` before 0.3.0 shipped as stable).
   Embeddings/rerank run as a **parallel benchmark-gated experiment**, not on the critical path.
+  *Status (2026-11-02): 部分实现 — mechanisms shipped in 0.4.0; the 1–2 colleague pilot has no completion evidence (TEST-PLAN §G unchecked).*
 - **Phase 2C — Native agent plugins (candidates, not committed).** Claude Code plugin and/or
   Codex plugin as hook-enhanced paths over the same MCP tool surface (`SessionStart` →
   context injection, `UserPromptSubmit` → keyword-triggered search, `Stop`/`PostToolUse` →
   capture); per D16, no host-specific extraction intelligence — opencode is likewise
   supported as a plain MCP consumer. Gated on real-world signal from 0.3.0-alpha MCP
   dogfooding.
+  *Status (2026-11-02): 未实现 — candidate, not committed; Claude Code / Codex have only the MCP-consumer path.*
 
 ### Agent integration matrix
 
 | Agent | Integration path | Native hooks? | Status |
 |---|---|---|---|
 | opencode | native plugin (`src/index.ts`) | ✅ keyword capture + first-turn injection | shipped (Phase 1) |
-| VS Code Copilot | MCP server + `.github/copilot-instructions.md` | ❌ — VS Code extension API cannot intercept Copilot Chat (researched 2026-09-27); an extension would add no hook capability, so not worth building | ships `0.3.0-alpha` |
-| Cursor | MCP server + rules | ❌ no chat plugin API | ships `0.3.0-alpha` |
+| VS Code Copilot | MCP server + `.github/copilot-instructions.md` | ❌ — VS Code extension API cannot intercept Copilot Chat (researched 2026-09-27); an extension would add no hook capability, so not worth building | shipped (0.3.0) |
+| Cursor | MCP server + rules | ❌ no chat plugin API | shipped (0.3.0) |
 | Claude Code | MCP server today; plugin + hooks candidate | ✅ `SessionStart` / `UserPromptSubmit` / `PostToolUse` | Phase 2C candidate |
 | Codex (CLI/IDE) | MCP server (`[mcp_servers]` in config.toml / `codex mcp add`) today; plugin + hooks + marketplace candidate | ✅ hooks mirror Claude Code's | Phase 2C candidate |
 
@@ -525,6 +530,8 @@ Zero-config is survival for an open-source project. The opencode plugin remains 
 Coding-agent memory is crowded; open-memex's wedge is **zero-cloud, zero-account,
 zero-embedding-download**, with repo-native markdown as source of truth (maintainer
 requirement: personal data never touches third-party services). Benchmarks to track:
+
+*Note (2026-11-02): figures below are a Sep 2026 snapshot and already stale in places (e.g. Mem0 ~50k+★ then, ~68k★ by 2026-10-28) — re-verify before quoting publicly.*
 
 | Product | Scale / backing (Sep 2026) | Shape | Gap vs open-memex |
 |---|---|---|---|
@@ -587,6 +594,8 @@ requirement: personal data never touches third-party services). Benchmarks to tr
 
 > v0.3 candidate (D88). Does not change the frozen v0.2 protocol; the graph/wiki is a derived layer. Full text: [docs/design/knowledge-graph.md](design/knowledge-graph.md).
 
+*Status (2026-11-02): 未实现 — v0.3 candidate as a whole; §20.1–20.4, §20.6, §20.8 unbuilt, §20.5/§20.7 are no-change statements (confirmed).*
+
 ---
 
 ## Decisions (append-only)
@@ -599,27 +608,37 @@ The decision log lives in [docs/design/decisions.md](design/decisions.md). Appen
 _Pruned 2026-10-04 (D75): entries decided in D56/D57/D61/D68 and the shipped layers of the retrieval-robustness question were removed — the decisions are the record. What remains below is genuinely open._
 
 - **Non-programmer users: PMs, BAs, and entry points (open, 2026-10-03):** the current experience assumes a programmer's toolchain — terminal, npm install, editor plugin, git branches, PR review. Project managers and BAs have none of that, and their most likely entry points are not the VS Code chat window: at most an agentic CLI (opencode, Claude Code), more probably Teams chat, MS Copilot, or another chat surface calling the same MCP server. The mechanics must hide behind two confirmations ("remember this?" / "share with the team?") — scope/promote/supersede/outbox vocabulary is a programmer dialect they should never have to learn. Three roles to design for, in increasing order of build cost: (1) **sources** — their meetings and decisions are the highest-value project memory, captured by someone else's agent with attribution in `source`; needs nothing new. (2) **curators** — "is this true? is it safe to share?" is business-truth review, which BAs are often better placed to do than programmers; GitHub's web PR review is the only existing no-CLI door, and CURATOR.md would need a plain-language path for reviewers who have never touched git. (3) **direct users** — capture sources shift from chat commands to meeting transcripts, email, and tickets; and without git there is no courier: a shared-folder transport is mechanically easy (memories are Markdown files) but has no PR-equivalent review step, so a substitute review flow has to be designed. Also weigh: stakeholder/customer facts carry PII and retention weight that code conventions never do, so "is it safe to share" becomes a compliance question, not a hygiene one. If a company ever gives every employee one unified agent entry point (a work buddy / AI team mate), most of this audience split dissolves — the question is what open-memex should assume until then: heterogeneous entry points, one memory service behind them.
+  *Status (2026-11-02): 未实现 — only the sources role needs nothing new; curators and direct users unbuilt, no Teams/M365 entry.*
 
 - **Retrospective distillation: mining host transcripts after the fact (open, 2026-10-03):** open-memex captures only in-session (keyword triggers, explicit `memory_add`) and keeps **no transcript** — so anything not captured during the conversation is gone once it ends. Hosts with durable memory (e.g. Muse) avoid this loss with two layers open-memex skipped: full transcript retention plus background distillation. The gap is architectural, not a timing detail: the raw material for a second chance does not exist on our side. But the hosts themselves already retain it — opencode persists sessions and messages in its local store; Claude Code keeps JSONL transcripts under `~/.claude/projects/`; VS Code Copilot's chat state is locked in workspace storage (readable, fragile, not a first target). Candidate direction: a "replay distillation" flow that exports a past session's transcript and has an agent mine it in a dedicated review session, with every extracted candidate landing as an **outbox draft** for human review — never a direct save. Boundaries that keep this inside the existing design: open-memex builds no transcript store of its own (borrow the host's), mining judgment is the agent's LLM work (we provide the export and the queue, not an extractor), fully local, mined drafts carry their provenance (`source` marks them as distilled, from which session). Open sub-questions: host adapters per tool (opencode store format, Claude Code JSONL), how the user picks sessions to mine (by date? by project? "everything since last sync"?), and whether the proactive-capture criteria (open question above) should be the mining rubric verbatim — likely yes.
+  *Status (2026-11-02): 未实现 — no transcript replay/mining flow; open-memex keeps no transcript by design.*
 
 - **Novice experience: the 60-second magic moment and the plain-language layer (open, 2026-10-03; trimmed 2026-10-04):** the privacy model is now stated in plain words at init (D56). Still open: init offering to save one sample memory and immediately having the user's agent answer a question with it — the user *sees* recall work before being asked to trust it — and a plain-language layer over the review ladder ("saved on this computer" / "shared with the team") with outbox/submit/promote vocabulary becoming the advanced view. This is the same vocabulary wall the PM/BA question above hits from the other side.
+  *Status (2026-11-02): 部分实现 — init privacy statement (D56) and one-line hint (D51) shipped; the 60-second magic moment and plain-language review ladder unbuilt.*
 
 - **Retrieval evaluation: measure recall before choosing a semantic layer (open, 2026-10-04):** the retrieval-robustness question closed with all three cheap layers shipped (D56 query construction; D61 agent-side expansion + capture-time aliases), and embeddings stayed deferred *by judgment, without numbers*. A comparable project (agent-memory) publishes an offline recall@5 of 0.98 and wears it as a badge. open-memex should build the same kind of small, fixed eval — a query set over a seeded store, recall@k / MRR for the current FTS5 pipeline — and publish the number. The semantic-layer decision then gets a gate: if FTS5 + aliases is good enough, embeddings stay deferred; if a query class measurably fails, that class defines what an optional local-embedding layer must beat. Eval first, architecture second. **Update (2026-10-07):** the eval shipped (D77, `scripts/retrieval-eval.ts`, baseline recall@1 0.81 / recall@5 0.95 / MRR 0.87); query-time synonym expansion landed as retrieval layer 4 (D79) — embeddings stay deferred, now with numbers behind the judgment.
+  *Update (2026-11-02): fixture numbers have since moved to R@1 0.750 / R@5 0.977 / MRR 0.857 (D80/D81/D83); the conclusion (eval shipped, embeddings deferred on numbers) still holds.*
+  *Status (2026-11-02): 部分实现 — eval harness shipped (D77 layer 1) and embeddings deferred on numbers; MemoryAgentBench second data point still open.*
 
 - **Per-client trust levels (open, 2026-10-04):** the review ladder is currently global: every host's writes face the same gates. A comparable tool (auxly) sets a trust level per agent — one agent's writes land immediately, another's queue for approval, a third is read-only. That maps naturally onto open-memex, since the ladder already exists; the open questions are the config surface (per host? per MCP client name? how does the server learn the client's identity reliably?), the default for unknown clients, and whether trust should also gate *reads* of the personal scope. Signal to watch: one user running several agents with different autonomy expectations.
+  *Status (2026-11-02): 未实现 — no per-client trust config; the review ladder is global.*
 
 - **Cold-start import: index what the user already has (open, 2026-10-04):** adoption today starts from an empty store. Comparable tools index the user's existing notes (memtomem) or import other memory systems' exports (remnic: mem0 / ChatGPT / Claude). Candidate first steps, cheapest first: (1) import a folder of plain Markdown notes as personal-scope outbox drafts — never direct saves, the review gate stays the front door; (2) named-export importers once (1) proves the pipeline. Open sub-questions: chunking policy for long notes (one file ≠ one memory), dedup against existing memories, and provenance marking (`source: import`).
+  *Status (2026-11-02): 部分实现 — bundle import/export shipped (0.4.0); importing a folder of plain Markdown notes as outbox drafts unbuilt.*
 
 - **Session working state: resume where you left off (open, 2026-10-04):** open-memex stores durable knowledge, not the state of an interrupted task. memryzed's third layer — per-repository session state (open files, last commands, where the work stands) so a fresh session resumes mid-task — names the gap. Candidate shape, if pursued: an ephemeral per-project working-state note, agent-written at wrap-up and surfaced at session start alongside memory injection, *outside* the review ladder (it is scratch state, not knowledge) with a short TTL. Open questions: what belongs in it (task summary? file list? next step?), who writes it (agent at Stop? user command?), and the overlap with the retrospective-distillation and checkpoint-proactivity threads. Defer until there is signal that users lose work context, not just facts.
+  *Status (2026-11-02): 未实现 — no working-state note; deferred until signal, none so far.*
 
 - **The three Copilots: three integration surfaces (open, 2026-10-05):** "Copilot" is three different products with three different extension models, and open-memex's posture differs per surface. (Stone's machines: home has all three; the work machine has no Microsoft Copilot app.)
   - **GitHub Copilot (editor, developer) — decided / shipped:** `open-memex init --client vscode|cursor|…` writes the MCP server entry; all 11 tools via MCP; the Agent Skill + instruction files drive proactive capture. This is the production path today.
   - **Microsoft Copilot (Windows consumer app; formerly "Windows Copilot") — open, unverified:** the app itself claims MCP registration via `%LocalAppData%\Microsoft\Copilot\mcp\mcp.json` (a `servers` array with `id` / `type: "stdio"` / `command` / `args` / `cwd`), but no public documentation exists for this path, and it is not the same thing as the OS-level On-Device Agent Registry (ODR, `odr.exe` + MSIX manifest) — the documented mechanism, still in public preview. Two verified technical constraints for any implementation: (1) on Windows the npm global bin is `open-memex.cmd`, which cannot be spawned without a shell — the entry must be `cmd /c open-memex mcp` (or `node` pointed at `dist/mcp.js`); (2) the MCP server resolves project scope from the process cwd, so a global assistant config needs a deliberate "home base" `cwd`, not a source checkout. No Skills/instructions layer loads here (Copilot Studio Skills packages are M365-only), so proactive capture degrades to "save when asked". Deferred until verified on a real machine (write file → restart app → tools appear in the tool list); if verified, implement as a new `init --client windows-copilot` target.
   - **Microsoft 365 Copilot (enterprise) — open, reframed 2026-10-05:** extension runs through Copilot Studio (agents, Skills packages, declarative agents, Graph connectors) — tenant-cloud surfaces, not local stdio — and this is where the non-programmer audience actually lives (the "MS Copilot" named in the non-programmer question above meant the consumer app; in practice, company non-programmers are on M365 Copilot, so this surface is not optional if we want that audience). The question is no longer *whether* but *how*: personal memory stays local-first and never touches the tenant; team/project memory — shared by design — is served by a company-hosted team-tier endpoint that Copilot Studio agents call as a remote MCP server (Copilot Studio supports MCP over URL). Pointing tenant agents at individual laptops is a non-starter (laptops aren't servers) and an IP mess under Roper-style assignment terms — work memory belongs on the company side, personal memory never leaves the machine, and that split is the clean story. Until the team tier exists, the no-new-infrastructure path is asymmetric participation: non-programmers contribute as attributed sources (captured by others' agents) and review as curators on GitHub web, reading via inventory reports.
+  *Status (2026-11-02): 部分实现 — GitHub Copilot shipped; Microsoft Copilot unverified, M365 team-tier endpoint does not exist.*
 
 - **Enterprise / pro edition: team server + remote MCP (open, 2026-10-05):** the M365 question above reframes the enterprise surface as a *team-tier* endpoint: personal memory stays local-first, team/project memory is served company-hosted and called by Copilot Studio agents as a remote MCP server. The packaging question is whether that team tier ships as an open-memex "enterprise/pro" edition (hosted service or deployable server + remote MCP) or stays a documented deployment pattern companies run themselves. Adoption insight from large-company anecdotes: internally-built programmer tools get pulled in by BAs/QAs/POs on their own — the wedge is developers, and the non-programmer entry point may not need to be built up front; it arrives via the team surface (M365/Teams) once the team server exists. Open: packaging and monetization model (Stone's current goal for open-memex is personal influence, not user count or revenue — an enterprise edition is a support burden, so timing and shape need a deliberate decision); hosting and auth model for the team server; how the personal/team split is enforced at the protocol level.
   - *Refinement (2026-10-05): the entry point is not built, it is placed.* Employees already live in team chat — asking questions, getting work done. A team-chat AI agent (e.g. a Copilot Studio agent in Teams backed by the team memory server) becomes the entry point by standing where the questions already get asked. Adoption is pull, not push: the agent answers and does work in the chat, and usage follows. This dissolves the "non-programmer entry point" problem rather than solving it — there is no separate door to build.
   - *Interface constraint (2026-10-16, from tool/skill/MCP boundary audit):* design the MCP interface for dual use from the start — internal agents and external agents (Copilot Studio, team chat) consume the same tools. Reserve org scope alongside project/personal; the review ladder's single-reviewer assumption will need multi-reviewer semantics. No code changes now; the constraint is recorded so the team tier doesn't require an interface rework later.
+  *Status (2026-11-02): 未实现 — no team server; packaging, hosting/auth, and protocol split all undecided.*
 
 ---
 

@@ -1,5 +1,6 @@
 ## 20. Knowledge Graph & Compiled Wiki (v0.3 candidate)
 
+*Status (2026-11-02): 未实现 — v0.3 candidate as a whole. §20.1–20.4, §20.6, §20.8 unbuilt; §20.5/§20.7 are no-change statements (confirmed, nothing to build).*
 > v0.3 candidate (D88). Does not change the frozen v0.2 protocol; the graph/wiki is a derived layer (see §20.2). Sources: Karpathy's *LLM Wiki* (three layers / three operations) and Graphify (a working implementation of the same pattern on codebases, measured on muse-thinktank 2026-10-31: curated graph, 1029 nodes, edges tagged EXTRACTED/INFERRED with confidence). Both point to the same pattern: compile knowledge once, instead of re-deriving it on every query.
 
 ### 20.1 Why add a graph (motivation)

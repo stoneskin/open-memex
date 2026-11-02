@@ -205,6 +205,7 @@ breaking v1→v2 transition) shipped with 0.3.0. Full rules: `CONTRIBUTING.md`.
   new commands → README CLI sections + this file's Commands. A change without its docs
   is not done. Anything deferred as "later" goes into the near-term backlog in
   `docs/V2-DESIGN.md` §18 the same day — unwritten later means never.
+- **Design-doc status lines stay current.** The per-entry `*Status*` lines in `docs/design/decisions.md`, the §18 phase statuses and the Open Questions statuses in `docs/V2-DESIGN.md` are updated in the same PR that changes the implementation status — a feature shipping without its status line is not done. Status vocabulary: 已实现 / 部分实现 / 未实现 / 已废弃 / 待核实.
 - **Measurement before mechanism.** A retrieval change lands its fixture +
   baseline number in a commit with no retrieval change at all, so the delta is
   unambiguous. `scripts/retrieval-eval.ts` is the gate: no retrieval PR merges

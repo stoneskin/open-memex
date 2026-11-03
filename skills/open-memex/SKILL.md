@@ -57,6 +57,16 @@ with the `memory_add` tool pass `source: "inference"` so the capture is marked
 as agent-proposed. Don't interrupt mid-task, and don't re-propose something
 the user already declined.
 
+## At wrap-up — refresh the working-state note
+
+When the user signals the session or task is wrapping up (and the
+`memory_workingstate` tool is available), write a short scratch note so an
+interrupted task can resume in a fresh session: task summary (one paragraph),
+open files, last commands, where the work stands, next step. It is **scratch
+state, not knowledge** — never save it as a memory; anything here that
+deserves to outlive the task goes through the propose flow above. The note
+expires after 7 days; `open-memex wstate` shows it (`--clear` deletes it).
+
 ## Recall
 
 ```sh

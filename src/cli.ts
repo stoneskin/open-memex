@@ -23,6 +23,7 @@ import {
 import { loadConfig, configSource } from "./config.ts";
 import { paths, projectRoot, isInRepoMemoryFile } from "./paths.ts";
 import { redact } from "./redact.ts";
+import { readWorkingState, clearWorkingState, workingStatePath } from "./working-state.ts";
 import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -428,7 +429,7 @@ Example:
   doctor: `Environment health check: Node version, config source, scope resolution,
 storage writability, VS Code MCP enablement (settings.json + system policy),
 then boots a real MCP server and runs initialize + tools/list against it —
-all eleven tools must show up.
+all twelve tools must show up.
 
 Usage: open-memex doctor
 
@@ -437,8 +438,8 @@ Example:
 
   audit: `Memory health audit (read-only, reports never mutates): near-duplicate
 pairs among active memories, stale actives untouched for 90+ days, broken
-supersede chains, personal files found inside the repo memory dir, and
-index/file drift.
+supersede chains, personal files found inside the repo memory dir, index/file
+drift, and expired working-state notes (D89).
 
 Usage: open-memex audit [--scope project|personal|both]
 
@@ -447,6 +448,19 @@ Flags:
 
 Example:
   open-memex audit --scope both`,
+
+  wstate: `Show the project's session working-state note (D89, §3.6) — the
+ephemeral scratch note the agent refreshes at wrap-up so an interrupted task
+can resume. The file itself is plain Markdown and editable directly.
+
+Usage: open-memex wstate [--clear]
+
+Flags:
+  --clear   delete the note (no tombstone — it is scratch, not knowledge)
+
+Examples:
+  open-memex wstate
+  open-memex wstate --clear`,
 };
 
 function usage(exitCode = 1): never {
@@ -474,6 +488,7 @@ Usage:
   open-memex pr-status [--apply]
   open-memex reindex
   open-memex audit [--scope project|personal|both]
+  open-memex wstate [--clear]
   open-memex scopes
   open-memex migrate [--from <key>] [--to <key>]
                                           [--dry-run] [--on-conflict newer|overwrite|skip]
@@ -506,8 +521,8 @@ first-turn injection); \`--yes\` accepts all defaults, and non-terminal runs nev
 \`open-memex config set <key> <value>\` changes those settings after install.
 
 Once installed globally (\`npm i -g open-memex\`) the \`open-memex\` command is
-available directly: \`open-memex mcp\` starts the stdio MCP server (11 tools, a superset of
-the opencode plugin's five memory_* tools); \`open-memex mcp --print-config <client>\`
+available directly: \`open-memex mcp\` starts the stdio MCP server (12 tools, a superset of
+the opencode plugin's six memory_* tools); \`open-memex mcp --print-config <client>\`
 prints a copy-paste MCP client config snippet.
 
 Scope defaults to \`project\` (derived from cwd's git remote or path).
@@ -733,6 +748,40 @@ async function main() {
   const cfg = loadConfig();
   const project = resolveProjectScope(process.cwd());
 
+  // §3.6 (D89): human convenience surface for the working-state note —
+  // print it (with age/expiry) or delete it on request. The file itself is
+  // always editable directly; audit reports expired notes either way.
+  if (cmd === "wstate") {
+    const flags = parseFlags(rest);
+    if (flags["clear"] === "true") {
+      const gone = clearWorkingState(project.key);
+      console.log(
+        gone
+          ? `working-state note cleared (${project.key})`
+          : "nothing to clear — the note is still on disk; delete it manually if it exists",
+      );
+      return;
+    }
+    const note = readWorkingState(project.key, cfg.workingStateTtlDays);
+    if (!note) {
+      console.log(`no working-state note for ${project.key} — the agent writes one at wrap-up (memory_workingstate); you can edit the file directly`);
+      return;
+    }
+    if (!cfg.workingStateEnabled) {
+      console.log("(working state is disabled in config — workingStateEnabled=false)");
+    }
+    console.log(
+      note.expired
+        ? `EXPIRED — ${note.ageDays} day(s) old, ttl ${note.ttlDays} (ignored at session start; ` +
+          `audit keeps reporting it until the next wrap-up write or 'wstate --clear')`
+        : `updated ${note.ageDays} day(s) ago — expires after ${note.ttlDays} day(s)`,
+    );
+    console.log();
+    console.log(note.content || "(empty note)");
+    console.log(`\nfile: ${workingStatePath(project.key)}`);
+    return;
+  }
+
   // `migrate --to-v2` is a pure file operation (V2-DESIGN §19) — it runs
   // before the index is opened so it also works where the DB driver
   // isn't available.
@@ -840,6 +889,11 @@ async function main() {
     console.log(
       `  index drift: ${r.drift.filesNotIndexed} files not indexed, ${r.drift.rowsMissingFiles} rows missing files`,
     );
+    // D89: expired working-state notes — reports only, never auto-deletes.
+    console.log(`  expired working-state notes: ${r.workingStateExpired.length}`);
+    for (const w of r.workingStateExpired) {
+      console.log(`    ${w.filePath} — ${w.ageDays} days old (ttl ${w.ttlDays}); 'wstate --clear' or the next wrap-up write refreshes`);
+    }
     return;
   }
 
@@ -920,7 +974,7 @@ async function main() {
     return;
   }
 
-  // `mcp` starts the stdio MCP server (11 tools; the opencode plugin exposes 5).
+  // `mcp` starts the stdio MCP server (12 tools; the opencode plugin exposes 6).
   // Branched before db() — runMcpServer() does its own init, and stdout must
   // stay clean for the MCP protocol.
   if (cmd === "mcp") {

@@ -101,14 +101,14 @@ open-memex 用两种方式接编辑器：原生的 **opencode 插件**，和标�
 
 | 编辑器 | 设置方式 | 工具 | 会话开始时回想 | 关键词自动捕获 |
 |---|---|---|---|---|
-| opencode（原生插件，推荐） | `open-memex init --client opencode --global` | 5 个核心工具 | 内置——每个会话第一轮 | 有——`remember …`、`记住…` |
-| VS Code（Copilot） | `open-memex init --client vscode` | 经 MCP 全 11 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
-| Cursor | `open-memex init --client cursor` | 经 MCP 全 11 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
-| Claude Code | `claude mcp add open-memex -- open-memex mcp` | 经 MCP 全 11 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
-| Visual Studio 2022 17.14+ / 2026 | `open-memex init --client visualstudio` | 经 MCP 全 11 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
-| Codex 与其他 MCP 客户端 | `open-memex mcp --print-config` | 经 MCP 全 11 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
+| opencode（原生插件，推荐） | `open-memex init --client opencode --global` | 6 个核心工具 | 内置——每个会话第一轮 | 有——`remember …`、`记住…` |
+| VS Code（Copilot） | `open-memex init --client vscode` | 经 MCP 全 12 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
+| Cursor | `open-memex init --client cursor` | 经 MCP 全 12 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
+| Claude Code | `claude mcp add open-memex -- open-memex mcp` | 经 MCP 全 12 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
+| Visual Studio 2022 17.14+ / 2026 | `open-memex init --client visualstudio` | 经 MCP 全 12 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
+| Codex 与其他 MCP 客户端 | `open-memex mcp --print-config` | 经 MCP 全 12 个 | 经 MCP 握手引导* | 无——你开口让助手保存 |
 
-\* MCP 没有硬性的会话开始钩子，所以 open-memex 在 MCP 握手中把引导发给助手（包括有多少草稿在等同步），`init` 还会把完整版写进编辑器的指令文件。实践中助手会遵循这些引导；只有 opencode 插件是真正的内置第一轮注入。[助手拿到的工具](#助手拿到的工具)一节列出了 5 个核心工具和另外 6 个工作流工具，"5 个 vs 11 个"的切分在那里写明白。
+\* MCP 没有硬性的会话开始钩子，所以 open-memex 在 MCP 握手中把引导发给助手（包括有多少草稿在等同步），`init` 还会把完整版写进编辑器的指令文件。实践中助手会遵循这些引导；只有 opencode 插件是真正的内置第一轮注入。[助手拿到的工具](#助手拿到的工具)一节列出了 6 个核心工具和另外 6 个工作流工具，"6 个 vs 12 个"的切分在那里写明白。
 
 同一台机器上的所有编辑器读写的是**同一份**记忆——在 VS Code 里捕获的一条约束，在 opencode 里会被遵守；在 Cursor 里学到的教训，会出现在 Claude Code 面前。（不同机器之间不自动同步，见[常见问题](#常见问题)。）
 
@@ -191,7 +191,7 @@ open-memex init --client cursor
 open-memex init --client opencode --global --yes
 ```
 
-把原生插件并入你的用户级 `~/.config/opencode/opencode.json`（如果你已有的是 `opencode.jsonc`，就并进那个）——一次设置，每个项目都生效，不用逐项目 init。你会得到 5 个核心工具、关键词自动捕获和第一轮上下文注入。（配置文件里有注释时它不会动，`init` 会打印要手动加的那一行。）
+把原生插件并入你的用户级 `~/.config/opencode/opencode.json`（如果你已有的是 `opencode.jsonc`，就并进那个）——一次设置，每个项目都生效，不用逐项目 init。你会得到 6 个核心工具、关键词自动捕获和第一轮上下文注入。（配置文件里有注释时它不会动，`init` 会打印要手动加的那一行。）
 
 同一套安装同时支持两个 opencode 世代：`init` 会同时写入 opencode 1 的写法（`"plugin"`）和 opencode 2 的写法（`"plugins"`），每个宿主只读自己的那把。opencode 1 要求 **1.18.29 或更新版本**。接线和已装宿主版本对不上，`open-memex doctor` 会报出来。
 
@@ -286,7 +286,7 @@ open-memex capture --dry-run "…"
 
 ## 助手拿到的工具
 
-MCP 服务器暴露十一个工具；opencode 原生插件暴露其中五个核心的（标 ●）。另外六个是团队评审工作流工具——只有当你通过 Git 共享记忆时才用得上。
+MCP 服务器暴露十二个工具；opencode 原生插件暴露其中六个核心的（标 ●）。另外六个是团队评审工作流工具——只有当你通过 Git 共享记忆时才用得上。
 
 | 工具 | 做什么 |
 |---|---|
@@ -295,6 +295,7 @@ MCP 服务器暴露十一个工具；opencode 原生插件暴露其中五个核�
 | ● `memory_list`      | 以编号清单列出某个作用域（`project`、`personal` 或 `both`）的记忆；`include=all` 是审计视图 |
 | ● `memory_supersede` | 用新版本替换一条记忆（保留 supersede 链） |
 | ● `memory_forget`    | 按 id 删除一条记忆（`soft=true` 改为隐藏——retracted，单向） |
+| ● `memory_workingstate` | 读/写/清除每项目的工作状态笔记（§3.6，D89）——让被中断的任务得以续接；只是草稿状态，永远不会成为记忆 |
 | `memory_status`      | 显示同步队列：outbox 草稿、仓库评审状态、未提交文件 |
 | `memory_submit`      | 把指定的草稿移进仓库记忆目录（本地分支 + 提交） |
 | `memory_propose`     | 把个人记忆复制到项目作用域，作为评审候选 |
@@ -558,11 +559,21 @@ open-memex resolve [id-or-path]
 open-memex where        # 显示存储与配置路径
 open-memex scopes       # 列出各项目作用域及记忆计数
 open-memex reindex      # 从 markdown 重建 SQLite 索引
-open-memex audit        # 记忆健康检查：近重复对、陈旧记忆、断裂的取代链
+open-memex audit        # 记忆健康检查：近重复对、陈旧记忆、断裂的取代链、过期的工作状态笔记
+open-memex wstate       # 显示工作状态笔记（--clear 删除）
 open-memex migrate --to-v2 [--dry-run]   # v1 数据 → v2（把 user 作用域改名为 personal）
 ```
 
 CLI 在 Node 22 下运行。从源码 checkout 跑时用内置的实验性 TypeScript 加载器（免构建步骤）；发布到 npm 的包是预编译好的 JS（发版时 `npm run build`）。从源码 checkout 时，每条命令前面加 `node --experimental-strip-types src/cli.ts`（简单情况可用 `npm run cli -- <command>`——npm 会吞掉不认识的 `--flag` 参数，所以优先用直连 `node`）。
+
+## 工作状态笔记
+
+除了耐久知识之外，助手还可以给每个项目留下**一份临时工作状态笔记**（§3.6，D89）：任务摘要、打开的文件、最后的命令、进度在哪、下一步。由助手在收尾时通过 `memory_workingstate` 工具写——opencode 目前没有 Stop 钩子，所以"收尾"指用户发出会话或任务结束的信号（Claude Code 路径等原生插件工作再做）。笔记会在会话开始时自动浮现，让被中断的任务得以续接；它只是草稿状态、永远不会成为记忆，7 天后过期（可配置）——`audit` 报告过期笔记，人可以直接编辑这个纯文本文件。
+
+```sh
+open-memex wstate            # 显示笔记（含年龄与到期）
+open-memex wstate --clear    # 删除
+```
 
 ## MCP 服务器
 
@@ -607,7 +618,7 @@ Windows 上已加载的 DLL 是锁定的：如果 open-memex 的 MCP 服务器�
 你的编辑器配置里有注释（JSONC）或 JSON 不合法，open-memex 永不重写它无法安全解析的文件。`init` 已经把要加的确切片段打印出来了——手动粘贴进去就好。opencode 配置同理：有注释时，手动把 `"plugin"` 那一行加上。
 
 **感觉有问题——跑 `open-memex doctor`。**
-它检查 Node 版本、配置来源、当前目录的作用域解析、存储可写性，并确认 VS Code 没有把 MCP 禁用；然后启动一个真实 MCP 服务器，对它跑 `initialize` + `tools/list`——十一个工具必须全部出现。它还会报告改名之前遗留的 `my-o-memory` 引用（如果某编辑器配置里还留着旧包名的话）。
+它检查 Node 版本、配置来源、当前目录的作用域解析、存储可写性，并确认 VS Code 没有把 MCP 禁用；然后启动一个真实 MCP 服务器，对它跑 `initialize` + `tools/list`——十二个工具必须全部出现。它还会报告改名之前遗留的 `my-o-memory` 引用（如果某编辑器配置里还留着旧包名的话）。
 
 ## 常见问题
 

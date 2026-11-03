@@ -175,6 +175,22 @@ outbox drafts — drafts stay findable, but never pose as vetted.
 - **personal never enters git** (§1) — not by `submit`, not by `export`
   defaults, not ever.
 
+## 8. The working-state note: resuming an interrupted task (D89, §3.6)
+
+Durable knowledge answers "what is true here"; a scheduled task also needs
+"where am I in it". One ephemeral Markdown note per project lives under
+`<data root>/working-state/<scope key>.md` — outside `memories/`, outside git,
+off the retrieval index. The agent writes it at wrap-up via the
+`memory_workingstate` tool (opencode has no Stop hook, so wrap-up means the
+user signaling the task is ending); the content rubric is task summary, open
+files, last commands, where the work stands, next step. The note surfaces at
+session start next to the first-turn injection, framed as scratch state; it
+never enters the review ladder — if something here deserves to outlive the
+task, the normal propose-first flow turns it into a memory. TTL defaults to 7
+days (`config set workingStateTtlDays`); expired notes stay silent at session
+start and are reported by `audit`. `open-memex wstate` reads/clears it; edit
+the plain file directly if you like.
+
 ---
 
 *Design record: `docs/V2-DESIGN.md` (append-only decision log). Per-scope

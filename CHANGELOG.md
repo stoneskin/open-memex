@@ -9,6 +9,10 @@ the `@alpha` tag are development snapshots and are not listed individually.
 
 ## [Unreleased]
 
+## [0.9.0-alpha.1] - 2026-11-03
+
+- Session working-state note (D89 → D90, new minor line): one ephemeral per-project Markdown note for resuming an interrupted task — task summary, open files, last commands, where the work stands, next step. The agent writes it at wrap-up via the new **`memory_workingstate`** tool (now the **twelve** tools on both the opencode plugin and the MCP server), it surfaces once at session start next to the first-turn injection (framed as scratch, never knowledge), it never enters `memories/` or the retrieval index or the review ladder, and anything in it worth keeping goes through the normal propose-first flow. TTL defaults to 7 days (`workingStateTtlDays`; `workingStateEnabled` gates the whole feature — both flat keys, settable via `config set`). Expired notes stay silent at session start and are reported by `open-memex audit`; `open-memex wstate` (`--clear`) is the human surface. The write passes through `redact()` and `atomicWriteTextSync` like every path. One correction to D89's wording, recorded as D90: the opencode plugin API has no Stop hook, so the opencode write path is the instruction + tool branch (the agent refreshes the note when the user signals wrap-up); Claude Code's Stop hook waits for the Phase 2C native plugin.
+
 ## [0.8.2] - 2026-10-28
 
 - fix: the legacy-scope warning on plugin load now suggests the migrate command with an explicit `--to <current-scope>`. Without it, `--to` defaults to the scope of the directory the command runs from, so running the suggested command from the open-memex checkout would move the memories into the wrong scope. No behavior change: the warning condition and the migrate contract are untouched.

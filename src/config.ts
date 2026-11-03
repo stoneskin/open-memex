@@ -15,6 +15,14 @@ export interface MyOMemoryConfig {
    * at init, default on; off = aliases passed by agents are dropped.
    */
   captureAliases: boolean;
+  /**
+   * D89: session working state note. `enabled` gates both the tool write
+   * path and the session-start surfacing; `ttlDays` is the default TTL the
+   * note's frontmatter stamps at write time (per-note `ttl_days` edits
+   * survive config changes afterwards).
+   */
+  workingStateEnabled: boolean;
+  workingStateTtlDays: number;
   /** Patterns whose capture group 1 becomes the memory body; saved to the current scope. */
   keywordPatterns: string[];
   /** Same shape, but hits are forced into the personal scope (e.g. "remember for me"). */
@@ -43,6 +51,8 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   injectOnFirstTurn: true,
   keywordCaptureEnabled: true,
   captureAliases: true,
+  workingStateEnabled: true,
+  workingStateTtlDays: 7,
   keywordPatterns: [
     "^\\s*remember(?!\\s+for\\s+me)(?:\\s+that|\\s+to)?[:,]?\\s+(.+)$",
     "^\\s*(?:please\\s+)?note(?:\\s+that)?[:,]?\\s+(.+)$",
@@ -183,6 +193,12 @@ export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
   injectOnFirstTurn: toBool,
   keywordCaptureEnabled: toBool,
   captureAliases: toBool,
+  workingStateEnabled: toBool,
+  workingStateTtlDays: (v) => {
+    const n = toNonNegInt(v);
+    if (n < 1) throw new Error("must be a positive integer (days)");
+    return n;
+  },
   memoryDir: toRelativeDir,
   "sync.autoPull": toBool,
   logLevel: (v) => {

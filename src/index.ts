@@ -5,6 +5,7 @@ import {
   captureFromText,
   captureHandoff,
   injectOnce,
+  surfaceWorkingStateOnce,
 } from "./plugin-core.ts";
 import { pickScopeRoot } from "./scope.ts";
 import { makeTools } from "./tools/memory.ts";
@@ -41,6 +42,11 @@ const server: Plugin = async ({ worktree, directory }) => {
     async "experimental.chat.system.transform"(input, output) {
       const sessionID = input.sessionID ?? "";
       injectOnce(sessionID, state, (block) => {
+        output.system.push(block);
+      });
+      // D89: the working-state note rides the same one-time pass — with a
+      // fresh note it surfaces even when the memory lists are empty.
+      surfaceWorkingStateOnce(sessionID, state, (block) => {
         output.system.push(block);
       });
       // D73: runs on every request, so the note lands on the very turn whose

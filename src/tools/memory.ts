@@ -10,11 +10,13 @@ import {
   listMemories,
   supersedeMemory,
   forgetMemory,
+  workingStateMemory,
   memoryAddArgs,
   memorySearchArgs,
   memoryListArgs,
   memorySupersedeArgs,
   memoryForgetArgs,
+  memoryWorkingStateArgs,
   TOOL_DESCRIPTIONS,
   withOutboxNote,
 } from "./ops.ts";
@@ -100,5 +102,15 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     },
   });
 
-  return { memory_add, memory_search, memory_list, memory_forget, memory_supersede };
+  // §3.6 (D89): no scope/index work needed — the note lives beside the
+  // store, not in it.
+  const memory_workingstate = tool({
+    description: TOOL_DESCRIPTIONS.memory_workingstate,
+    args: memoryWorkingStateArgs,
+    async execute(args) {
+      return workingStateMemory(getScope, cfg, args);
+    },
+  });
+
+  return { memory_add, memory_search, memory_list, memory_forget, memory_supersede, memory_workingstate };
 }

@@ -137,19 +137,19 @@ depends on which path an editor uses:
 
 | Editor | Setup | Tools | Session-start recall | Keyword auto-capture |
 |---|---|---|---|---|
-| opencode (native plugin, recommended) | `open-memex init --client opencode --global` | 5 core tools | Built in — first turn of every session | Yes — `remember …`, `记住…` |
-| VS Code (Copilot) | `open-memex init --client vscode` | All 11 via MCP | Via MCP guidance* | No — the agent saves when you ask |
-| Cursor | `open-memex init --client cursor` | All 11 via MCP | Via MCP guidance* | No — the agent saves when you ask |
-| Claude Code | `claude mcp add open-memex -- open-memex mcp` | All 11 via MCP | Via MCP guidance* | No — the agent saves when you ask |
-| Visual Studio 2022 17.14+ / 2026 | `open-memex init --client visualstudio` | All 11 via MCP | Via MCP guidance* | No — the agent saves when you ask |
-| Codex and other MCP clients | `open-memex mcp --print-config` | All 11 via MCP | Via MCP guidance* | No — the agent saves when you ask |
+| opencode (native plugin, recommended) | `open-memex init --client opencode --global` | 6 core tools | Built in — first turn of every session | Yes — `remember …`, `记住…` |
+| VS Code (Copilot) | `open-memex init --client vscode` | All 12 via MCP | Via MCP guidance* | No — the agent saves when you ask |
+| Cursor | `open-memex init --client cursor` | All 12 via MCP | Via MCP guidance* | No — the agent saves when you ask |
+| Claude Code | `claude mcp add open-memex -- open-memex mcp` | All 12 via MCP | Via MCP guidance* | No — the agent saves when you ask |
+| Visual Studio 2022 17.14+ / 2026 | `open-memex init --client visualstudio` | All 12 via MCP | Via MCP guidance* | No — the agent saves when you ask |
+| Codex and other MCP clients | `open-memex mcp --print-config` | All 12 via MCP | Via MCP guidance* | No — the agent saves when you ask |
 
 \* MCP has no hard session-start hook, so open-memex sends the agent guidance in
 the MCP handshake (including how many drafts are waiting) and `init` writes the
 fuller version into the editor's instruction files. In practice agents follow
 it; the opencode plugin is the only path with true built-in first-turn
-injection. The [Tools](#tools-the-agent-gets) section lists the 5 core tools
-and the 6 extra workflow tools, so the "5 vs 11" split is explicit.
+injection. The [Tools](#tools-the-agent-gets) section lists the 6 core tools
+and the 6 extra workflow tools, so the "6 vs 12" split is explicit.
 
 All editors on the same machine read and write the **same** memory — a
 constraint captured in VS Code is respected in opencode; a lesson learned in
@@ -265,7 +265,7 @@ open-memex init --client opencode --global --yes
 
 Merges the native plugin into your user-level `~/.config/opencode/opencode.json`
 (or `opencode.jsonc` if that's the file you already have) — one-time, every
-project picks it up, no per-project init. You get the 5 core tools, keyword
+project picks it up, no per-project init. You get the 6 core tools, keyword
 auto-capture, and first-turn context injection. (A config file with comments is
 left untouched — `init` prints the line to add by hand.)
 
@@ -444,8 +444,8 @@ If a secret slips through anyway, `open-memex forget <id>` deletes the memory.
 
 ## Tools the agent gets
 
-The MCP server exposes eleven tools; the opencode native plugin exposes the
-five core ones (marked ●). The other six are the team-review workflow tools —
+The MCP server exposes twelve tools; the opencode native plugin exposes the
+six core ones (marked ●). The other six are the team-review workflow tools —
 they only matter once you share memories through Git.
 
 | Tool | What it does |
@@ -455,6 +455,7 @@ they only matter once you share memories through Git.
 | ● `memory_list`      | List memories in a scope (`project`, `personal`, or `both`) as a numbered inventory; `include=all` is the audit view |
 | ● `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
 | ● `memory_forget`    | Delete a memory by id (`soft=true` hides it instead — retracted, one-way) |
+| ● `memory_workingstate` | Read/write/clear the per-project working-state note (§3.6, D89) — resumes an interrupted task; scratch state, never a memory |
 | `memory_status`      | Show the sync queue: outbox drafts, repo review states, uncommitted files |
 | `memory_submit`      | Move named drafts into the repo memory dir (local branch + commit) |
 | `memory_propose`     | Copy personal memories into the project scope as review candidates |
@@ -833,7 +834,8 @@ Maintenance:
 open-memex where        # show storage + config paths
 open-memex scopes       # list project scopes with memory counts
 open-memex reindex      # rebuild the SQLite index from markdown
-open-memex audit        # memory health: duplicate pairs, stale memories, broken chains
+open-memex audit        # memory health: duplicate pairs, stale memories, broken chains, expired working-state notes
+open-memex wstate       # show the session working-state note (--clear deletes it)
 open-memex migrate --to-v2 [--dry-run]   # v1 data → v2 (renames user scope to personal)
 ```
 
@@ -843,6 +845,23 @@ pre-compiled JS (`npm run build` at publish time). From a source checkout,
 prefix every command with `node --experimental-strip-types src/cli.ts` (or
 `npm run cli -- <command>` for simple cases — npm swallows unknown `--flag`
 args, so prefer direct `node`).
+
+## Session working state
+
+Beyond durable knowledge, the agent can leave **one ephemeral working-state
+note per project** (§3.6, D89): task summary, open files, last commands, where
+the work stands, next step. Written by the agent at wrap-up via the
+`memory_workingstate` tool — opencode has no Stop hook today, so "wrap-up"
+means when the user signals the session or task is ending (the Claude Code
+path arrives with the native plugin work). The note surfaces automatically at
+session start so an interrupted task can resume; it is scratch state, never a
+memory, and expires after 7 days (configurable) — `audit` reports expired
+notes, humans edit the plain file directly.
+
+```sh
+open-memex wstate            # show the note (age + expiry)
+open-memex wstate --clear    # delete it
+```
 
 ## MCP server
 
@@ -931,7 +950,7 @@ config: if it has comments, add the `"plugin"` line manually.
 Checks the Node version, config source, scope resolution for the current
 directory, and storage writability; verifies VS Code hasn't disabled MCP;
 then boots a real MCP server and runs `initialize` + `tools/list` against
-it — all eleven tools must show up. It also reports pre-rename `my-o-memory`
+it — all twelve tools must show up. It also reports pre-rename `my-o-memory`
 leftovers if any editor config still references the old package name.
 
 ## FAQ

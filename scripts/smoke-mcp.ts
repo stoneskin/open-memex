@@ -80,9 +80,9 @@ try {
   const tools = await req("tools/list", {});
   const names = (tools.result?.tools ?? []).map((t: any) => t.name).sort();
   check(
-    "tools/list has 11 memory tools",
+    "tools/list has 12 memory tools",
     JSON.stringify(names) ===
-      JSON.stringify(["memory_add", "memory_forget", "memory_list", "memory_pr_status", "memory_promote", "memory_propose", "memory_resolve", "memory_search", "memory_status", "memory_submit", "memory_supersede"]),
+      JSON.stringify(["memory_add", "memory_forget", "memory_list", "memory_pr_status", "memory_promote", "memory_propose", "memory_resolve", "memory_search", "memory_status", "memory_submit", "memory_supersede", "memory_workingstate"]),
     names.join(","),
   );
   // D76: annotations must tell the truth — pr_status mutates with apply=true.
@@ -188,6 +188,33 @@ try {
 
   const search2 = await req("tools/call", { name: "memory_search", arguments: { query: "mcp e2e probe" } });
   check("memory gone after forget", !(search2.result?.content?.[0]?.text ?? "").includes(savedId));
+
+  // §3.6 (D89): the working-state note round-trips, expires honestly, and
+  // its file lives OUTSIDE memories/ so the index never picks it up.
+  const wsRead0 = await req("tools/call", { name: "memory_workingstate", arguments: {} });
+  const wsRead0Text = wsRead0.result?.content?.[0]?.text ?? "";
+  check("workingstate read reports none (D89)", wsRead0Text.includes("No working-state note"), wsRead0Text.slice(0, 120));
+
+  const wsWrite = await req("tools/call", {
+    name: "memory_workingstate",
+    arguments: { action: "write", content: "task: port the deploy script; next: run staging smoke" },
+  });
+  const wsWriteText = wsWrite.result?.content?.[0]?.text ?? "";
+  check("workingstate write works (D89)", wsWriteText.includes("written"), wsWriteText.slice(0, 160));
+
+  const wsRead = await req("tools/call", { name: "memory_workingstate", arguments: {} });
+  const wsReadText = wsRead.result?.content?.[0]?.text ?? "";
+  check("workingstate reads back (D89)", wsReadText.includes("run staging smoke"), wsReadText.slice(0, 160));
+
+  const wsFile = fs.readdirSync(path.join(HOME, "working-state")).find((f) => f.endsWith(".md"));
+  check("workingstate file outside memories/ (D89)", !!wsFile, `working-state/${wsFile}`);
+
+  const wsSearch = await req("tools/call", { name: "memory_search", arguments: { query: "staging smoke" } });
+  check("workingstate never enters the index (D89)", !(wsSearch.result?.content?.[0]?.text ?? "").includes("run staging smoke"), (wsSearch.result?.content?.[0]?.text ?? "").slice(0, 120));
+
+  const wsClear = await req("tools/call", { name: "memory_workingstate", arguments: { action: "clear" } });
+  check("workingstate clear works (D89)", (wsClear.result?.content?.[0]?.text ?? "").includes("deleted"), (wsClear.result?.content?.[0]?.text ?? "").slice(0, 120));
+
 } finally {
   child.kill();
 }

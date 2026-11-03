@@ -8,6 +8,7 @@ import {
 import { similarity, NEAR_DUP_THRESHOLD } from "./lifecycle.ts";
 import { projectRoot } from "../paths.ts";
 import { loadConfig } from "../config.ts";
+import { readWorkingState, workingStatePath } from "../working-state.ts";
 
 // Memory health audit (D57). Read-only: reports, never mutates.
 // Checks, per open question "retrieval explainability & memory health":
@@ -46,6 +47,9 @@ export interface AuditReport {
   brokenChains: { id: string; scopeKey: string; missingTarget: string }[];
   personalInRepo: string[];
   drift: { filesNotIndexed: number; rowsMissingFiles: number };
+  /** D89: working-state notes past their TTL. Reports only, never
+   *  auto-deletes (D57 posture) — the next wrap-up write overwrites. */
+  workingStateExpired: { scopeKey: string; filePath: string; ageDays: number; ttlDays: number }[];
 }
 
 export function runAudit(scopeKeys: string[]): AuditReport {
@@ -125,6 +129,21 @@ export function runAudit(scopeKeys: string[]): AuditReport {
     }
   }
 
+  // D89: expired working-state notes. Reports only, never auto-deletes
+  // (D57 posture) — the next wrap-up write overwrites them.
+  const cfg = loadConfig();
+  const workingStateExpired = scopeKeys
+    .map((key) => ({ key, note: readWorkingState(key, cfg.workingStateTtlDays) }))
+    .filter((e): e is { key: string; note: NonNullable<ReturnType<typeof readWorkingState>> } =>
+      Boolean(e.note?.expired),
+    )
+    .map((e) => ({
+      scopeKey: e.key,
+      filePath: workingStatePath(e.key),
+      ageDays: e.note!.ageDays,
+      ttlDays: e.note!.ttlDays,
+    }));
+
   return {
     totalMemories: inScope.length,
     duplicatePairs: pairs,
@@ -132,5 +151,6 @@ export function runAudit(scopeKeys: string[]): AuditReport {
     brokenChains,
     personalInRepo,
     drift: { filesNotIndexed, rowsMissingFiles },
+    workingStateExpired,
   };
 }

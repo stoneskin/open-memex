@@ -11,6 +11,7 @@ import {
   type Frontmatter,
 } from "./store/markdown.ts";
 import { buildContextBlock } from "./retrieve/inject.ts";
+import { workingStateBlock } from "./working-state.ts";
 import { detectKeywords } from "./capture/keywords.ts";
 import {
   TURN_ECHO_WINDOW_MS,
@@ -34,6 +35,8 @@ export interface PluginState {
   scope: Scope;
   /** Sessions that already received the one-time context injection. */
   injectedSessions: Set<string>;
+  /** Sessions that already received the D89 working-state surfacing. */
+  workingStateSessions: Set<string>;
   /**
    * D73: what the keyword hook stored this session, so the agent can be told
    * before it re-saves the same statement. In memory only, like
@@ -72,7 +75,7 @@ export function bootstrapPlugin(root: string): PluginState {
   } catch (err) {
     console.error("[open-memex] init failed:", err);
   }
-  return { cfg, scope, injectedSessions: new Set<string>(), captures: new Map() };
+  return { cfg, scope, injectedSessions: new Set<string>(), workingStateSessions: new Set<string>(), captures: new Map() };
 }
 
 /**
@@ -206,6 +209,34 @@ export function injectOnce(
     }
   } catch (err) {
     console.error("[open-memex] context injection failed:", err);
+  }
+  return false;
+}
+
+/**
+ * §3.6 (D89): surface the working-state note once per session, alongside
+ * the context injection. Scratch state, not knowledge — the block itself
+ * says what it is. Exactly-once uses the same in-memory Set discipline as
+ * `injectOnce` (not persisted; restarting the host re-surfaces). Expired
+ * or missing notes surface nothing.
+ */
+export function surfaceWorkingStateOnce(
+  sessionID: string,
+  state: PluginState,
+  push: (block: string) => void,
+): boolean {
+  const { cfg, scope } = state;
+  if (!cfg.workingStateEnabled) return false;
+  if (state.workingStateSessions.has(sessionID)) return false;
+  state.workingStateSessions.add(sessionID);
+  try {
+    const block = workingStateBlock(scope.key, scope.projectName, cfg);
+    if (block) {
+      push(block);
+      return true;
+    }
+  } catch (err) {
+    console.error("[open-memex] working-state surfacing failed:", err);
   }
   return false;
 }

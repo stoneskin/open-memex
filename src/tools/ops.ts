@@ -31,6 +31,11 @@ import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } fro
 import { getPrStatus, formatPrStatus, applyPrStatus } from "../github.ts";
 import { isInRepoMemoryFile } from "../paths.ts";
 import {
+  writeWorkingState,
+  readWorkingState,
+  clearWorkingState,
+} from "../working-state.ts";
+import {
   proposeMemories,
   promoteMemory,
   listConflicts,
@@ -87,6 +92,8 @@ export const TOOL_DESCRIPTIONS = {
     "List git-conflicted memory files, or attempt a field-level 3-way merge of one. Semantic conflicts are reported, never auto-resolved. Run it when a git pull or merge leaves memory files conflicted; the merged file is written in place (undo with git if the merge is wrong). For PR review state rather than file conflicts, use memory_pr_status. (MCP server and the `open-memex resolve` CLI; the opencode native plugin does not expose this tool.)",
   memory_pr_status:
     "Read the current branch's GitHub PR and map its review state onto each in-repo memory: merged PR → published, PR approval → approved (approved_by = reviewer), changes-requested → suggestion only. Report by default — that mode changes nothing; apply=true writes the mapped transitions to the local files (still no push). (MCP server and the `open-memex pr-status` CLI; the opencode native plugin does not expose this tool.)",
+  memory_workingstate:
+    "Read, write, or clear the one ephemeral per-project working-state note (§3.6, D89): where an interrupted task stands, so a fresh session can resume. Scratch state, NOT durable knowledge — it never enters memory retrieval or a review ladder; any conclusion here that should outlive the task goes through the normal memory_add/checkpoint-proposal path instead. WRITE it (action=write, content required) when the user signals the session or task is wrapping up — body rubric: task summary (one paragraph), open files, last commands, where the work stands, next step; short by design, a scratch note, not a transcript. READ it when resuming work or when the user asks what they were doing. CLEAR it on the user's request only. The note lives outside memories/, the user can edit the plain file directly, and it expires after ttl_days (default 7) — expired notes are ignored and `audit` reports them.",
 } as const;
 
 /** Shared zod input shapes (raw shape, not z.object — hosts wrap as needed). */
@@ -262,6 +269,22 @@ export const memoryPrStatusArgs = {
     .describe("Perform the mapped review transitions locally (no push). Default: report only."),
 };
 export type MemoryPrStatusArgs = z.infer<z.ZodObject<typeof memoryPrStatusArgs>>;
+
+export const memoryWorkingStateArgs = {
+  action: z
+    .enum(["read", "write", "clear"])
+    .default("read")
+    .describe(
+      "read = show the current note (empty when none); write = create or refresh it; clear = delete it.",
+    ),
+  content: z
+    .string()
+    .optional()
+    .describe(
+      "Note body, Markdown, short by design (required for write). Rubric: task summary (one paragraph), open files, last commands, where the work stands, next step. A scratch note, not a transcript.",
+    ),
+};
+export type MemoryWorkingStateArgs = z.infer<z.ZodObject<typeof memoryWorkingStateArgs>>;
 
 function resolveScope(
   getScope: () => Scope,
@@ -681,4 +704,68 @@ export async function prStatusOp(args: MemoryPrStatusArgs): Promise<ToolResult> 
     }
   }
   return { title: "memory: pr-status", output: lines.join("\n") };
+}
+
+/**
+ * §3.6 (D89): the one ephemeral per-project working-state note. Scratch
+ * state, not knowledge — it never enters the review ladder or the
+ * retrieval index; durable conclusions still go through memory_add (agent
+ * proposes, user approves). The tool description and the session-start
+ * block must keep saying the same thing on this.
+ */
+export async function workingStateMemory(
+  getScope: () => Scope,
+  cfg: MyOMemoryConfig,
+  args: MemoryWorkingStateArgs,
+): Promise<ToolResult> {
+  if (!cfg.workingStateEnabled) {
+    return {
+      title: "memory: working-state",
+      output:
+        "The working-state note is disabled (config workingStateEnabled=false). Enable it in the config file, or record durable facts with memory_add instead.",
+    };
+  }
+  const scope = getScope();
+  if (args.action === "clear") {
+    const gone = clearWorkingState(scope.key);
+    return {
+      title: "memory: working-state",
+      output: gone
+        ? `Working-state note for ${scope.projectName} deleted.`
+        : "Failed to delete the working-state note — it may still be on disk.",
+    };
+  }
+  if (args.action === "write") {
+    const content = (args.content ?? "").trim();
+    if (!content) {
+      return {
+        title: "memory: working-state",
+        output:
+          "Refusing an empty working-state note: pass content (task summary, open files, last commands, where the work stands, next step).",
+      };
+    }
+    const r = writeWorkingState(scope.key, content, cfg.workingStateTtlDays, cfg.redactPatterns);
+    const secretNote = r.hadSecret
+      ? `\n[open-memex: a secret was masked in place (${r.matchedPattern}) before saving]`
+      : "";
+    return {
+      title: "memory: working-state",
+      output:
+        `Working-state note written to ${r.filePath}. Surfaces at session start; expires after ${cfg.workingStateTtlDays} day${cfg.workingStateTtlDays === 1 ? "" : "s"} or at the next write.${secretNote}`,
+    };
+  }
+  const note = readWorkingState(scope.key, cfg.workingStateTtlDays);
+  if (!note) {
+    return {
+      title: "memory: working-state",
+      output: `No working-state note for ${scope.projectName}. Write one at wrap-up (action=write) so an interrupted task can resume.`,
+    };
+  }
+  const status = note.expired
+    ? `EXPIRED (${note.ageDays} day${note.ageDays === 1 ? "" : "s"} old, ttl ${note.ttlDays}) — stale until a write refreshes it`
+    : `updated ${note.ageDays} day${note.ageDays === 1 ? "" : "s"} ago, ttl ${note.ttlDays} day${note.ttlDays === 1 ? "" : "s"}`;
+  return {
+    title: "memory: working-state",
+    output: `[${status}]\n\n${note.content}`,
+  };
 }

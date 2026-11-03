@@ -63,9 +63,9 @@ const INSTRUCTIONS = `${MARKER}
 
 You have a local memory MCP server (\`open-memex\`). Its tools are
 \`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`,
-\`memory_forget\`, \`memory_status\`, \`memory_submit\`, \`memory_propose\`,
-\`memory_promote\`, \`memory_resolve\`, \`memory_pr_status\` — always call them by
-these full names.
+\`memory_forget\`, \`memory_workingstate\`, \`memory_status\`, \`memory_submit\`,
+\`memory_propose\`, \`memory_promote\`, \`memory_resolve\`, \`memory_pr_status\` —
+always call them by these full names.
 
 - The server tells you when project outbox drafts are waiting for review — in
   tool results. When it does (or when the user asks), call \`memory_status\`
@@ -97,6 +97,11 @@ these full names.
   about the user that hold across all projects. When a saved fact becomes
   outdated, call \`memory_supersede\` (find the old memory's id with
   \`memory_search\` first) instead of adding a duplicate.
+- When the user signals the session or task is wrapping up, refresh the
+  working-state note: call \`memory_workingstate\` (action=write) with a short
+  note — task summary, open files, last commands, where the work stands, next
+  step — so an interrupted task can resume in a fresh session. It is scratch
+  state, not durable knowledge: never save it as a memory.
 
 ## Syncing project memories for review (D26)
 

@@ -24,7 +24,7 @@ interface Check {
   detail: string;
 }
 
-// D64: the MCP server exposes eleven tools; checking only the five the
+// D64: the MCP server exposes twelve tools; checking only the six the
 // opencode plugin carries let a half-registered server pass as healthy.
 const EXPECTED_TOOLS = [
   "memory_add",
@@ -32,6 +32,7 @@ const EXPECTED_TOOLS = [
   "memory_list",
   "memory_supersede",
   "memory_forget",
+  "memory_workingstate",
   "memory_status",
   "memory_submit",
   "memory_propose",
@@ -412,7 +413,7 @@ function opencodePluginCheck(): Check {
   }
 }
 
-/** Spawn the real MCP server, handshake, and verify the five tools list. */
+/** Spawn the real MCP server, handshake, and verify the twelve tools list. */
 function mcpCheck(): Promise<Check> {
   const name = "mcp";
   return new Promise((resolve) => {

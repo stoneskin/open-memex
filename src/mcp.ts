@@ -3,8 +3,9 @@
  *
  * Exposes the memory tools as the opencode plugin
  * (memory_add / memory_search / memory_list / memory_supersede /
- * memory_forget, plus memory_status / memory_submit / memory_propose /
- * memory_promote / memory_resolve / memory_pr_status) over the Model Context Protocol, so any MCP client —
+ * memory_forget, plus memory_workingstate + memory_status / memory_submit /
+ * memory_propose / memory_promote / memory_resolve / memory_pr_status)
+ * over the Model Context Protocol, so any MCP client —
  * VS Code Copilot Chat, Cursor, Claude Code, etc. — can use open-memex
  * without a host-specific plugin.
  *
@@ -40,6 +41,7 @@ import {
   promoteMemoryOp,
   resolveMemoryOp,
   prStatusOp,
+  workingStateMemory,
   memoryAddArgs,
   memorySearchArgs,
   memoryListArgs,
@@ -51,6 +53,7 @@ import {
   memoryPromoteArgs,
   memoryResolveArgs,
   memoryPrStatusArgs,
+  memoryWorkingStateArgs,
   TOOL_DESCRIPTIONS,
   withOutboxNote,
   type ToolResult,
@@ -79,8 +82,9 @@ const SERVER_VERSION: string = (() => {
  */
 const SERVER_INSTRUCTIONS = `You are connected to an open-memex local memory MCP server.
 Its tools are memory_add, memory_search, memory_list, memory_supersede,
-memory_forget, memory_status, memory_submit, memory_propose, memory_promote,
-memory_resolve, memory_pr_status — always call them by these full names.
+memory_forget, memory_workingstate, memory_status, memory_submit,
+memory_propose, memory_promote, memory_resolve, memory_pr_status — always call
+them by these full names.
 
 - The server tells you when project outbox drafts are waiting for review —
   in tool results, and in these session-start instructions. When it does,
@@ -129,6 +133,11 @@ memory_resolve, memory_pr_status — always call them by these full names.
   about the user that hold across all projects. When a saved fact becomes
   outdated, call memory_supersede (find the old memory's id with memory_search
   first) instead of adding a duplicate.
+- When the user signals the session or task is wrapping up, call
+  memory_workingstate (action=write) with a short note: task summary, open
+  files, last commands, where the work stands, next step — so an interrupted
+  task can resume. It is scratch state, not knowledge: do not save it as a
+  memory; durable conclusions still follow the propose-first flow above.
 `;
 
 /** Adapt a framework-agnostic op result to an MCP tool response. */
@@ -312,6 +321,16 @@ export async function runMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     withSync((args) => toMcp(prStatusOp(args))),
+  );
+
+  server.registerTool(
+    "memory_workingstate",
+    {
+      description: TOOL_DESCRIPTIONS.memory_workingstate,
+      inputSchema: z.object(memoryWorkingStateArgs),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    withSync((args) => toMcp(workingStateMemory(getScope, cfg, args))),
   );
 
   const transport = new StdioServerTransport();

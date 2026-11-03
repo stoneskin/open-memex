@@ -12,7 +12,7 @@ via `prepublishOnly` — Node refuses `--experimental-strip-types` for files und
 
 - **opencode host** loads `src/index.ts` under embedded **Bun**. SQLite here is `bun:sqlite` (built-in).
 - **CLI** (`src/cli.ts`) and smoke tests run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
-- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same eleven memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
+- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same twelve memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
 
 `src/store/db.ts` picks the backend at runtime by sniffing `globalThis.Bun`. Both backends share the same surface (`new Database(path)`, `.exec`, `.prepare().run/all/get`, `.close`). Any DB code you write must stay on that common subset — do not import `better-sqlite3` or `bun:sqlite` directly outside `db.ts`. The Node driver is pinned to the `better-sqlite3` 13 N-API line (D72): the pre-13 `node::ObjectWrap` build aborts intermittently on Node 24.19+ when a prepared statement is finalized by GC.
 
@@ -36,7 +36,8 @@ npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
 npm run cli -- <command> --help                          # per-command help (AI assistants discover flags this way)
 npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
 npm run cli -- inventory [--format text|json|html] [--scope both]  # what is remembered, in the open (D68); personal-bearing output refused inside a git worktree without --allow-personal
-npm run cli -- audit [--scope project|personal|both]            # memory health: near-dup pairs, stale actives, broken chains, personal-in-repo (read-only)
+npm run cli -- audit [--scope project|personal|both]            # memory health: near-dup pairs, stale actives, broken chains, personal-in-repo, expired working-state notes (read-only)
+npm run cli -- wstate [--clear]                                 # show/clear the session working-state note (D89 §3.6; the file it prints is editable directly)
 npm run cli -- pull                                          # fetch + fast-forward only (explicit; diverged = clean failure, never force-merge)
 npm run cli -- push                                          # push current branch to remote (explicit only; open-memex never auto-pushes)
 npm run cli -- export [--scope project|personal|both] [--all] [-o <file>]  # portable .tar.gz bundle (markdown + manifest); private excluded unless --all
@@ -170,6 +171,17 @@ D73 — one user statement, one memory. The hook and the agent are two writers f
 D67 rules for any new pattern: a trigger must be a **statement to the store**, not narration — 记得… / `remind me to…` are deliberately out, and the ambiguous forms require an explicit marker (`别忘了：…`, `don't forget: …`, `don't forget that …`). The 帮/替/我们 family takes the full verb phrase (`记` + optional `住|录`, never followed by a verb continuation) + optional `一下`; the separator boundary applies to the **bare** verb only, so `帮我记一下这个配置` captures while `帮我记得带伞` cannot produce mid-word garbage. Bodies under `MIN_CAPTURE_CHARS` (3) are rejected as fragments — never lower the floor silently; `scanKeywords` returns the drop so `capture --dry-run` and the debug log can report it.
 
 Context injection happens exactly once per session in `experimental.chat.system.transform`, guarded by an in-memory `Set<sessionID>` in `src/index.ts`. It is not persisted — restarting opencode re-injects on the next first turn.
+
+**Working-state note (D89, §3.6) — scratch, not memory.** One ephemeral
+per-project note at `<data root>/working-state/<scope_key>.md` (src/working-state.ts);
+`memory_workingstate` (12th tool, both hosts) reads/writes/clears it, the
+session-start block (`surfaceWorkingStateOnce`) surfaces it next to the
+injection, `audit` reports expired notes, `cli wstate` is the human surface.
+It never enters `memories/` or the index — keep it that way: anything worth
+keeping routes through the checkpoint-proposal flow. opencode has no Stop
+hook today, so the write path is instruction + tool; the tool description,
+the surfaced block, the MCP handshake, `init` instructions and the skill must
+keep saying the same thing.
 
 ## Design constraints — read the frozen design first
 

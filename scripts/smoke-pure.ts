@@ -965,5 +965,75 @@ console.log("== D83 expansions BM25 weight + matchedVia ==");
   ok("body stays the strongest column", BM25_WEIGHTS[0] >= BM25_WEIGHTS[3], JSON.stringify(BM25_WEIGHTS));
 }
 
+console.log("== D89 working-state note (§3.6) ==");
+{
+  const {
+    workingStatePath,
+    writeWorkingState,
+    readWorkingState,
+    clearWorkingState,
+    workingStateBlock,
+  } = await import("../src/working-state.ts");
+  const savedHome = process.env.OPEN_MEMEX_HOME;
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "om-wstate-"));
+  process.env.OPEN_MEMEX_HOME = home;
+  const KEY = "project__wstatetest__abcdef123456";
+  const ttlCfg = { ...DEFAULT_CONFIG, workingStateTtlDays: 7 };
+  try {
+    // Read on a store that was never touched: no polluting directory.
+    ok("missing note → null", readWorkingState(KEY, 7) === null);
+    ok("read never creates the dir", !fs.existsSync(path.join(home, "working-state")));
+    // Write: redact applies (a pasted command secret is masked).
+    const w = writeWorkingState(
+      KEY,
+      "resume deploy; saw key=sk-1234567890abcdefghij1234 in logs",
+      7,
+      DEFAULT_CONFIG.redactPatterns,
+    );
+    // NOTE: paths() caches the data root per process, and an earlier section
+    // in this file may already have pinned it to its own temp home. Assert
+    // the shape (…/working-state/<key>.md), not the absolute prefix.
+    ok(
+      "write landed under a working-state dir",
+      w.filePath.includes(path.join("working-state", `${KEY}.md`)),
+      w.filePath,
+    );
+    ok("secret masked", w.hadSecret && !fs.readFileSync(w.filePath, "utf8").includes("1234567890abcdefghij"));
+    const note = readWorkingState(KEY, 7);
+    ok("note reads back", note !== null && note.content.includes("resume deploy"));
+    ok("ttl stamped from config", note?.ttlDays === 7);
+    ok("fresh note not expired", note?.expired === false && note?.ageDays === 0);
+    // Frontmatter edit override: the user's per-note ttl survives.
+    const raw = fs.readFileSync(w.filePath, "utf8").replace("ttl_days: 7", "ttl_days: 3");
+    fs.writeFileSync(w.filePath, raw, "utf8");
+    const note2 = readWorkingState(KEY, 7);
+    ok("per-note ttl override honored", note2?.ttlDays === 3);
+    // Expiry: backdate updated_at past the ttl.
+    const stale = fs.readFileSync(w.filePath, "utf8").replace(
+      /^updated_at: .*$/m,
+      `updated_at: ${new Date(Date.now() - 9 * 86_400_000).toISOString()}`,
+    );
+    fs.writeFileSync(w.filePath, stale, "utf8");
+    const note3 = readWorkingState(KEY, 7);
+    ok("aged note expired", note3?.expired === true && note3?.ttlDays === 3 && note3?.ageDays === 9, JSON.stringify(note3));
+    // Expired notes never surface; a fresh one does, with the right framing.
+    ok("expired note does not surface", workingStateBlock(KEY, "proj", ttlCfg) === null);
+    writeWorkingState(KEY, "resume deploy; run smoke tests", 7, []);
+    const block = workingStateBlock(KEY, "proj", ttlCfg);
+    ok("fresh note surfaces", block !== null && block.includes("resume deploy"), String(block).slice(0, 40));
+    ok("block frames it as scratch", block?.includes("not durable knowledge") === true);
+    ok("block carries the wrap-up rule", block?.includes("memory_workingstate") === true);
+    ok("disabled config never surfaces", workingStateBlock(KEY, "proj", { ...ttlCfg, workingStateEnabled: false }) === null);
+    // Clear is honest: gone once, then reports gone.
+    ok("clear deletes", clearWorkingState(KEY) === true);
+    ok("clear on missing stays true", clearWorkingState(KEY) === true);
+    ok("note gone", readWorkingState(KEY, 7) === null);
+  } finally {
+    if (savedHome === undefined) delete process.env.OPEN_MEMEX_HOME;
+    else process.env.OPEN_MEMEX_HOME = savedHome;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

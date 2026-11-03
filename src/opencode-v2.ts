@@ -5,6 +5,7 @@ import {
   captureFromText,
   captureHandoff,
   injectOnce,
+  surfaceWorkingStateOnce,
   type PluginState,
 } from "./plugin-core.ts";
 import { makeTools } from "./tools/memory.ts";
@@ -30,7 +31,7 @@ import { makeTools } from "./tools/memory.ts";
  * verified on 2.0.1): by default the host exposes plugin tools only
  * through an `execute` meta-tool that runs model-written JS, and a model
  * that calls the tool by name instead gets "Unknown tool" — flaky,
- * model-dependent behavior. With the opt-out the five tools are plain
+ * model-dependent behavior. With the opt-out the six tools are plain
  * function calls, same as on v1 and MCP.
  */
 
@@ -70,7 +71,7 @@ interface V2ContextEvent {
   system: unknown[];
 }
 
-/** Register the five memory tools on a v2 host. */
+/** Register the six memory tools on a v2 host. */
 async function registerTools(ctx: V2PluginContext, state: PluginState): Promise<void> {
   const tools = makeTools(() => state.scope, state.cfg);
   await ctx.tool.transform((editor) => {
@@ -109,6 +110,10 @@ export const v2Plugin = {
       await ctx.session.hook("context", (ev: V2ContextEvent) => {
         const sessionID = ev.sessionID ?? "";
         injectOnce(sessionID, state, (block) => {
+          ev.system.push({ type: "text", text: block });
+        });
+        // D89: the working-state note rides the same one-time pass.
+        surfaceWorkingStateOnce(sessionID, state, (block) => {
           ev.system.push({ type: "text", text: block });
         });
         // D73: tell the agent what the keyword hook already stored this turn.

@@ -25,6 +25,14 @@ import {
 import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
 import { findDuplicates, findTurnEcho, supersede, setStatus } from "../store/lifecycle.ts";
 import { TURN_ECHO_WINDOW_MS } from "../capture/handoff.ts";
+import {
+  getUsage,
+  recordUseful,
+  reuseRate,
+  usefulKindFor,
+  usefulCount,
+  deleteUsage,
+} from "../store/usage.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
@@ -94,6 +102,8 @@ export const TOOL_DESCRIPTIONS = {
     "Read the current branch's GitHub PR and map its review state onto each in-repo memory: merged PR → published, PR approval → approved (approved_by = reviewer), changes-requested → suggestion only. Report by default — that mode changes nothing; apply=true writes the mapped transitions to the local files (still no push). (MCP server and the `open-memex pr-status` CLI; the opencode native plugin does not expose this tool.)",
   memory_workingstate:
     "Read, write, or clear the one ephemeral per-project working-state note (§3.6, D89): where an interrupted task stands, so a fresh session can resume. Scratch state, NOT durable knowledge — it never enters memory retrieval or a review ladder; any conclusion here that should outlive the task goes through the normal memory_add/checkpoint-proposal path instead. WRITE it (action=write, content required) when the user signals the session or task is wrapping up — body rubric: task summary (one paragraph), open files, last commands, where the work stands, next step; short by design, a scratch note, not a transcript. READ it when resuming work or when the user asks what they were doing. CLEAR it on the user's request only. The note lives outside memories/, the user can edit the plain file directly, and it expires after ttl_days (default 7) — expired notes are ignored and `audit` reports them.",
+  memory_useful:
+    "Mark an existing memory as useful (D77): record that it demonstrably paid off. Call it ONLY on an explicit signal — the user confirmed it helped ('that was the one', 'saved me again'), or your completed/accepted work clearly relied on that memory and the user saw the result. NEVER call it because a memory appeared in memory_search results, a memory_list inventory, or the session-start block: passive exposure never refreshes usefulness. Exposure is counted automatically under retrieved_count; the useful buckets increment only through this tool, a human approval at review, or a supersede. Useful is split automatically: useful_self for personal memories and unpublished project drafts (the author's own utility), useful_team for approved/published project memories (team knowledge reused) — pass kind only to override. Returns the cumulative counts and reuse_rate (useful / retrieved). The counters live in the local SQLite index, not in the Markdown source of truth, and never leave this machine.",
 } as const;
 
 /** Shared zod input shapes (raw shape, not z.object — hosts wrap as needed). */
@@ -286,6 +296,20 @@ export const memoryWorkingStateArgs = {
 };
 export type MemoryWorkingStateArgs = z.infer<z.ZodObject<typeof memoryWorkingStateArgs>>;
 
+export const memoryUsefulArgs = {
+  id: z
+    .string()
+    .min(1)
+    .describe("ID of the memory being confirmed useful (memory_search / memory_list return ids)."),
+  kind: z
+    .enum(["self", "team"])
+    .optional()
+    .describe(
+      "Which useful counter. Default: auto — personal memories and unpublished project drafts count useful_self; approved/published project memories count useful_team. Pass only to override the auto split.",
+    ),
+};
+export type MemoryUsefulArgs = z.infer<z.ZodObject<typeof memoryUsefulArgs>>;
+
 function resolveScope(
   getScope: () => Scope,
   kind?: "project" | "personal",
@@ -423,10 +447,12 @@ export async function searchMemories(
       : args.scope === "project"
         ? [project.key]
         : [project.key, PERSONAL_SCOPE.key];
+  // D77-L2: every surface that hands hits to a caller counts as exposure.
   const hits = search(args.query, {
     scopeKeys,
     limit: args.limit,
     type: args.type,
+    record: true,
   });
   if (hits.length === 0) {
     return {
@@ -454,7 +480,7 @@ export async function listMemories(
   // #3" names exactly one memory. A per-section counter emitted two "#1"s.
   let seq = 0;
   const render = (scopeKey: string) => {
-    const hits = list(scopeKey, { type: args.type, limit: args.limit, include });
+    const hits = list(scopeKey, { type: args.type, limit: args.limit, include, record: true });
     const total = countList(scopeKey, { type: args.type, include });
     const lines = hits.map((h) => formatInventoryLine(seq++, h, PERSONAL_SCOPE.key));
     const note = truncationNote(hits.length, total);
@@ -592,6 +618,10 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
     }
   }
   deleteFromIndex(args.id);
+  // D77-L2: the memory is gone for good — its telemetry has no subject left.
+  // Only the hard path prunes the usage row; status flips and index removal
+  // (branch switches remove in-repo files transiently) keep it.
+  deleteUsage(args.id);
   // D64: forgetting an in-repo memory deletes a file inside the user's
   // git working tree. Say so — the deletion should ride a commit, or the
   // file silently diverges from what teammates have.
@@ -608,6 +638,46 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
 // 2B/D26: review workflow ops (also exposed over MCP so agents can drive the
 // sync loop: status → ask user → submit → push/PR on approval).
 // ---------------------------------------------------------------------------
+
+/**
+ * D77-L2: the explicit confirmation route to the useful counters. The
+ * restraint rules live in the tool description and the MCP handshake —
+ * an unguarded call path here would create the self-reinforcing retrieval
+ * loop D77 warns about, so nothing silently routes exposure into useful.
+ * Classification proxy (no identity system): personal scope / unreviewed
+ * project draft → useful_self; approved/published project memory → useful_team.
+ */
+export async function markMemoryUseful(
+  args: MemoryUsefulArgs,
+): Promise<ToolResult> {
+  const row = db()
+    .prepare(`SELECT scope, review_state FROM memories WHERE id = ?`)
+    .get(args.id) as { scope: string; review_state: string } | undefined;
+  if (!row) {
+    return {
+      title: "memory: useful not found",
+      output: `No memory with id ${args.id} in the index — memory_search or memory_list returns current ids.`,
+    };
+  }
+  const kind = args.kind ?? usefulKindFor(row.scope, row.review_state);
+  const after = recordUseful(args.id, kind, "tool");
+  // recordUseful re-checks existence; both branches above agree on not-found.
+  if (!after) {
+    return {
+      title: "memory: useful not found",
+      output: `No memory with id ${args.id} in the index.`,
+    };
+  }
+  const u = getUsage(args.id)!;
+  const rate = reuseRate(u);
+  const useful = usefulCount(u);
+  return {
+    title: `memory: useful (${kind}) ${args.id}`,
+    output:
+      `Marked useful (${kind}). retrieved: ${u.retrieved_count}, useful_self: ${u.useful_self}, useful_team: ${u.useful_team}, reuse_rate: ${rate === null ? "n/a (never retrieved)" : rate.toFixed(2)}.` +
+      `\nA supersede or a human approval also counts — no need to duplicate those with an explicit call.`,
+  };
+}
 
 export async function statusMemories(): Promise<ToolResult> {
   const st = getSyncStatus();

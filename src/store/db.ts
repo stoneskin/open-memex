@@ -127,6 +127,25 @@ END;
 /** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
 const SCHEMA_VERSION = 9;
 
+// D77-L2: reuse counters live in their own table, keyed by memory id. It is
+// created on every open (CREATE IF NOT EXISTS) and deliberately NOT part of
+// the rebuildable index: `rebuildIndexSchema` drops memories/memories_fts
+// and re-derives them from the Markdown files, but the counters are
+// accumulated telemetry with no source-of-truth file to rebuild from — so
+// they must survive a rebuild (ids are stable: the files carry them).
+// No SCHEMA_VERSION bump: the table is additive with IF NOT EXISTS.
+const USAGE_SCHEMA = `
+CREATE TABLE IF NOT EXISTS memory_usage (
+  id                TEXT PRIMARY KEY,
+  retrieved_count   INTEGER NOT NULL DEFAULT 0,
+  useful_self       INTEGER NOT NULL DEFAULT 0,
+  useful_team       INTEGER NOT NULL DEFAULT 0,
+  last_retrieved_at TEXT NOT NULL DEFAULT '',
+  last_useful_at    TEXT,
+  updated_at        TEXT NOT NULL DEFAULT ''
+);
+`;
+
 function userVersion(d: AnyDatabase): number {
   const row = d.prepare("PRAGMA user_version").get() as { user_version: number };
   return row.user_version;
@@ -181,6 +200,7 @@ export function db(): AnyDatabase {
   if (hasTable && userVersion(d) < SCHEMA_VERSION) rebuildIndexSchema(d);
   d.exec(TABLE_SCHEMA);
   d.exec(FTS_SCHEMA);
+  d.exec(USAGE_SCHEMA);
   if (userVersion(d) < SCHEMA_VERSION) rebuildIndexSchema(d);
   _db = d;
   return d;

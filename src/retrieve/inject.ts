@@ -1,4 +1,5 @@
 import { list, hitStateLabel } from "./search.ts";
+import { recordRetrieved } from "../store/usage.ts";
 import type { Scope } from "../scope.ts";
 import { PERSONAL_SCOPE } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
@@ -13,6 +14,12 @@ export function buildContextBlock(scope: Scope, cfg: MyOMemoryConfig): string | 
   const user = list(PERSONAL_SCOPE.key, { limit: cfg.maxProfileItems });
 
   if (project.length === 0 && user.length === 0) return null;
+
+  // D77-L2: the injection is a retrieval surface — the memories it puts in
+  // front of the agent were "returned", so they count as exposure. It must
+  // NOT touch the useful counters: passive surfacing never refreshes
+  // usefulness (D77).
+  recordRetrieved([...project.map((m) => m.id), ...user.map((m) => m.id)]);
 
   const lines: string[] = ["[OPEN-MEMEX]"];
 

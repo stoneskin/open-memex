@@ -3,8 +3,9 @@
  *
  * Exposes the memory tools as the opencode plugin
  * (memory_add / memory_search / memory_list / memory_supersede /
- * memory_forget, plus memory_workingstate + memory_status / memory_submit /
- * memory_propose / memory_promote / memory_resolve / memory_pr_status)
+ * memory_forget, plus memory_useful + memory_workingstate + memory_status /
+ * memory_submit / memory_propose / memory_promote / memory_resolve /
+ * memory_pr_status)
  * over the Model Context Protocol, so any MCP client —
  * VS Code Copilot Chat, Cursor, Claude Code, etc. — can use open-memex
  * without a host-specific plugin.
@@ -35,6 +36,7 @@ import {
   listMemories,
   supersedeMemory,
   forgetMemory,
+  markMemoryUseful,
   statusMemories,
   submitMemoriesOp,
   proposeMemoriesOp,
@@ -54,6 +56,7 @@ import {
   memoryResolveArgs,
   memoryPrStatusArgs,
   memoryWorkingStateArgs,
+  memoryUsefulArgs,
   TOOL_DESCRIPTIONS,
   withOutboxNote,
   type ToolResult,
@@ -82,7 +85,7 @@ const SERVER_VERSION: string = (() => {
  */
 const SERVER_INSTRUCTIONS = `You are connected to an open-memex local memory MCP server.
 Its tools are memory_add, memory_search, memory_list, memory_supersede,
-memory_forget, memory_workingstate, memory_status, memory_submit,
+memory_forget, memory_useful, memory_workingstate, memory_status, memory_submit,
 memory_propose, memory_promote, memory_resolve, memory_pr_status — always call
 them by these full names.
 
@@ -138,6 +141,11 @@ them by these full names.
   files, last commands, where the work stands, next step — so an interrupted
   task can resume. It is scratch state, not knowledge: do not save it as a
   memory; durable conclusions still follow the propose-first flow above.
+- When a person confirms a memory was useful, or accepted work that clearly
+  relied on one, call memory_useful on it. NEVER call memory_useful just
+  because a memory appeared in results or the session-start block — passive
+  exposure never counts as useful. (Superseding or approving a memory also
+  auto-records its useful signal; no need to duplicate those.)
 `;
 
 /** Adapt a framework-agnostic op result to an MCP tool response. */
@@ -261,6 +269,16 @@ export async function runMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     withSync((args) => toMcp(withOutboxNote(getScope().key, forgetMemory(args), "call memory_status to review"))),
+  );
+
+  server.registerTool(
+    "memory_useful",
+    {
+      description: TOOL_DESCRIPTIONS.memory_useful,
+      inputSchema: z.object(memoryUsefulArgs),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    withSync((args) => toMcp(markMemoryUseful(args))),
   );
 
   server.registerTool(

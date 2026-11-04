@@ -444,8 +444,8 @@ If a secret slips through anyway, `open-memex forget <id>` deletes the memory.
 
 ## Tools the agent gets
 
-The MCP server exposes twelve tools; the opencode native plugin exposes the
-six core ones (marked ●). The other six are the team-review workflow tools —
+The MCP server exposes thirteen tools; the opencode native plugin exposes the
+seven core ones (marked ●). The other six are the team-review workflow tools —
 they only matter once you share memories through Git.
 
 | Tool | What it does |
@@ -456,6 +456,7 @@ they only matter once you share memories through Git.
 | ● `memory_supersede` | Replace a memory with a newer version (keeps a supersede chain) |
 | ● `memory_forget`    | Delete a memory by id (`soft=true` hides it instead — retracted, one-way) |
 | ● `memory_workingstate` | Read/write/clear the per-project working-state note (§3.6, D89) — resumes an interrupted task; scratch state, never a memory |
+| ● `memory_useful`    | Mark a memory as useful (D77) — explicit confirmation only; exposure is counted separately as `retrieved_count` |
 | `memory_status`      | Show the sync queue: outbox drafts, repo review states, uncommitted files |
 | `memory_submit`      | Move named drafts into the repo memory dir (local branch + commit) |
 | `memory_propose`     | Copy personal memories into the project scope as review candidates |
@@ -466,6 +467,19 @@ they only matter once you share memories through Git.
 So an MCP-connected editor always has the full set; opencode's plugin covers
 capture and recall, and anything workflow-shaped goes through the CLI or an
 MCP-connected editor.
+
+**Usefulness is measured by reuse, not storage (D77).** Every memory carries
+local counters: `retrieved_count` — how often it was actually handed to the
+agent (search results, lists, the session-start injection) — and useful
+counts, split into `useful_self` (personal memories, unpublished project
+drafts) and `useful_team` (approved/published project memories). Only
+explicit signals raise the useful side: `memory_useful` when a person
+confirms it paid off, a human approval at review, or a supersede. Passive
+exposure never counts as useful — a memory that merely showed up in results
+has shown nothing yet. Same-side CLI surface: `open-memex useful <id...>`.
+Counters live in the local SQLite index only (never in the Markdown files,
+never off this machine); the reuse report (top reused, zero-reuse zombies,
+per-scope rates) rides the D77-L3 follow-up.
 
 ## Memory types
 
@@ -950,7 +964,7 @@ config: if it has comments, add the `"plugin"` line manually.
 Checks the Node version, config source, scope resolution for the current
 directory, and storage writability; verifies VS Code hasn't disabled MCP;
 then boots a real MCP server and runs `initialize` + `tools/list` against
-it — all twelve tools must show up. It also reports pre-rename `my-o-memory`
+it — all thirteen tools must show up. It also reports pre-rename `my-o-memory`
 leftovers if any editor config still references the old package name.
 
 ## FAQ

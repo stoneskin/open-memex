@@ -10,6 +10,7 @@ import {
 import { loadConfig } from "../config.ts";
 import { cjkIndexText } from "../retrieve/cjk.ts";
 import { isTurnEcho } from "../capture/handoff.ts";
+import { recordUseful, usefulKindFor } from "./usage.ts";
 import {
   parse,
   serialize,
@@ -282,6 +283,10 @@ export function supersede(
       `cannot supersede memory with status '${oldMf.fm.status}' (id ${oldId}); only active memories can be superseded`,
     );
   }
+  // D77-L2: the replacement's chain pointer back to this memory is a
+  // behavioral useful signal — something here was worth carrying forward.
+  // Classified from the OLD memory's state (captured before any flips).
+  const usefulKind = usefulKindFor(oldMf.fm.scope, oldMf.fm.review_state);
 
   const now = msToRfc3339(Date.now());
   const newFm: Frontmatter = {
@@ -328,6 +333,10 @@ export function supersede(
   oldMf.fm.superseded_by = newFm.id;
   oldMf.fm.updated_at = now;
   rewriteMemoryFile(oldMf);
+
+  // Behavioral useful (D77) — recorded after both aliases of the chain are
+  // settled, so a crash mid-supersede never half-records.
+  recordUseful(oldId, usefulKind, "supersede");
 
   return { oldMf, newMf };
 }

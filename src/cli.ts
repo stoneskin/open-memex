@@ -10,6 +10,7 @@ import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatR
 import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
 import { search, list, countList, hitStateLabel } from "./retrieve/search.ts";
+import { recordUseful, getUsage, reuseRate, usefulCount, usefulKindFor, deleteUsage } from "./store/usage.ts";
 import { DEFAULT_EXPANSIONS_WEIGHT } from "./retrieve/weights.ts";
 import { formatInventoryLine, truncationNote } from "./retrieve/display.ts";
 import {
@@ -163,6 +164,18 @@ Retraction is one-way: a retracted memory cannot be set back to active
 
 Example:
   open-memex status 01ABC deprecated`,
+
+  useful: `Mark a memory as useful (D77): record that it demonstrably paid
+off. Useful is split automatically — useful_self for personal memories and
+unpublished project drafts, useful_team for approved/published project
+memories. Only explicit confirmation counts; passive retrieval (search/
+list/injection) is counted separately as retrieved_count, never as useful.
+A supersede or a human approval also records a useful signal on its own.
+
+Usage: open-memex useful <id...>
+
+Example:
+  open-memex useful 01ABC`,
 
   forget: `Delete a memory by id. With --soft, hide it instead: the memory
 is retracted (out of lists and search, file kept). Retraction is one-way —
@@ -429,7 +442,7 @@ Example:
   doctor: `Environment health check: Node version, config source, scope resolution,
 storage writability, VS Code MCP enablement (settings.json + system policy),
 then boots a real MCP server and runs initialize + tools/list against it —
-all twelve tools must show up.
+all thirteen tools must show up.
 
 Usage: open-memex doctor
 
@@ -473,6 +486,7 @@ Usage:
   open-memex add "content" [--scope project|personal] [--type T] [--tag t1,t2]
   open-memex supersede <id> "new content" [--type T] [--tag t1,t2]
   open-memex status <id> active|deprecated|retracted|archived
+  open-memex useful <id...>
   open-memex forget <id> [--soft]
   open-memex propose <id...> --to project [--local-approve]
   open-memex promote <id> [--reject] [--resubmit] [--note "..."] [--by NAME]
@@ -521,8 +535,8 @@ first-turn injection); \`--yes\` accepts all defaults, and non-terminal runs nev
 \`open-memex config set <key> <value>\` changes those settings after install.
 
 Once installed globally (\`npm i -g open-memex\`) the \`open-memex\` command is
-available directly: \`open-memex mcp\` starts the stdio MCP server (12 tools, a superset of
-the opencode plugin's six memory_* tools); \`open-memex mcp --print-config <client>\`
+available directly: \`open-memex mcp\` starts the stdio MCP server (13 tools, a superset of
+the opencode plugin's seven memory_* tools); \`open-memex mcp --print-config <client>\`
 prints a copy-paste MCP client config snippet.
 
 Scope defaults to \`project\` (derived from cwd's git remote or path).
@@ -1027,6 +1041,7 @@ async function main() {
         type: flags.type,
         limit: flags.limit ? Number(flags.limit) : undefined,
         include,
+        record: true,
       });
       const total = countList(s.key, { type: flags.type, include });
       if (scopes.length > 1) {
@@ -1074,6 +1089,7 @@ async function main() {
       limit: flags.limit ? Number(flags.limit) : undefined,
       type: flags.type,
       stats,
+      record: true,
     });
     if (explain && stats) {
       console.log(`fts: ${stats.ftsQuery || "(empty query)"}`);
@@ -1298,7 +1314,42 @@ async function main() {
       }
     }
     deleteFromIndex(id);
+    // D77-L2: hard forget prunes the usage row with the memory (the tool
+    // path does the same); branch-switch removals go through syncScope and
+    // keep counters for that reason.
+    deleteUsage(id);
     console.log(`deleted ${id}`);
+    return;
+  }
+
+  if (cmd === "useful") {
+    // D77-L2: the explicit confirmation route for humans. Auto-split like
+    // the memory_useful tool; unknown ids fail that id without touching
+    // the rest of the batch.
+    const ids = rest;
+    if (ids.length === 0) usage();
+    syncScope(project.key, "cli");
+    syncScope(PERSONAL_SCOPE.key, "cli");
+    let notFound = 0;
+    for (const id of ids) {
+      const row = db()
+        .prepare(`SELECT scope, review_state FROM memories WHERE id = ?`)
+        .get(id) as { scope: string; review_state: string } | undefined;
+      if (!row) {
+        console.error(`not found: ${id}`);
+        notFound++;
+        continue;
+      }
+      const kind = usefulKindFor(row.scope, row.review_state);
+      recordUseful(id, kind, "tool");
+      const u = getUsage(id)!;
+      const rate = reuseRate(u);
+      const useful = usefulCount(u);
+      console.log(
+        `useful (${kind}) ${id} — retrieved: ${u.retrieved_count}, useful_self: ${u.useful_self}, useful_team: ${u.useful_team}, reuse_rate: ${rate === null ? "n/a" : rate.toFixed(2)} (useful ${useful}/${u.retrieved_count})`,
+      );
+    }
+    if (notFound > 0) process.exit(1);
     return;
   }
 

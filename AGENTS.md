@@ -12,7 +12,7 @@ via `prepublishOnly` — Node refuses `--experimental-strip-types` for files und
 
 - **opencode host** loads `src/index.ts` under embedded **Bun**. SQLite here is `bun:sqlite` (built-in).
 - **CLI** (`src/cli.ts`) and smoke tests run under **Node 22+** with `--experimental-strip-types`. SQLite here is `better-sqlite3` (native module).
-- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same twelve memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
+- **MCP server** (`src/mcp.ts`, stdio) runs under **Node 22+** with `--experimental-strip-types`. It exposes the same thirteen memory tools to any MCP client (VS Code Copilot, Cursor, Claude Code). **stdout is the protocol channel — never log to stdout in `mcp.ts`; diagnostics go to stderr.**
 
 `src/store/db.ts` picks the backend at runtime by sniffing `globalThis.Bun`. Both backends share the same surface (`new Database(path)`, `.exec`, `.prepare().run/all/get`, `.close`). Any DB code you write must stay on that common subset — do not import `better-sqlite3` or `bun:sqlite` directly outside `db.ts`. The Node driver is pinned to the `better-sqlite3` 13 N-API line (D72): the pre-13 `node::ObjectWrap` build aborts intermittently on Node 24.19+ when a prepared statement is finalized by GC.
 
@@ -33,6 +33,7 @@ Consequences:
 npm install                                          # once
 npm run typecheck                                    # tsc --noEmit — the only lint/type gate
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
+npm run cli -- useful <id...>                            # D77-L2: explicit useful signal + cumulative counters
 npm run cli -- <command> --help                          # per-command help (AI assistants discover flags this way)
 npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
 npm run cli -- inventory [--format text|json|html] [--scope both]  # what is remembered, in the open (D68); personal-bearing output refused inside a git worktree without --allow-personal
@@ -124,6 +125,8 @@ Storage root:
 Layout: `memories/<scope_key>/<id>.md` (YAML frontmatter + body) + `index.db` (SQLite FTS5).
 
 **Markdown files are the source of truth; `index.db` is rebuildable.** `syncScope()` (in `src/store/sync.ts`) reconciles the two by mtime on plugin load and before every CLI read. When adding new frontmatter fields, update `Frontmatter` in `src/store/markdown.ts`, the `memories` table in `src/store/db.ts`, and `upsertFromFile` in `src/store/sync.ts` together, and bump the reindex path.
+
+D77-L2 counters are the one deliberate exception: `memory_usage` (in `index.db`, owned by `src/store/usage.ts`) holds `retrieved_count` / `useful_self` / `useful_team` keyed by memory id, is created with `CREATE TABLE IF NOT EXISTS` outside the versioned schema, and is NOT dropped by `rebuildIndexSchema` — accumulated telemetry has no Markdown source to rebuild from. They never go into frontmatter and never leave the machine. Only `memory_useful` (explicit), a human approve at review, and a supersede raise the useful side; passive retrieval (search/list/injection, opt-in via `record: true`) raises only `retrieved_count` — never "fix" this by counting exposure as useful.
 
 ## Scope keys
 

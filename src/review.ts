@@ -36,6 +36,7 @@ import {
 } from "./store/markdown.ts";
 import { findMemoryFile } from "./store/lifecycle.ts";
 import { upsertFromFile } from "./store/sync.ts";
+import { recordUseful } from "./store/usage.ts";
 
 /** Best-effort author identity: git user.name, else the OS user. */
 export function currentAuthor(): string {
@@ -249,6 +250,11 @@ export function promoteMemory(
   };
   atomicWriteTextSync(mf.filePath, serialize(fm, mf.body));
   upsertFromFile({ fm, body: mf.body, filePath: mf.filePath, mtimeMs: Date.now() });
+  // D77-L2: a human approve at review is exactly the "explicit confirmation"
+  // the D77 useful definition names. One tick per approve step — the later
+  // published transition passes through approved and does not re-count.
+  // Always useful_team: promoteMemory is project-only by contract above.
+  if (to === "approved") recordUseful(id, "team", "promote");
   return { id, from, to, history: fm.review_history };
 }
 

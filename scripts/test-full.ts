@@ -802,6 +802,89 @@ ${body}
     r.out.slice(0, 200),
   );
 
+  // ---------- D77-L2: reuse counters + useful ----------
+  // Counters are SQLite-local telemetry (memory_usage table), never written
+  // into frontmatter. Exposure counts retrieved_count from search/list/
+  // CLI reads; useful only via `useful`/memory_useful, supersede, or a
+  // human promote to approved.
+  console.log("== usage counters (D77-L2) ==");
+  const d77Proj = mkproj("d77-proj");
+  const uId = addMem(["fulltest D77 useful-signal memory"], d77Proj);
+  ok("D77 probe memory added", !!uId);
+
+  // No exposure yet: never searched/listed (add alone is not a retrieval).
+  r = cliRetry(["useful", uId], d77Proj);
+  ok(
+    "cli useful marks self (unreviewed project draft) with 0 retrieved",
+    /useful \(self\) /.test(r.out) && /retrieved: 0/.test(r.out) && /useful_self: 1/.test(r.out),
+    r.out.slice(0, 200),
+  );
+
+  // The retrieval surfaces count exposures; the audit view does not.
+  cliRetry(["search", "useful-signal memory"], d77Proj);
+  cliRetry(["list"], d77Proj);
+  r = cliRetry(["list", "--include", "all"], d77Proj);
+  r = cliRetry(["useful", uId], d77Proj);
+  ok(
+    "search + list recorded exposures, audit view did not",
+    /retrieved: 2/.test(r.out) && /useful_self: 2/.test(r.out) && /reuse_rate: 1\.00/.test(r.out),
+    r.out.slice(0, 220),
+  );
+
+  // Unknown id fails the batch.
+  r = cliRetry(["useful", "01MISSING000000000000000000"], d77Proj);
+  ok("cli useful reports not found", /not found/.test(r.out + r.err), (r.out + r.err).slice(0, 120));
+
+  // Behavioral: supersede records a useful tick on the OLD memory.
+  const oldId = addMem(["fulltest D77 supersede-then-count target"], d77Proj);
+  r = cliRetry(["supersede", oldId, "fulltest D77 supersede target replaced"], d77Proj);
+  ok("supersede works (setup)", !!grabArrowId(r.out), r.out.slice(0, 120));
+  r = cliRetry(["useful", oldId], d77Proj);
+  // supersede already ticked useful_self on the old memory; the probe adds
+  // one explicit tick, so the printed counter reads 2.
+  ok(
+    "supersede counted as useful on the old memory (D77)",
+    /useful_self: 2/.test(r.out),
+    r.out.slice(0, 200),
+  );
+
+  // Behavioral: human approve at review records useful_team (no memory_useful call).
+  // Approved is reachable only through the review ladder: personal → propose
+  // (outbox draft) → submit (repo, proposed) → promote (approved).
+  const tId = addMem(["fulltest D77 review-approved memory", "--scope", "personal"], d77Proj);
+  const proposed = proposeMem(tId, d77Proj);
+  const submitted = cliRetry(["submit", proposed], d77Proj);
+  ok("approved-path submit works (setup)", submitted.code === 0, (submitted.err || submitted.out).slice(0, 150));
+  r = cliRetry(["promote", proposed], d77Proj);
+  ok("promote to approved works (setup)", /\bapproved\b/.test(r.out), r.out.slice(0, 160));
+  r = cliRetry(["useful", proposed], d77Proj);
+  // promote itself already ticked useful_team; the useful probe below adds
+  // one explicit tick on top, so the printed counter reads 2.
+  ok(
+    "promote → approved counted useful_team (D77)",
+    /useful_team: 2/.test(r.out) && /useful \(team\)/.test(r.out) && /useful_self: 0/.test(r.out),
+    r.out.slice(0, 220),
+  );
+
+  // Hard forget prunes the telemetry row (no phantom counters).
+  const deadId = addMem(["fulltest D77 to-be-forgotten memory"], d77Proj);
+  cliRetry(["forget", deadId], d77Proj);
+  r = cliRetry(["useful", deadId], d77Proj);
+  ok("forget pruned the usage row (D77-L2)", r.code !== 0 && /not found/.test(r.out + r.err), (r.out + r.err).slice(0, 120));
+
+  // Counters survive a full schema rebuild (memory_usage sits outside the
+  // rebuilt index tables; D77-L2 store design).
+  cliRetry(["reindex"], d77Proj);
+  r = cliRetry(["useful", uId], d77Proj);
+  ok(
+    "counters survive reindex",
+    /retrieved: 2/.test(r.out) || /retrieved: 3/.test(r.out),
+    r.out.slice(0, 160),
+  );
+  // NOTE: the reindex section's useful tick bumps useful_self by 1 — that is
+  // the probe itself, not persistence; the retrieved floor above is what
+  // proves the table survived the rebuild.
+
   // JSON: no absolute local paths, and the format id records the change.
   r = cliRetry(["inventory", "--format", "json"], PROJ);
   const invJson2 = JSON.parse(r.out.slice(r.out.indexOf("{")));

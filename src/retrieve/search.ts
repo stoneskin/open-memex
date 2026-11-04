@@ -6,6 +6,7 @@ import {
   planAliasExpansions,
   mergeRounds,
 } from "./alias-memory.ts";
+import { recordRetrieved } from "../store/usage.ts";
 
 /** D83: which indexed column a hit's match came from. */
 export type MatchedVia = "body" | "alias" | "expansion" | "other";
@@ -222,6 +223,13 @@ export function search(
      * fixture can pick the value; not a per-call tuning surface.
      */
     expansionsWeight?: number;
+    /**
+     * D77-L2: count an exposure for every id this call returns
+     * (retrieved_count). Opt-in: the tool surfaces (memory_search /
+     * memory_list) and the CLI read commands pass true; eval/bench scripts
+     * leave it off so fixture runs never pollute real telemetry.
+     */
+    record?: boolean;
   } = {},
 ): SearchHit[] {
   const qflags = { stopwords: opts.stopwords, orJoin: opts.orJoin, prefix: opts.prefix };
@@ -329,12 +337,16 @@ export function search(
   // expands variants into the indexed aliases column at sync time), so
   // without a user alias the query side stays a single FTS round.
   if (opts.stats) opts.stats.candidates = merged.length;
-  return resolveVisible(merged, limit, opts.stats);
+  const hits = resolveVisible(merged, limit, opts.stats);
+  // D77-L2: record only the ids actually returned — the candidate pool is
+  // not an exposure, and #53 guarantees the cut below is the final result.
+  if (opts.record && hits.length > 0) recordRetrieved(hits.map((h) => h.id));
+  return hits;
 }
 
 export function list(
   scopeKey: string,
-  opts: { type?: string; limit?: number; include?: "active" | "all" } = {},
+  opts: { type?: string; limit?: number; include?: "active" | "all"; record?: boolean } = {},
 ): SearchHit[] {
   const limit = Math.max(1, Math.min(opts.limit ?? 20, 100));
   const fetchLimit = Math.min(limit * 3 + 10, 150);
@@ -372,9 +384,13 @@ export function list(
   if (opts.include === "all") {
     // D68: the audit view — every row as stored (superseded versions,
     // retracted, archived), no chain collapsing, capped at limit.
+    // NOT an exposure (D77-L2): the audit view is inspection for pruning
+    // decisions; counting it would inflate memories the user never saw.
     return raw.slice(0, limit).map(toHit);
   }
-  return resolveVisible(raw, limit);
+  const hits = resolveVisible(raw, limit);
+  if (opts.record && hits.length > 0) recordRetrieved(hits.map((h) => h.id));
+  return hits;
 }
 
 /**

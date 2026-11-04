@@ -119,7 +119,9 @@ yet. Syncing them into the repo for review is an explicit, user-approved step:
 - When the user says "sync memory" (or "同步记忆"), run the sync
   flow above: call \`memory_status\`, summarize the outbox drafts, and ask which
   ones to sync. ALWAYS use the \`memory_status\` tool for this — never browse
-  the memory data directory directly.
+  the memory data directory directly. That tool also carries the D77 reuse
+  report (per-scope rates, most-reused memories, and "zombies"): surface it
+  when the user asks what memory is actually being reused.
 - When the user approves, call \`memory_submit\` with the approved ids. It
   copies the drafts into the current project's \`.ai/open-memex/\` directory as
   \`proposed\` and commits locally on the CURRENT branch. It NEVER creates a

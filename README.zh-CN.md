@@ -297,7 +297,7 @@ MCP 服务器暴露十三个工具；opencode 原生插件暴露其中七个核�
 | ● `memory_forget`    | 按 id 删除一条记忆（`soft=true` 改为隐藏——retracted，单向） |
 | ● `memory_workingstate` | 读/写/清除每项目的工作状态笔记（§3.6，D89）——让被中断的任务得以续接；只是草稿状态，永远不会成为记忆 |
 | ● `memory_useful`    | 确认一条记忆有用（D77）——只认显式确认；被动的搜索/列表出现只计入 `retrieved_count`，绝不算有用 |
-| `memory_status`      | 显示同步队列：outbox 草稿、仓库评审状态、未提交文件 |
+| `memory_status`      | 显示同步队列（outbox 草稿、仓库评审状态、未提交文件），并附带 D77 复用报告 |
 | `memory_submit`      | 把指定的草稿移进仓库记忆目录（本地分支 + 提交） |
 | `memory_propose`     | 把个人记忆复制到项目作用域，作为评审候选 |
 | `memory_promote`     | 推进 `proposed → approved → published`（或拒绝 / 重新提交） |
@@ -306,7 +306,7 @@ MCP 服务器暴露十三个工具；opencode 原生插件暴露其中七个核�
 
 所以 MCP 接入的编辑器永远是全套；opencode 插件主攻捕获与回想，工作流类的事走 CLI 或 MCP 接入的编辑器。
 
-**有用性靠复用来衡量，不靠存储量（D77）。** 每条记忆带本地计数器：`retrieved_count`——它真正被递交给助手的次数（搜索结果、清单、会话开始注入）；有用计数则拆成 `useful_self`（个人记忆、未评审的项目草稿）和 `useful_team`（approved/published 的项目记忆）。只有显式信号会抬升有用侧：`memory_useful`（人确认它帮上忙时）、评审中的人为 approve、或一次 supersede。被动曝光永远不算有用——记忆只是出现在结果里，还不能说明任何事。同侧的人用入口：`open-memex useful <id...>`。计数器只存在本地 SQLite 索引里（不进 Markdown 文件、不出这台机器）；复用报告（复用最多、零复用的"僵尸"、各作用域复用率）由 D77-L3 后续跟进。
+**有用性靠复用来衡量，不靠存储量（D77）。** 每条记忆带本地计数器：`retrieved_count`——它真正被递交给助手的次数（搜索结果、清单、会话开始注入）；有用计数则拆成 `useful_self`（个人记忆、未评审的项目草稿）和 `useful_team`（approved/published 的项目记忆）。只有显式信号会抬升有用侧：`memory_useful`（人确认它帮上忙时）、评审中的人为 approve、或一次 supersede。被动曝光永远不算有用——记忆只是出现在结果里，还不能说明任何事。同侧的人用入口：`open-memex useful <id...>`。计数器只存在本地 SQLite 索引里（不进 Markdown 文件、不出这台机器）。复用报告挂在 `memory_status`（以及 `open-memex sync-status`）上：各作用域的 retrieved/useful 比率、复用最多的记忆，以及"僵尸"——被检索过却从未被确认有用、即衰减/清理候选项（D77-L3）。
 
 ## 记忆类型
 

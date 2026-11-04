@@ -958,6 +958,30 @@ ${body}
     }
   }
 
+  // ---------- D77-L3: reuse report on the status surface ----------
+  // memory_status / `sync-status` gains per-scope rates, top reused, and
+  // zombies (retrieved, never confirmed useful).
+  console.log("== reuse report (D77-L3) ==");
+  const zombieId = addMem(["fulltest D77 zombie memory never confirmed"], d77Proj);
+  cliRetry(["search", "zombie memory never confirmed"], d77Proj);
+  r = cliRetry(["sync-status"], d77Proj);
+  ok("sync-status shows the reuse report (D77-L3)", /Reuse \(D77/.test(r.out), r.out.slice(0, 260));
+  ok(
+    "report shows per-scope retrieved/useful/rate",
+    /this project: retrieved \d+, useful \d+ \(\d+%\) over \d+ memor/.test(r.out),
+    r.out.slice(r.out.indexOf("Reuse (D77"), r.out.indexOf("Reuse (D77") + 300),
+  );
+  ok("report lists the most-reused memory", r.out.includes(uId) && /top reused: [1-9]/.test(r.out), r.out.slice(-420));
+  ok(
+    "report lists the zombie and counts it",
+    r.out.includes(zombieId) && /zombies \(retrieved, never confirmed useful\): [1-9]/.test(r.out),
+    r.out.slice(-320),
+  );
+  ok(
+    "report is local-only framed",
+    /local counters, never leave this machine/.test(r.out),
+  );
+
   // JSON: no absolute local paths, and the format id records the change.
   r = cliRetry(["inventory", "--format", "json"], PROJ);
   const invJson2 = JSON.parse(r.out.slice(r.out.indexOf("{")));

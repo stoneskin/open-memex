@@ -26,6 +26,7 @@
  * Read it as signal strength, not a percentage.
  */
 import { db } from "./db.ts";
+import type { ReuseEntry, ReuseReport, ReuseScopeStat } from "../reuse-report.ts";
 
 export type UsefulKind = "self" | "team";
 
@@ -166,6 +167,129 @@ export function listUsage(scopeKey?: string): MemoryUsage[] {
     r.useful_team = Number(r.useful_team) || 0;
   }
   return rows;
+}
+
+/** One telemetry row joined to its memory's display fields (D77-L3). */
+interface JoinedUsageRow {
+  id: string;
+  scope_key: string;
+  type: string;
+  review_state: string;
+  status: string;
+  content: string;
+  retrieved_count: number;
+  useful_self: number;
+  useful_team: number;
+}
+
+function oneLine(s: string, max = 120): string {
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length > max ? t.slice(0, max - 1) + "…" : t;
+}
+
+/**
+ * D77-L3: assemble the reuse report for the given scopes (personal and the
+ * current project on every surface). One join query, computed in JS — the
+ * store is local and the row count is a corpus, not a warehouse.
+ *
+ * Scope totals include every row with telemetry (retracted/archived too:
+ * their exposure was real while it lasted). The two actionable lists —
+ * top reused and zombies — exclude retracted/archived, because neither
+ * pruning nor celebrating a withdrawn memory helps.
+ */
+export function loadReuseReport(
+  scopes: ReadonlyArray<{ scopeKey: string; label: string }>,
+  opts: { topLimit?: number; zombieLimit?: number } = {},
+): ReuseReport {
+  const topLimit = opts.topLimit ?? 5;
+  const zombieLimit = opts.zombieLimit ?? 5;
+  const labels = new Map(scopes.map((s) => [s.scopeKey, s.label]));
+  const empty: ReuseReport = {
+    scopes: scopes.map((s) => ({
+      label: s.label,
+      scopeKey: s.scopeKey,
+      tracked: 0,
+      retrieved: 0,
+      useful: 0,
+      rate: null,
+    })),
+    top: [],
+    topTotal: 0,
+    zombies: [],
+    zombieTotal: 0,
+    tracked: 0,
+  };
+  if (scopes.length === 0) return empty;
+
+  const keys = scopes.map((s) => s.scopeKey);
+  const rows = db()
+    .prepare(
+      `SELECT u.id, u.retrieved_count, u.useful_self, u.useful_team,
+              m.scope_key, m.type, m.review_state, m.status,
+              substr(m.content, 1, 200) AS content
+       FROM memory_usage u JOIN memories m ON m.id = u.id
+       WHERE m.scope_key IN (${keys.map(() => "?").join(",")})`,
+    )
+    .all(...(keys as unknown[])) as JoinedUsageRow[];
+
+  const byScope = new Map<string, ReuseScopeStat>();
+  for (const s of empty.scopes) byScope.set(s.scopeKey, s);
+
+  const tracked: Array<ReuseEntry & { status: string }> = [];
+  for (const r of rows) {
+    const retrieved = Number(r.retrieved_count) || 0;
+    const useful = (Number(r.useful_self) || 0) + (Number(r.useful_team) || 0);
+    const stat = byScope.get(r.scope_key);
+    if (stat) {
+      stat.tracked++;
+      stat.retrieved += retrieved;
+      stat.useful += useful;
+    }
+    tracked.push({
+      id: r.id,
+      scopeKey: r.scope_key,
+      scopeLabel: labels.get(r.scope_key) ?? r.scope_key,
+      type: r.type,
+      reviewState: r.review_state ?? "draft",
+      retrieved,
+      useful,
+      snippet: oneLine(r.content ?? ""),
+      status: r.status,
+    });
+  }
+  for (const stat of byScope.values()) {
+    stat.rate = stat.retrieved > 0 ? stat.useful / stat.retrieved : null;
+  }
+
+  const actionable = tracked.filter(
+    (e) => e.status !== "retracted" && e.status !== "archived",
+  );
+  const top = actionable
+    .filter((e) => e.useful > 0)
+    .sort((a, b) => b.useful - a.useful || b.retrieved - a.retrieved || a.id.localeCompare(b.id));
+  const zombies = actionable
+    .filter((e) => e.retrieved > 0 && e.useful === 0)
+    .sort((a, b) => b.retrieved - a.retrieved || a.id.localeCompare(b.id));
+
+  const strip = (e: ReuseEntry & { status: string }): ReuseEntry => ({
+    id: e.id,
+    scopeKey: e.scopeKey,
+    scopeLabel: e.scopeLabel,
+    type: e.type,
+    reviewState: e.reviewState,
+    retrieved: e.retrieved,
+    useful: e.useful,
+    snippet: e.snippet,
+  });
+
+  return {
+    scopes: empty.scopes,
+    top: top.slice(0, topLimit).map(strip),
+    topTotal: top.length,
+    zombies: zombies.slice(0, zombieLimit).map(strip),
+    zombieTotal: zombies.length,
+    tracked: tracked.length,
+  };
 }
 
 /**

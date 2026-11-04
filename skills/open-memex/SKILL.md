@@ -121,6 +121,10 @@ open-memex sync-status     # drafts waiting, repo review state, uncommitted file
 open-memex submit <id>     # publish drafts to .ai/open-memex/ + local commit
 ```
 
+`sync-status` also ends with the D77 reuse report — per-scope retrieved/useful
+rates, the most-reused memories, and "zombies" (retrieved but never confirmed
+useful). Show it when the user asks what memory is actually pulling its weight.
+
 If any command output reports drafts waiting in the project outbox, run
 `open-memex sync-status` and ask the user which drafts to sync. The user may
 also trigger this flow by saying "sync memory".

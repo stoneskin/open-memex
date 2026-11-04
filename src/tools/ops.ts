@@ -32,7 +32,9 @@ import {
   usefulKindFor,
   usefulCount,
   deleteUsage,
+  loadReuseReport,
 } from "../store/usage.ts";
+import { formatReuseReport } from "../reuse-report.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
@@ -89,7 +91,7 @@ export const TOOL_DESCRIPTIONS = {
   memory_forget:
     "Delete a memory by id. Use when the user asks to forget something. To replace an outdated fact with a corrected one instead of deleting it, use memory_supersede. Deletion is permanent: before deleting, restate the memory's content to the user and get a confirmation. With soft=true the memory is hidden instead (retracted: out of lists and search, file kept, one-way).",
   memory_status:
-    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed. Call this at session start, when the server reports drafts waiting for review, or when the user says 'sync memory' (or '同步记忆'); then ask the user which drafts to sync. For the memories themselves use memory_list; for PR review state use memory_pr_status. (MCP server and the `open-memex sync-status` CLI; the opencode native plugin does not expose this tool.)",
+    "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed — plus the D77 reuse report: per-scope retrieved/useful rates, the most-reused memories, and \"zombies\" (retrieved but never confirmed useful). Call this at session start, when the server reports drafts waiting for review, when the user says 'sync memory' (or '同步记忆'), or when they ask what memory is pulling its weight. Then ask the user which drafts to sync. For the memories themselves use memory_list; for PR review state use memory_pr_status. (MCP server and the `open-memex sync-status` CLI; the opencode native plugin does not expose this tool.)",
   memory_submit:
     "Move outbox drafts into the repo memory dir for review: copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically. (MCP server and the `open-memex submit` CLI; the opencode native plugin does not expose this tool.) Unknown ids or a failed local commit abort the submit with the reason; nothing is published automatically.",
   memory_propose:
@@ -677,9 +679,16 @@ export async function statusMemories(): Promise<ToolResult> {
   const n =
     st.outbox.length +
     st.inRepo.filter((e) => e.reviewState === "proposed" || e.reviewState === "approved").length;
+  // D77-L3: the reuse report rides the status surface (the D77 text calls
+  // memory_status out by name). Personal + this project, capped for an agent
+  // result; the CLI prints the same block uncapped.
+  const reuse = loadReuseReport([
+    { scopeKey: st.scopeKey, label: "this project" },
+    { scopeKey: PERSONAL_SCOPE.key, label: "personal" },
+  ]);
   return {
     title: `memory: sync status (${n} pending)`,
-    output: formatSyncStatus(st),
+    output: [formatSyncStatus(st), "", ...formatReuseReport(reuse)].join("\n"),
   };
 }
 

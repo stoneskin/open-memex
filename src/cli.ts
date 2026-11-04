@@ -10,7 +10,8 @@ import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatR
 import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
 import { search, list, countList, hitStateLabel } from "./retrieve/search.ts";
-import { recordUseful, getUsage, reuseRate, usefulCount, usefulKindFor, deleteUsage } from "./store/usage.ts";
+import { recordUseful, getUsage, reuseRate, usefulCount, usefulKindFor, deleteUsage, loadReuseReport } from "./store/usage.ts";
+import { formatReuseReport } from "./reuse-report.ts";
 import { DEFAULT_EXPANSIONS_WEIGHT } from "./retrieve/weights.ts";
 import { formatInventoryLine, truncationNote } from "./retrieve/display.ts";
 import {
@@ -231,7 +232,9 @@ Examples:
 
   "sync-status": `Show the project memory sync pipeline: when the index last synced
 and what triggered it, drafts waiting in the outbox (appdata), memories in the
-repo awaiting review or published, and repo files not yet committed.
+repo awaiting review or published, and repo files not yet committed. The
+D77 reuse report follows: per-scope retrieved/useful rates, most-reused
+memories, and "zombies" (retrieved but never confirmed useful).
 
 Usage: open-memex sync-status
 
@@ -1527,6 +1530,19 @@ function positionalArgs(argv: string[]): string[] {
     syncScope(PERSONAL_SCOPE.key, "cli");
     try {
       console.log(formatSyncStatus(getSyncStatus(), { cap: Number.POSITIVE_INFINITY }));
+      // D77-L3: same reuse block as the memory_status tool, uncapped (a
+      // human asked; the CLI is where the full list lives).
+      const reuse = loadReuseReport(
+        [
+          { scopeKey: project.key, label: "this project" },
+          { scopeKey: PERSONAL_SCOPE.key, label: "personal" },
+        ],
+        { topLimit: Number.POSITIVE_INFINITY, zombieLimit: Number.POSITIVE_INFINITY },
+      );
+      console.log("");
+      for (const line of formatReuseReport(reuse, { entryCap: Number.POSITIVE_INFINITY })) {
+        console.log(line);
+      }
     } catch (e) {
       console.error(`sync-status failed: ${(e as Error).message}`);
       process.exit(2);

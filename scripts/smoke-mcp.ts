@@ -225,6 +225,15 @@ try {
   const forgetUseful = await req("tools/call", { name: "memory_forget", arguments: { id: savedId3 } });
   check("D77 probe memory cleaned up", (forgetUseful.result?.content?.[0]?.text ?? "").includes("Deleted"), (forgetUseful.result?.content?.[0]?.text ?? "").slice(0, 120));
 
+  // D77-L3: the reuse report rides memory_status, capped for agent results.
+  const status = await req("tools/call", { name: "memory_status", arguments: {} });
+  const statusText = status.result?.content?.[0]?.text ?? "";
+  check(
+    "memory_status carries the reuse report (D77-L3)",
+    /Reuse \(D77/.test(statusText) && /local counters/.test(statusText),
+    statusText.slice(-260),
+  );
+
   // §3.6 (D89): the working-state note round-trips, expires honestly, and
   // its file lives OUTSIDE memories/ so the index never picks it up.
   const wsRead0 = await req("tools/call", { name: "memory_workingstate", arguments: {} });

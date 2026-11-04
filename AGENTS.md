@@ -35,7 +35,7 @@ npm run typecheck                                    # tsc --noEmit — the only
 npm run cli -- where | list | search "q" | add ... | forget <id> | reindex
 npm run cli -- useful <id...>                            # D77-L2: explicit useful signal + cumulative counters
 npm run cli -- <command> --help                          # per-command help (AI assistants discover flags this way)
-npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files
+npm run cli -- sync-status                                  # last sync time/kind + outbox drafts + repo review states + uncommitted files + D77 reuse report
 npm run cli -- inventory [--format text|json|html] [--scope both]  # what is remembered, in the open (D68); personal-bearing output refused inside a git worktree without --allow-personal
 npm run cli -- audit [--scope project|personal|both]            # memory health: near-dup pairs, stale actives, broken chains, personal-in-repo, expired working-state notes (read-only)
 npm run cli -- wstate [--clear]                                 # show/clear the session working-state note (D89 §3.6; the file it prints is editable directly)
@@ -126,7 +126,7 @@ Layout: `memories/<scope_key>/<id>.md` (YAML frontmatter + body) + `index.db` (S
 
 **Markdown files are the source of truth; `index.db` is rebuildable.** `syncScope()` (in `src/store/sync.ts`) reconciles the two by mtime on plugin load and before every CLI read. When adding new frontmatter fields, update `Frontmatter` in `src/store/markdown.ts`, the `memories` table in `src/store/db.ts`, and `upsertFromFile` in `src/store/sync.ts` together, and bump the reindex path.
 
-D77-L2 counters are the one deliberate exception: `memory_usage` (in `index.db`, owned by `src/store/usage.ts`) holds `retrieved_count` / `useful_self` / `useful_team` keyed by memory id, is created with `CREATE TABLE IF NOT EXISTS` outside the versioned schema, and is NOT dropped by `rebuildIndexSchema` — accumulated telemetry has no Markdown source to rebuild from. They never go into frontmatter and never leave the machine. Only `memory_useful` (explicit), a human approve at review, and a supersede raise the useful side; passive retrieval (search/list/injection, opt-in via `record: true`) raises only `retrieved_count` — never "fix" this by counting exposure as useful.
+D77-L2 counters are the one deliberate exception: `memory_usage` (in `index.db`, owned by `src/store/usage.ts`) holds `retrieved_count` / `useful_self` / `useful_team` keyed by memory id, is created with `CREATE TABLE IF NOT EXISTS` outside the versioned schema, and is NOT dropped by `rebuildIndexSchema` — accumulated telemetry has no Markdown source to rebuild from. They never go into frontmatter and never leave the machine. Only `memory_useful` (explicit), a human approve at review, and a supersede raise the useful side; passive retrieval (search/list/injection, opt-in via `record: true`) raises only `retrieved_count` — never "fix" this by counting exposure as useful. D77-L3's report (`loadReuseReport` in usage.ts, pure rendering in `src/reuse-report.ts`) rides `memory_status` / `cli sync-status`: per-scope rates with the useful split shown separately (self vs team, per D77), top reused, zombies (retrieved, never useful; retracted/archived excluded from both lists), and a lifecycle tag on superseded/deprecated entries so historical reuse never reads as current guidance.
 
 ## Scope keys
 

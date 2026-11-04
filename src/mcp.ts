@@ -98,7 +98,9 @@ them by these full names.
 - When the user says "sync memory" (or "同步记忆"), call memory_status,
   summarize the outbox drafts (one line each), and ask which ones to sync.
   ALWAYS use the memory_status tool for this — never browse the memory data
-  directory directly.
+  directory directly. memory_status also carries the D77 reuse report
+  (per-scope rates, most-reused, and never-used-but-retrieved "zombies") —
+  surface it when the user asks what memory is actually being reused.
 - After memory_submit, ask ONE follow-up: "want me to create a branch + push +
   open the PR, or will you handle it yourself?" NEVER create branches, push, or
   open PRs without the user's explicit approval. A "yes, you do it" covers the

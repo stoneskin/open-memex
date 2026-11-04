@@ -457,7 +457,7 @@ they only matter once you share memories through Git.
 | ● `memory_forget`    | Delete a memory by id (`soft=true` hides it instead — retracted, one-way) |
 | ● `memory_workingstate` | Read/write/clear the per-project working-state note (§3.6, D89) — resumes an interrupted task; scratch state, never a memory |
 | ● `memory_useful`    | Mark a memory as useful (D77) — explicit confirmation only; exposure is counted separately as `retrieved_count` |
-| `memory_status`      | Show the sync queue: outbox drafts, repo review states, uncommitted files |
+| `memory_status`      | Show the sync queue (outbox drafts, repo review states, uncommitted files) plus the D77 reuse report |
 | `memory_submit`      | Move named drafts into the repo memory dir (local branch + commit) |
 | `memory_propose`     | Copy personal memories into the project scope as review candidates |
 | `memory_promote`     | Advance `proposed → approved → published` (or reject / resubmit) |
@@ -478,8 +478,12 @@ confirms it paid off, a human approval at review, or a supersede. Passive
 exposure never counts as useful — a memory that merely showed up in results
 has shown nothing yet. Same-side CLI surface: `open-memex useful <id...>`.
 Counters live in the local SQLite index only (never in the Markdown files,
-never off this machine); the reuse report (top reused, zero-reuse zombies,
-per-scope rates) rides the D77-L3 follow-up.
+never off this machine). The report rides `memory_status` (and
+`open-memex sync-status`): per-scope retrieved/useful rates with the self/team
+split shown separately, the most-reused memories, and the "zombies" —
+retrieved but never confirmed useful, i.e. the decay/prune candidates
+(D77-L3). Superseded/deprecated entries stay visible as reuse history but
+carry a lifecycle tag, never presented as current guidance.
 
 ## Memory types
 

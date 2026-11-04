@@ -10,6 +10,7 @@ import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
 import { expansionVariantsForDoc, MAX_AUTO_VARIANTS } from "../src/retrieve/synonyms.ts";
 import { BM25_WEIGHTS, DEFAULT_EXPANSIONS_WEIGHT } from "../src/retrieve/weights.ts";
+import { formatReuseReport } from "../src/reuse-report.ts";
 import {
   planAliasExpansions,
   rewriteQueryOnce,
@@ -1033,6 +1034,69 @@ console.log("== D89 working-state note (§3.6) ==");
     else process.env.OPEN_MEMEX_HOME = savedHome;
     fs.rmSync(home, { recursive: true, force: true });
   }
+}
+
+console.log("== D77-L3 reuse report formatting ==")
+{
+  const entry = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    scopeKey: "project__p__x",
+    scopeLabel: "this project",
+    type: "fact",
+    reviewState: "draft",
+    status: "active",
+    retrieved: 3,
+    useful: 1,
+    usefulSelf: 1,
+    usefulTeam: 0,
+    snippet: `snippet ${id}`,
+    ...extra,
+  });
+  const empty = formatReuseReport({
+    scopes: [
+      { label: "this project", scopeKey: "project__p__x", tracked: 0, retrieved: 0, useful: 0, usefulSelf: 0, usefulTeam: 0, rate: null },
+      { label: "personal", scopeKey: "personal", tracked: 0, retrieved: 0, useful: 0, usefulSelf: 0, usefulTeam: 0, rate: null },
+    ],
+    top: [],
+    topTotal: 0,
+    zombies: [],
+    zombieTotal: 0,
+    tracked: 0,
+  });
+  ok("header always present", empty[0]?.startsWith("Reuse (D77") === true);
+  ok("empty state explains how counters fill", empty.some((l) => l.includes("no data yet")));
+  ok("empty state omits empty scope rows", !empty.some((l) => l.includes("retrieved 0")));
+
+  const report = {
+    scopes: [
+      { label: "this project", scopeKey: "project__p__x", tracked: 2, retrieved: 10, useful: 4, usefulSelf: 3, usefulTeam: 1, rate: 0.4 },
+      { label: "personal", scopeKey: "personal", tracked: 1, retrieved: 5, useful: 0, usefulSelf: 0, usefulTeam: 0, rate: 0 },
+    ],
+    top: [entry("01TOP", { useful: 4, usefulSelf: 2, usefulTeam: 2 })],
+    topTotal: 1,
+    zombies: [entry("01Z1", { retrieved: 9, useful: 0, usefulSelf: 0, usefulTeam: 0, status: "superseded" }), entry("01Z2", { retrieved: 2, useful: 0, usefulSelf: 0, usefulTeam: 0 })],
+    zombieTotal: 2,
+    tracked: 3,
+  };
+  const lines = formatReuseReport(report, { entryCap: 1 });
+  ok(
+    "scope rate rendered as percent with the self/team split (D77)",
+    lines.some((l) => l.includes("this project: retrieved 10, useful 4 (self 3, team 1) — 40%")),
+  );
+  ok("personal scope rendered", lines.some((l) => l.includes("personal: retrieved 5, useful 0 (self 0, team 0) — 0%")));
+  ok(
+    "top reused renders the split, not just the total",
+    lines.some((l) => l.includes("01TOP") && l.includes("(self 2, team 2)")),
+  );
+  ok("cross-scope entries carry a scope tag", lines.some((l) => l.includes("[this project/fact]")));
+  ok("non-active entries are lifecycle-tagged (superseded)", lines.some((l) => l.includes("01Z1") && l.includes("[superseded]")));
+  ok("active entries carry no lifecycle tag", !lines.some((l) => l.includes("01TOP") && l.includes("[active]")));
+  ok("zombie list rendered", lines.some((l) => l.includes("01Z1")));
+  ok("capped list discloses the cut", lines.some((l) => l.includes("… and 1 more")));
+  ok(
+    "zombie count is the true total, not the shown slice",
+    lines.some((l) => l.includes("never confirmed useful): 2")),
+  );
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);

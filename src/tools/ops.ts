@@ -660,14 +660,7 @@ export async function markMemoryUseful(
     };
   }
   const kind = args.kind ?? usefulKindFor(row.scope, row.review_state);
-  const after = recordUseful(args.id, kind, "tool");
-  // recordUseful re-checks existence; both branches above agree on not-found.
-  if (!after) {
-    return {
-      title: "memory: useful not found",
-      output: `No memory with id ${args.id} in the index.`,
-    };
-  }
+  recordUseful(args.id, kind, "tool");
   const u = getUsage(args.id)!;
   const rate = reuseRate(u);
   const useful = usefulCount(u);

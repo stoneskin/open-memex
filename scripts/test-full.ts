@@ -866,24 +866,97 @@ ${body}
     r.out.slice(0, 220),
   );
 
-  // Hard forget prunes the telemetry row (no phantom counters).
-  const deadId = addMem(["fulltest D77 to-be-forgotten memory"], d77Proj);
-  cliRetry(["forget", deadId], d77Proj);
-  r = cliRetry(["useful", deadId], d77Proj);
-  ok("forget pruned the usage row (D77-L2)", r.code !== 0 && /not found/.test(r.out + r.err), (r.out + r.err).slice(0, 120));
-
-  // Counters survive a full schema rebuild (memory_usage sits outside the
-  // rebuilt index tables; D77-L2 store design).
-  cliRetry(["reindex"], d77Proj);
-  r = cliRetry(["useful", uId], d77Proj);
+  // Behavioral: --local-approve is a human approval too. It writes the copy
+  // straight to approved, bypassing promoteMemory, so the tick must be
+  // recorded by the propose path itself (submit preserves the state).
+  const localSrc = addMem(["fulltest D77 local-approve memory", "--scope", "personal"], d77Proj);
+  const localCopy = grabArrowId(cliRetry(["propose", localSrc, "--to", "project", "--local-approve"], d77Proj).out);
+  ok("local-approve propose works (setup)", !!localCopy);
+  r = cliRetry(["useful", localCopy], d77Proj);
+  // 1 tick from the local approval + 1 from this probe = 2.
   ok(
-    "counters survive reindex",
-    /retrieved: 2/.test(r.out) || /retrieved: 3/.test(r.out),
-    r.out.slice(0, 160),
+    "local-approve recorded useful_team (D77)",
+    /useful \(team\)/.test(r.out) && /useful_team: 2/.test(r.out),
+    r.out.slice(0, 220),
   );
-  // NOTE: the reindex section's useful tick bumps useful_self by 1 — that is
-  // the probe itself, not persistence; the retrieved floor above is what
-  // proves the table survived the rebuild.
+
+  // Behavioral: supersede must not drop the tick when the index row is
+  // missing (schema rebuild pending / stale index). The file is the source
+  // of truth, so findMemoryFile's scan fallback still finds it.
+  const staleId = addMem(["fulltest D77 stale-index supersede target"], d77Proj);
+  {
+    const D = createRequire(import.meta.url)("better-sqlite3");
+    const conn = new D(dbPath);
+    conn.prepare("DELETE FROM memories WHERE id = ?").run(staleId);
+    conn.close();
+  }
+  r = cliRetry(["supersede", staleId, "fulltest D77 stale-index replacement"], d77Proj);
+  ok("supersede works with no index row (setup)", r.code === 0, (r.err || r.out).slice(0, 160));
+  {
+    const D = createRequire(import.meta.url)("better-sqlite3");
+    const conn = new D(dbPath, { readonly: true });
+    try {
+      const row = conn
+        .prepare("SELECT useful_self FROM memory_usage WHERE id = ?")
+        .get(staleId) as { useful_self: number } | undefined;
+      ok(
+        "supersede recorded useful even without the index row (D77)",
+        !!row && row.useful_self === 1,
+        JSON.stringify(row),
+      );
+    } finally {
+      conn.close();
+    }
+  }
+
+  // Hard forget prunes the telemetry row (no phantom counters). This must be
+  // asserted against memory_usage directly: a `useful` probe after forget
+  // fails on the missing memories row whether or not the usage row survived.
+  const deadId = addMem(["fulltest D77 to-be-forgotten memory"], d77Proj);
+  cliRetry(["useful", deadId], d77Proj);
+  const usageRows = (id: string): number => {
+    const D = createRequire(import.meta.url)("better-sqlite3");
+    const conn = new D(dbPath, { readonly: true });
+    try {
+      const row = conn.prepare("SELECT COUNT(*) AS n FROM memory_usage WHERE id = ?").get(id) as { n: number };
+      return row.n;
+    } finally {
+      conn.close();
+    }
+  };
+  ok("seed: useful row exists before forget", usageRows(deadId) === 1);
+  cliRetry(["forget", deadId], d77Proj);
+  ok("forget pruned the usage row (D77-L2)", usageRows(deadId) === 0, `rows=${usageRows(deadId)}`);
+
+  // Counters survive a forced schema rebuild. `cli reindex` alone only runs
+  // syncScope and never invokes rebuildIndexSchema, so it cannot prove the
+  // promise — force an older user_version (the D87 fixture's trick) and let
+  // the next command's db() open rebuild the index, then inspect the table
+  // directly. memory_usage sits outside the rebuilt tables by design.
+  {
+    const D = createRequire(import.meta.url)("better-sqlite3");
+    const conn = new D(dbPath);
+    conn.exec("PRAGMA user_version = 8");
+    conn.close();
+    cliRetry(["list"], d77Proj); // opens db() -> rebuildIndexSchema -> syncScope
+    const after = new D(dbPath, { readonly: true });
+    try {
+      const ver = (after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+      const mem = after.prepare("SELECT COUNT(*) AS n FROM memories WHERE id = ?").get(uId) as { n: number };
+      const usage = after
+        .prepare("SELECT retrieved_count, useful_self, useful_team FROM memory_usage WHERE id = ?")
+        .get(uId) as { retrieved_count: number; useful_self: number; useful_team: number } | undefined;
+      ok("forced schema rebuild happened (v8 -> v9)", ver === 9, `user_version=${ver}`);
+      ok("rebuild re-synced memories from Markdown", mem.n === 1, `memories=${mem.n}`);
+      ok(
+        "counters survive the schema rebuild (D77-L2)",
+        !!usage && usage.retrieved_count >= 2 && usage.useful_self === 2 && usage.useful_team === 0,
+        JSON.stringify(usage),
+      );
+    } finally {
+      after.close();
+    }
+  }
 
   // JSON: no absolute local paths, and the format id records the change.
   r = cliRetry(["inventory", "--format", "json"], PROJ);

@@ -98,24 +98,27 @@ export const VIA_VALUES = ["tool", "supersede", "promote"] as const;
 export type UsefulVia = (typeof VIA_VALUES)[number];
 
 /**
- * Count one explicit useful signal. Returns the updated row, or null when
- * the id is not in the index (callers surface that as not-found — a useful
- * tick for a memory nobody has must not create phantom telemetry).
+ * Count one explicit useful signal. The upsert is a single statement, so it
+ * is atomic on both drivers — there is deliberately no separate existence
+ * check: a memory can be valid on disk while its index row is momentarily
+ * missing (schema rebuild, or `findMemoryFile`'s file-scan fallback), and a
+ * guard keyed on `memories` would silently drop a real supersede/approve
+ * signal. The explicit surfaces (`memory_useful`, CLI `useful`) do their own
+ * not-found check before calling, so an agent's typo id never lands here.
+ * A concurrent hard forget can still leave an orphaned row; `listUsage`
+ * inner-joins `memories`, so orphans never surface in reports.
  */
 export function recordUseful(
   id: string,
   kind: UsefulKind,
   _via: UsefulVia,
   atMs: number = Date.now(),
-): MemoryUsage | null {
+): MemoryUsage {
   const d = db();
-  const mem = d.prepare(`SELECT id FROM memories WHERE id = ?`).get(id) as
-    | { id: string }
-    | undefined;
-  if (!mem) return null;
   const at = rfc(atMs);
   d.prepare(insertUsefulSql(kind === "self")).run(id, at, at);
-  return getUsage(id);
+  // getUsage cannot miss the row just upserted.
+  return getUsage(id)!;
 }
 
 export function getUsage(id: string): MemoryUsage | null {

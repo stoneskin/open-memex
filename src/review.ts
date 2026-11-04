@@ -138,6 +138,12 @@ function copyPersonalToProject(
   };
   const { filePath } = writeMemoryFile(fm, srcBody);
   upsertFromFile({ fm, body: srcBody, filePath, mtimeMs: Date.now() });
+  // D77-L2: a local approval is still a human approval at review, so it must
+  // record the same useful_team tick the promote path records. It bypasses
+  // promoteMemory by design (solo-dev shortcut) and submit preserves the
+  // approved state, so no later step would otherwise count it — and the
+  // later `approved → published` promote stays non-counting for both paths.
+  if (targetState === "approved") recordUseful(fm.id, "team", "promote");
   return { id: fm.id, filePath, reviewState: fm.review_state };
 }
 

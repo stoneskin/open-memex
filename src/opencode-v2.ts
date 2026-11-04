@@ -31,7 +31,7 @@ import { makeTools } from "./tools/memory.ts";
  * verified on 2.0.1): by default the host exposes plugin tools only
  * through an `execute` meta-tool that runs model-written JS, and a model
  * that calls the tool by name instead gets "Unknown tool" — flaky,
- * model-dependent behavior. With the opt-out the six tools are plain
+ * model-dependent behavior. With the opt-out the seven tools are plain
  * function calls, same as on v1 and MCP.
  */
 
@@ -71,7 +71,7 @@ interface V2ContextEvent {
   system: unknown[];
 }
 
-/** Register the six memory tools on a v2 host. */
+/** Register the seven memory tools on a v2 host. */
 async function registerTools(ctx: V2PluginContext, state: PluginState): Promise<void> {
   const tools = makeTools(() => state.scope, state.cfg);
   await ctx.tool.transform((editor) => {

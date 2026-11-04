@@ -286,7 +286,7 @@ open-memex capture --dry-run "…"
 
 ## 助手拿到的工具
 
-MCP 服务器暴露十二个工具；opencode 原生插件暴露其中六个核心的（标 ●）。另外六个是团队评审工作流工具——只有当你通过 Git 共享记忆时才用得上。
+MCP 服务器暴露十三个工具；opencode 原生插件暴露其中七个核心的（标 ●）。另外六个是团队评审工作流工具——只有当你通过 Git 共享记忆时才用得上。
 
 | 工具 | 做什么 |
 |---|---|
@@ -296,6 +296,7 @@ MCP 服务器暴露十二个工具；opencode 原生插件暴露其中六个核�
 | ● `memory_supersede` | 用新版本替换一条记忆（保留 supersede 链） |
 | ● `memory_forget`    | 按 id 删除一条记忆（`soft=true` 改为隐藏——retracted，单向） |
 | ● `memory_workingstate` | 读/写/清除每项目的工作状态笔记（§3.6，D89）——让被中断的任务得以续接；只是草稿状态，永远不会成为记忆 |
+| ● `memory_useful`    | 确认一条记忆有用（D77）——只认显式确认；被动的搜索/列表出现只计入 `retrieved_count`，绝不算有用 |
 | `memory_status`      | 显示同步队列：outbox 草稿、仓库评审状态、未提交文件 |
 | `memory_submit`      | 把指定的草稿移进仓库记忆目录（本地分支 + 提交） |
 | `memory_propose`     | 把个人记忆复制到项目作用域，作为评审候选 |
@@ -304,6 +305,8 @@ MCP 服务器暴露十二个工具；opencode 原生插件暴露其中六个核�
 | `memory_pr_status`   | 把分支 PR 的 GitHub 状态映射到每条记忆的评审状态 |
 
 所以 MCP 接入的编辑器永远是全套；opencode 插件主攻捕获与回想，工作流类的事走 CLI 或 MCP 接入的编辑器。
+
+**有用性靠复用来衡量，不靠存储量（D77）。** 每条记忆带本地计数器：`retrieved_count`——它真正被递交给助手的次数（搜索结果、清单、会话开始注入）；有用计数则拆成 `useful_self`（个人记忆、未评审的项目草稿）和 `useful_team`（approved/published 的项目记忆）。只有显式信号会抬升有用侧：`memory_useful`（人确认它帮上忙时）、评审中的人为 approve、或一次 supersede。被动曝光永远不算有用——记忆只是出现在结果里，还不能说明任何事。同侧的人用入口：`open-memex useful <id...>`。计数器只存在本地 SQLite 索引里（不进 Markdown 文件、不出这台机器）；复用报告（复用最多、零复用的"僵尸"、各作用域复用率）由 D77-L3 后续跟进。
 
 ## 记忆类型
 
@@ -618,7 +621,7 @@ Windows 上已加载的 DLL 是锁定的：如果 open-memex 的 MCP 服务器�
 你的编辑器配置里有注释（JSONC）或 JSON 不合法，open-memex 永不重写它无法安全解析的文件。`init` 已经把要加的确切片段打印出来了——手动粘贴进去就好。opencode 配置同理：有注释时，手动把 `"plugin"` 那一行加上。
 
 **感觉有问题——跑 `open-memex doctor`。**
-它检查 Node 版本、配置来源、当前目录的作用域解析、存储可写性，并确认 VS Code 没有把 MCP 禁用；然后启动一个真实 MCP 服务器，对它跑 `initialize` + `tools/list`——十二个工具必须全部出现。它还会报告改名之前遗留的 `my-o-memory` 引用（如果某编辑器配置里还留着旧包名的话）。
+它检查 Node 版本、配置来源、当前目录的作用域解析、存储可写性，并确认 VS Code 没有把 MCP 禁用；然后启动一个真实 MCP 服务器，对它跑 `initialize` + `tools/list`——十三个工具必须全部出现。它还会报告改名之前遗留的 `my-o-memory` 引用（如果某编辑器配置里还留着旧包名的话）。
 
 ## 常见问题
 

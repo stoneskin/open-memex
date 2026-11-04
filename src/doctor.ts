@@ -24,7 +24,7 @@ interface Check {
   detail: string;
 }
 
-// D64: the MCP server exposes twelve tools; checking only the six the
+// D64: the MCP server exposes thirteen tools; checking only the seven the
 // opencode plugin carries let a half-registered server pass as healthy.
 const EXPECTED_TOOLS = [
   "memory_add",
@@ -32,6 +32,7 @@ const EXPECTED_TOOLS = [
   "memory_list",
   "memory_supersede",
   "memory_forget",
+  "memory_useful",
   "memory_workingstate",
   "memory_status",
   "memory_submit",

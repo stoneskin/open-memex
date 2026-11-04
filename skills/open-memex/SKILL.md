@@ -80,6 +80,15 @@ try 2–3 phrasings per concept — synonyms, the user's other language, shorter
 keyword forms — and check the other scope too, before concluding nothing is
 stored.
 
+## Record what paid off (D77)
+
+When a person explicitly confirms a memory helped (or accepts work that
+visibly relied on one), mark it: the `memory_useful` tool if available, else
+`open-memex useful <id>`. Never mark a memory just because it appeared in
+search results, a listing, or the session-start block — passive exposure is
+counted automatically as `retrieved_count` and is not usefulness. Superseding
+a memory or a human approving it at review already records a useful signal.
+
 ## Seeing and removing what is remembered
 
 When the user asks "what do you remember about me?" (or wants to check or

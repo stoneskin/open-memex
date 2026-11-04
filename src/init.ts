@@ -63,9 +63,9 @@ const INSTRUCTIONS = `${MARKER}
 
 You have a local memory MCP server (\`open-memex\`). Its tools are
 \`memory_add\`, \`memory_search\`, \`memory_list\`, \`memory_supersede\`,
-\`memory_forget\`, \`memory_workingstate\`, \`memory_status\`, \`memory_submit\`,
-\`memory_propose\`, \`memory_promote\`, \`memory_resolve\`, \`memory_pr_status\` —
-always call them by these full names.
+\`memory_forget\`, \`memory_useful\`, \`memory_workingstate\`, \`memory_status\`,
+\`memory_submit\`, \`memory_propose\`, \`memory_promote\`, \`memory_resolve\`,
+\`memory_pr_status\` — always call them by these full names.
 
 - The server tells you when project outbox drafts are waiting for review — in
   tool results. When it does (or when the user asks), call \`memory_status\`
@@ -102,6 +102,11 @@ always call them by these full names.
   note — task summary, open files, last commands, where the work stands, next
   step — so an interrupted task can resume in a fresh session. It is scratch
   state, not durable knowledge: never save it as a memory.
+- When a person confirms a memory was useful, or accepts work that clearly
+  relied on one, call \`memory_useful\` on it. NEVER call it just because a
+  memory appeared in search results or the session-start block: passive
+  exposure is counted separately and never counts as useful. Superseding a
+  memory or approving it at review already records its useful signal.
 
 ## Syncing project memories for review (D26)
 

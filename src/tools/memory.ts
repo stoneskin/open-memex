@@ -10,12 +10,14 @@ import {
   listMemories,
   supersedeMemory,
   forgetMemory,
+  markMemoryUseful,
   workingStateMemory,
   memoryAddArgs,
   memorySearchArgs,
   memoryListArgs,
   memorySupersedeArgs,
   memoryForgetArgs,
+  memoryUsefulArgs,
   memoryWorkingStateArgs,
   TOOL_DESCRIPTIONS,
   withOutboxNote,
@@ -102,6 +104,17 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     },
   });
 
+  // D77-L2: explicit useful confirmation. Needs a fresh index read to
+  // classify (scope/review_state), hence syncFirst like the mutators.
+  const memory_useful = tool({
+    description: TOOL_DESCRIPTIONS.memory_useful,
+    args: memoryUsefulArgs,
+    async execute(args) {
+      syncFirst();
+      return markMemoryUseful(args);
+    },
+  });
+
   // §3.6 (D89): no scope/index work needed — the note lives beside the
   // store, not in it.
   const memory_workingstate = tool({
@@ -112,5 +125,5 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     },
   });
 
-  return { memory_add, memory_search, memory_list, memory_forget, memory_supersede, memory_workingstate };
+  return { memory_add, memory_search, memory_list, memory_forget, memory_supersede, memory_useful, memory_workingstate };
 }

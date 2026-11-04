@@ -802,6 +802,162 @@ ${body}
     r.out.slice(0, 200),
   );
 
+  // ---------- D77-L2: reuse counters + useful ----------
+  // Counters are SQLite-local telemetry (memory_usage table), never written
+  // into frontmatter. Exposure counts retrieved_count from search/list/
+  // CLI reads; useful only via `useful`/memory_useful, supersede, or a
+  // human promote to approved.
+  console.log("== usage counters (D77-L2) ==");
+  const d77Proj = mkproj("d77-proj");
+  const uId = addMem(["fulltest D77 useful-signal memory"], d77Proj);
+  ok("D77 probe memory added", !!uId);
+
+  // No exposure yet: never searched/listed (add alone is not a retrieval).
+  r = cliRetry(["useful", uId], d77Proj);
+  ok(
+    "cli useful marks self (unreviewed project draft) with 0 retrieved",
+    /useful \(self\) /.test(r.out) && /retrieved: 0/.test(r.out) && /useful_self: 1/.test(r.out),
+    r.out.slice(0, 200),
+  );
+
+  // The retrieval surfaces count exposures; the audit view does not.
+  cliRetry(["search", "useful-signal memory"], d77Proj);
+  cliRetry(["list"], d77Proj);
+  r = cliRetry(["list", "--include", "all"], d77Proj);
+  r = cliRetry(["useful", uId], d77Proj);
+  ok(
+    "search + list recorded exposures, audit view did not",
+    /retrieved: 2/.test(r.out) && /useful_self: 2/.test(r.out) && /reuse_rate: 1\.00/.test(r.out),
+    r.out.slice(0, 220),
+  );
+
+  // Unknown id fails the batch.
+  r = cliRetry(["useful", "01MISSING000000000000000000"], d77Proj);
+  ok("cli useful reports not found", /not found/.test(r.out + r.err), (r.out + r.err).slice(0, 120));
+
+  // Behavioral: supersede records a useful tick on the OLD memory.
+  const oldId = addMem(["fulltest D77 supersede-then-count target"], d77Proj);
+  r = cliRetry(["supersede", oldId, "fulltest D77 supersede target replaced"], d77Proj);
+  ok("supersede works (setup)", !!grabArrowId(r.out), r.out.slice(0, 120));
+  r = cliRetry(["useful", oldId], d77Proj);
+  // supersede already ticked useful_self on the old memory; the probe adds
+  // one explicit tick, so the printed counter reads 2.
+  ok(
+    "supersede counted as useful on the old memory (D77)",
+    /useful_self: 2/.test(r.out),
+    r.out.slice(0, 200),
+  );
+
+  // Behavioral: human approve at review records useful_team (no memory_useful call).
+  // Approved is reachable only through the review ladder: personal → propose
+  // (outbox draft) → submit (repo, proposed) → promote (approved).
+  const tId = addMem(["fulltest D77 review-approved memory", "--scope", "personal"], d77Proj);
+  const proposed = proposeMem(tId, d77Proj);
+  const submitted = cliRetry(["submit", proposed], d77Proj);
+  ok("approved-path submit works (setup)", submitted.code === 0, (submitted.err || submitted.out).slice(0, 150));
+  r = cliRetry(["promote", proposed], d77Proj);
+  ok("promote to approved works (setup)", /\bapproved\b/.test(r.out), r.out.slice(0, 160));
+  r = cliRetry(["useful", proposed], d77Proj);
+  // promote itself already ticked useful_team; the useful probe below adds
+  // one explicit tick on top, so the printed counter reads 2.
+  ok(
+    "promote → approved counted useful_team (D77)",
+    /useful_team: 2/.test(r.out) && /useful \(team\)/.test(r.out) && /useful_self: 0/.test(r.out),
+    r.out.slice(0, 220),
+  );
+
+  // Behavioral: --local-approve is a human approval too. It writes the copy
+  // straight to approved, bypassing promoteMemory, so the tick must be
+  // recorded by the propose path itself (submit preserves the state).
+  const localSrc = addMem(["fulltest D77 local-approve memory", "--scope", "personal"], d77Proj);
+  const localCopy = grabArrowId(cliRetry(["propose", localSrc, "--to", "project", "--local-approve"], d77Proj).out);
+  ok("local-approve propose works (setup)", !!localCopy);
+  r = cliRetry(["useful", localCopy], d77Proj);
+  // 1 tick from the local approval + 1 from this probe = 2.
+  ok(
+    "local-approve recorded useful_team (D77)",
+    /useful \(team\)/.test(r.out) && /useful_team: 2/.test(r.out),
+    r.out.slice(0, 220),
+  );
+
+  // Behavioral: supersede must not drop the tick when the index row is
+  // missing (schema rebuild pending / stale index). The file is the source
+  // of truth, so findMemoryFile's scan fallback still finds it.
+  const staleId = addMem(["fulltest D77 stale-index supersede target"], d77Proj);
+  {
+    const D = createRequire(import.meta.url)("better-sqlite3");
+    const conn = new D(dbPath);
+    conn.prepare("DELETE FROM memories WHERE id = ?").run(staleId);
+    conn.close();
+  }
+  r = cliRetry(["supersede", staleId, "fulltest D77 stale-index replacement"], d77Proj);
+  ok("supersede works with no index row (setup)", r.code === 0, (r.err || r.out).slice(0, 160));
+  {
+    const D = createRequire(import.meta.url)("better-sqlite3");
+    const conn = new D(dbPath, { readonly: true });
+    try {
+      const row = conn
+        .prepare("SELECT useful_self FROM memory_usage WHERE id = ?")
+        .get(staleId) as { useful_self: number } | undefined;
+      ok(
+        "supersede recorded useful even without the index row (D77)",
+        !!row && row.useful_self === 1,
+        JSON.stringify(row),
+      );
+    } finally {
+      conn.close();
+    }
+  }
+
+  // Hard forget prunes the telemetry row (no phantom counters). This must be
+  // asserted against memory_usage directly: a `useful` probe after forget
+  // fails on the missing memories row whether or not the usage row survived.
+  const deadId = addMem(["fulltest D77 to-be-forgotten memory"], d77Proj);
+  cliRetry(["useful", deadId], d77Proj);
+  const usageRows = (id: string): number => {
+    const D = createRequire(import.meta.url)("better-sqlite3");
+    const conn = new D(dbPath, { readonly: true });
+    try {
+      const row = conn.prepare("SELECT COUNT(*) AS n FROM memory_usage WHERE id = ?").get(id) as { n: number };
+      return row.n;
+    } finally {
+      conn.close();
+    }
+  };
+  ok("seed: useful row exists before forget", usageRows(deadId) === 1);
+  cliRetry(["forget", deadId], d77Proj);
+  ok("forget pruned the usage row (D77-L2)", usageRows(deadId) === 0, `rows=${usageRows(deadId)}`);
+
+  // Counters survive a forced schema rebuild. `cli reindex` alone only runs
+  // syncScope and never invokes rebuildIndexSchema, so it cannot prove the
+  // promise — force an older user_version (the D87 fixture's trick) and let
+  // the next command's db() open rebuild the index, then inspect the table
+  // directly. memory_usage sits outside the rebuilt tables by design.
+  {
+    const D = createRequire(import.meta.url)("better-sqlite3");
+    const conn = new D(dbPath);
+    conn.exec("PRAGMA user_version = 8");
+    conn.close();
+    cliRetry(["list"], d77Proj); // opens db() -> rebuildIndexSchema -> syncScope
+    const after = new D(dbPath, { readonly: true });
+    try {
+      const ver = (after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+      const mem = after.prepare("SELECT COUNT(*) AS n FROM memories WHERE id = ?").get(uId) as { n: number };
+      const usage = after
+        .prepare("SELECT retrieved_count, useful_self, useful_team FROM memory_usage WHERE id = ?")
+        .get(uId) as { retrieved_count: number; useful_self: number; useful_team: number } | undefined;
+      ok("forced schema rebuild happened (v8 -> v9)", ver === 9, `user_version=${ver}`);
+      ok("rebuild re-synced memories from Markdown", mem.n === 1, `memories=${mem.n}`);
+      ok(
+        "counters survive the schema rebuild (D77-L2)",
+        !!usage && usage.retrieved_count >= 2 && usage.useful_self === 2 && usage.useful_team === 0,
+        JSON.stringify(usage),
+      );
+    } finally {
+      after.close();
+    }
+  }
+
   // JSON: no absolute local paths, and the format id records the change.
   r = cliRetry(["inventory", "--format", "json"], PROJ);
   const invJson2 = JSON.parse(r.out.slice(r.out.indexOf("{")));

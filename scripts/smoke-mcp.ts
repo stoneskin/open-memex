@@ -80,9 +80,9 @@ try {
   const tools = await req("tools/list", {});
   const names = (tools.result?.tools ?? []).map((t: any) => t.name).sort();
   check(
-    "tools/list has 12 memory tools",
+    "tools/list has 13 memory tools",
     JSON.stringify(names) ===
-      JSON.stringify(["memory_add", "memory_forget", "memory_list", "memory_pr_status", "memory_promote", "memory_propose", "memory_resolve", "memory_search", "memory_status", "memory_submit", "memory_supersede", "memory_workingstate"]),
+      JSON.stringify(["memory_add", "memory_forget", "memory_list", "memory_pr_status", "memory_promote", "memory_propose", "memory_resolve", "memory_search", "memory_status", "memory_submit", "memory_supersede", "memory_useful", "memory_workingstate"]),
     names.join(","),
   );
   // D76: annotations must tell the truth — pr_status mutates with apply=true.
@@ -124,8 +124,7 @@ try {
 
   const list = await req("tools/call", { name: "memory_list", arguments: {} });
   const listText = list.result?.content?.[0]?.text ?? "";
-  check("memory_list works", listText.includes(savedId));
-  // D68: the list is the user's inventory — numbered, plain language,
+  check("memory_list works", listText.includes(savedId));  // D68: the list is the user's inventory — numbered, plain language,
   // with provenance and age, not the raw developer format.
   check("memory_list is numbered structured lines (D68)", /^\d+\. \[fact\] id=/m.test(listText), listText.slice(0, 120));
   check("memory_list keeps raw provenance field (D68)", listText.includes("source=tool"), listText.slice(0, 160));
@@ -188,6 +187,43 @@ try {
 
   const search2 = await req("tools/call", { name: "memory_search", arguments: { query: "mcp e2e probe" } });
   check("memory gone after forget", !(search2.result?.content?.[0]?.text ?? "").includes(savedId));
+
+  // D77-L2:reuse counters — explicit useful only; exposure counts retrieved.
+  const missing = await req("tools/call", {
+    name: "memory_useful",
+    arguments: { id: "01NEVEREXISTED0000000000" },
+  });
+  check(
+    "memory_useful refuses an unknown id (D77-L2)",
+    !missing.result?.isError && /No memory with id/.test(missing.result?.content?.[0]?.text ?? ""),
+    (missing.result?.content?.[0]?.text ?? "").slice(0, 120),
+  );
+
+  const add3 = await req("tools/call", {
+    name: "memory_add",
+    arguments: { content: "mcp e2e probe: useful counter memory for D77", type: "fact" },
+  });
+  const savedId3 = ((add3.result?.content?.[0]?.text ?? "").match(/id=([A-Za-z0-9_]+)/) ?? [])[1];
+  check("D77 probe memory added", !!savedId3, (add3.result?.content?.[0]?.text ?? "").slice(0, 120));
+
+  const useful1 = await req("tools/call", {
+    name: "memory_useful",
+    arguments: { id: savedId3 },
+  });
+  const useful1Text: string = useful1.result?.content?.[0]?.text ?? "";
+  check("memory_useful marks useful_self (auto split: project draft)", useful1Text.includes("Marked useful (self)") && useful1Text.includes("useful_self: 1"), useful1Text.slice(0, 160));
+  check("memory_useful reports unretrieved honestly (D77-L2)", useful1Text.includes("n/a"), useful1Text.slice(0, 160));
+
+  await req("tools/call", { name: "memory_search", arguments: { query: "useful counter memory for D77" } });
+  const useful2 = await req("tools/call", {
+    name: "memory_useful",
+    arguments: { id: savedId3, kind: "team" },
+  });
+  const useful2Text: string = useful2.result?.content?.[0]?.text ?? "";
+  check("exposure was recorded by memory_search (D77-L2)", useful2Text.includes("retrieved: 1"), useful2Text.slice(0, 160));
+  check("memory_useful kind override lands in useful_team (D77-L2)", useful2Text.includes("useful_team: 1") && useful2Text.includes("Marked useful (team)"), useful2Text.slice(0, 160));
+  const forgetUseful = await req("tools/call", { name: "memory_forget", arguments: { id: savedId3 } });
+  check("D77 probe memory cleaned up", (forgetUseful.result?.content?.[0]?.text ?? "").includes("Deleted"), (forgetUseful.result?.content?.[0]?.text ?? "").slice(0, 120));
 
   // §3.6 (D89): the working-state note round-trips, expires honestly, and
   // its file lives OUTSIDE memories/ so the index never picks it up.

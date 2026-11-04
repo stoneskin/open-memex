@@ -1044,15 +1044,18 @@ console.log("== D77-L3 reuse report formatting ==")
     scopeLabel: "this project",
     type: "fact",
     reviewState: "draft",
+    status: "active",
     retrieved: 3,
     useful: 1,
+    usefulSelf: 1,
+    usefulTeam: 0,
     snippet: `snippet ${id}`,
     ...extra,
   });
   const empty = formatReuseReport({
     scopes: [
-      { label: "this project", scopeKey: "project__p__x", tracked: 0, retrieved: 0, useful: 0, rate: null },
-      { label: "personal", scopeKey: "personal", tracked: 0, retrieved: 0, useful: 0, rate: null },
+      { label: "this project", scopeKey: "project__p__x", tracked: 0, retrieved: 0, useful: 0, usefulSelf: 0, usefulTeam: 0, rate: null },
+      { label: "personal", scopeKey: "personal", tracked: 0, retrieved: 0, useful: 0, usefulSelf: 0, usefulTeam: 0, rate: null },
     ],
     top: [],
     topTotal: 0,
@@ -1066,20 +1069,28 @@ console.log("== D77-L3 reuse report formatting ==")
 
   const report = {
     scopes: [
-      { label: "this project", scopeKey: "project__p__x", tracked: 2, retrieved: 10, useful: 4, rate: 0.4 },
-      { label: "personal", scopeKey: "personal", tracked: 1, retrieved: 5, useful: 0, rate: 0 },
+      { label: "this project", scopeKey: "project__p__x", tracked: 2, retrieved: 10, useful: 4, usefulSelf: 3, usefulTeam: 1, rate: 0.4 },
+      { label: "personal", scopeKey: "personal", tracked: 1, retrieved: 5, useful: 0, usefulSelf: 0, usefulTeam: 0, rate: 0 },
     ],
-    top: [entry("01TOP")],
+    top: [entry("01TOP", { useful: 4, usefulSelf: 2, usefulTeam: 2 })],
     topTotal: 1,
-    zombies: [entry("01Z1", { retrieved: 9, useful: 0 }), entry("01Z2", { retrieved: 2, useful: 0 })],
+    zombies: [entry("01Z1", { retrieved: 9, useful: 0, usefulSelf: 0, usefulTeam: 0, status: "superseded" }), entry("01Z2", { retrieved: 2, useful: 0, usefulSelf: 0, usefulTeam: 0 })],
     zombieTotal: 2,
     tracked: 3,
   };
   const lines = formatReuseReport(report, { entryCap: 1 });
-  ok("scope rate rendered as percent", lines.some((l) => l.includes("this project: retrieved 10, useful 4 (40%)")));
-  ok("personal scope rendered", lines.some((l) => l.includes("personal: retrieved 5, useful 0 (0%)")));
-  ok("top reused rendered", lines.some((l) => l.includes("01TOP") && l.includes("useful=1")));
+  ok(
+    "scope rate rendered as percent with the self/team split (D77)",
+    lines.some((l) => l.includes("this project: retrieved 10, useful 4 (self 3, team 1) — 40%")),
+  );
+  ok("personal scope rendered", lines.some((l) => l.includes("personal: retrieved 5, useful 0 (self 0, team 0) — 0%")));
+  ok(
+    "top reused renders the split, not just the total",
+    lines.some((l) => l.includes("01TOP") && l.includes("(self 2, team 2)")),
+  );
   ok("cross-scope entries carry a scope tag", lines.some((l) => l.includes("[this project/fact]")));
+  ok("non-active entries are lifecycle-tagged (superseded)", lines.some((l) => l.includes("01Z1") && l.includes("[superseded]")));
+  ok("active entries carry no lifecycle tag", !lines.some((l) => l.includes("01TOP") && l.includes("[active]")));
   ok("zombie list rendered", lines.some((l) => l.includes("01Z1")));
   ok("capped list discloses the cut", lines.some((l) => l.includes("… and 1 more")));
   ok(

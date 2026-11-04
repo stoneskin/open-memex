@@ -193,9 +193,12 @@ function oneLine(s: string, max = 120): string {
  * store is local and the row count is a corpus, not a warehouse.
  *
  * Scope totals include every row with telemetry (retracted/archived too:
- * their exposure was real while it lasted). The two actionable lists —
+ * their exposure was real while it lasted) and keep the useful split —
+ * D77 requires self vs team reported separately. The two actionable lists —
  * top reused and zombies — exclude retracted/archived, because neither
- * pruning nor celebrating a withdrawn memory helps.
+ * pruning nor celebrating a withdrawn memory helps; superseded/deprecated
+ * rows stay (their reuse is real) and carry their status so the render can
+ * mark them as history rather than current guidance.
  */
 export function loadReuseReport(
   scopes: ReadonlyArray<{ scopeKey: string; label: string }>,
@@ -211,6 +214,8 @@ export function loadReuseReport(
       tracked: 0,
       retrieved: 0,
       useful: 0,
+      usefulSelf: 0,
+      usefulTeam: 0,
       rate: null,
     })),
     top: [],
@@ -235,15 +240,19 @@ export function loadReuseReport(
   const byScope = new Map<string, ReuseScopeStat>();
   for (const s of empty.scopes) byScope.set(s.scopeKey, s);
 
-  const tracked: Array<ReuseEntry & { status: string }> = [];
+  const tracked: ReuseEntry[] = [];
   for (const r of rows) {
     const retrieved = Number(r.retrieved_count) || 0;
-    const useful = (Number(r.useful_self) || 0) + (Number(r.useful_team) || 0);
+    const usefulSelf = Number(r.useful_self) || 0;
+    const usefulTeam = Number(r.useful_team) || 0;
+    const useful = usefulSelf + usefulTeam;
     const stat = byScope.get(r.scope_key);
     if (stat) {
       stat.tracked++;
       stat.retrieved += retrieved;
       stat.useful += useful;
+      stat.usefulSelf += usefulSelf;
+      stat.usefulTeam += usefulTeam;
     }
     tracked.push({
       id: r.id,
@@ -251,10 +260,12 @@ export function loadReuseReport(
       scopeLabel: labels.get(r.scope_key) ?? r.scope_key,
       type: r.type,
       reviewState: r.review_state ?? "draft",
+      status: r.status,
       retrieved,
       useful,
+      usefulSelf,
+      usefulTeam,
       snippet: oneLine(r.content ?? ""),
-      status: r.status,
     });
   }
   for (const stat of byScope.values()) {
@@ -271,14 +282,17 @@ export function loadReuseReport(
     .filter((e) => e.retrieved > 0 && e.useful === 0)
     .sort((a, b) => b.retrieved - a.retrieved || a.id.localeCompare(b.id));
 
-  const strip = (e: ReuseEntry & { status: string }): ReuseEntry => ({
+  const strip = (e: ReuseEntry): ReuseEntry => ({
     id: e.id,
     scopeKey: e.scopeKey,
     scopeLabel: e.scopeLabel,
     type: e.type,
     reviewState: e.reviewState,
+    status: e.status,
     retrieved: e.retrieved,
     useful: e.useful,
+    usefulSelf: e.usefulSelf,
+    usefulTeam: e.usefulTeam,
     snippet: e.snippet,
   });
 

@@ -479,9 +479,11 @@ exposure never counts as useful — a memory that merely showed up in results
 has shown nothing yet. Same-side CLI surface: `open-memex useful <id...>`.
 Counters live in the local SQLite index only (never in the Markdown files,
 never off this machine). The report rides `memory_status` (and
-`open-memex sync-status`): per-scope retrieved/useful rates, the most-reused
-memories, and the "zombies" — retrieved but never confirmed useful, i.e. the
-decay/prune candidates (D77-L3).
+`open-memex sync-status`): per-scope retrieved/useful rates with the self/team
+split shown separately, the most-reused memories, and the "zombies" —
+retrieved but never confirmed useful, i.e. the decay/prune candidates
+(D77-L3). Superseded/deprecated entries stay visible as reuse history but
+carry a lifecycle tag, never presented as current guidance.
 
 ## Memory types
 

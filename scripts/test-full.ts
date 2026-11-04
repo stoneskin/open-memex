@@ -966,20 +966,34 @@ ${body}
   cliRetry(["search", "zombie memory never confirmed"], d77Proj);
   r = cliRetry(["sync-status"], d77Proj);
   ok("sync-status shows the reuse report (D77-L3)", /Reuse \(D77/.test(r.out), r.out.slice(0, 260));
+  // Scope every membership assertion to the reuse section: sync-status also
+  // lists the ids in its queue sections, so a bare `out.includes(id)` would
+  // pass even if the report itself dropped or mis-listed the entry.
+  const reuseBlock = r.out.slice(r.out.indexOf("Reuse (D77"));
   ok(
-    "report shows per-scope retrieved/useful/rate",
-    /this project: retrieved \d+, useful \d+ \(\d+%\) over \d+ memor/.test(r.out),
-    r.out.slice(r.out.indexOf("Reuse (D77"), r.out.indexOf("Reuse (D77") + 300),
+    "report shows per-scope rates with the self/team split (D77)",
+    /this project: retrieved \d+, useful \d+ \(self \d+, team \d+\) — \d+% over \d+ memor/.test(reuseBlock),
+    reuseBlock.slice(0, 300),
   );
-  ok("report lists the most-reused memory", r.out.includes(uId) && /top reused: [1-9]/.test(r.out), r.out.slice(-420));
   ok(
-    "report lists the zombie and counts it",
-    r.out.includes(zombieId) && /zombies \(retrieved, never confirmed useful\): [1-9]/.test(r.out),
-    r.out.slice(-320),
+    "report lists the most-reused memory in the top list",
+    /top reused: [1-9]/.test(reuseBlock) && reuseBlock.includes(uId),
+    reuseBlock.slice(0, 420),
+  );
+  ok(
+    "report lists the zombie in the zombie list and counts it",
+    /zombies \(retrieved, never confirmed useful\): [1-9]/.test(reuseBlock) &&
+      reuseBlock.includes(zombieId),
+    reuseBlock.slice(-360),
+  );
+  ok(
+    "historical reuse is lifecycle-labelled (superseded), not presented as current",
+    reuseBlock.includes(oldId) && /\[superseded\]/.test(reuseBlock),
+    reuseBlock.slice(0, 500),
   );
   ok(
     "report is local-only framed",
-    /local counters, never leave this machine/.test(r.out),
+    /local counters, never leave this machine/.test(reuseBlock),
   );
 
   // JSON: no absolute local paths, and the format id records the change.

@@ -36,6 +36,7 @@ import {
 } from "./store/markdown.ts";
 import { findMemoryFile } from "./store/lifecycle.ts";
 import { upsertFromFile } from "./store/sync.ts";
+import { refreshGraphQuiet } from "./store/graph.ts";
 import { recordUseful } from "./store/usage.ts";
 
 /** Best-effort author identity: git user.name, else the OS user. */
@@ -144,6 +145,8 @@ function copyPersonalToProject(
   // approved state, so no later step would otherwise count it — and the
   // later `approved → published` promote stays non-counting for both paths.
   if (targetState === "approved") recordUseful(fm.id, "team", "promote");
+  // D91 ingest: a propose-copy is a new project node (derived_from edge).
+  refreshGraphQuiet(project.key);
   return { id: fm.id, filePath, reviewState: fm.review_state };
 }
 
@@ -261,6 +264,9 @@ export function promoteMemory(
   // published transition passes through approved and does not re-count.
   // Always useful_team: promoteMemory is project-only by contract above.
   if (to === "approved") recordUseful(id, "team", "promote");
+  // D91 ingest: review_state participates in lint surface framing; the
+  // membership of active nodes can change with rejections/resubmission.
+  refreshGraphQuiet(mf.fm.scope_key);
   return { id, from, to, history: fm.review_history };
 }
 

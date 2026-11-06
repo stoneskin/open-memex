@@ -39,6 +39,7 @@ npm run cli -- sync-status                                  # last sync time/kin
 npm run cli -- inventory [--format text|json|html] [--scope both]  # what is remembered, in the open (D68); personal-bearing output refused inside a git worktree without --allow-personal
 npm run cli -- audit [--scope project|personal|both]            # memory health: near-dup pairs, stale actives, broken chains, personal-in-repo, expired working-state notes (read-only)
 npm run cli -- wstate [--clear]                                 # show/clear the session working-state note (D89 §3.6; the file it prints is editable directly)
+npm run cli -- graph build | outline | neighbours <id> | path <a> <b> | lint   # D91 structural graph (project scope only; no --scope)
 npm run cli -- pull                                          # fetch + fast-forward only (explicit; diverged = clean failure, never force-merge)
 npm run cli -- push                                          # push current branch to remote (explicit only; open-memex never auto-pushes)
 npm run cli -- export [--scope project|personal|both] [--all] [-o <file>]  # portable .tar.gz bundle (markdown + manifest); private excluded unless --all
@@ -185,6 +186,30 @@ keeping routes through the checkpoint-proposal flow. opencode has no Stop
 hook today, so the write path is instruction + tool; the tool description,
 the surfaced block, the MCP handshake, `init` instructions and the skill must
 keep saying the same thing.
+
+**Knowledge graph (D91, §20 deterministic half) — derived, never a source.** `src/store/graph.ts`
+owns `graph_edges`/`graph_meta` (created `IF NOT EXISTS` outside the versioned
+schema, like D77's counters — the graph is rebuildable and disposable). Pure
+logic lives in `src/graph/{extract,outline,queries,lint}.ts`; do not move DB calls
+into them. Edge rules: `supersedes` (from the index's `superseded_by`),
+`derived-from` (from the `derived_from` column — added in index v10),
+body-mention (`[[ULID]]` EXTRACTED / bare ULID INFERRED), shared-tag at the
+fixed ladder 1→low / 2→medium / ≥3→high with per-node/per-set caps. NEVER
+lower a confidence or widen the caps without a measurement — the caps exist so
+one universal tag cannot build an O(n²) edge set. The compiled outline joins
+components **only by medium+ edges** (universal-tag collapse guard; fixture in
+`smoke-pure.ts`) and is injected once at session start (`graphOutline`,
+`graphOutlineLines`; exposure counts as D77 `retrieved`, never useful).
+Every mutating path must call `refreshGraphQuiet` after the write — if you add
+one (new tool, CLI verb, review transition), add the refresh in the same
+change. The graph covers the cwd's **project** scope only (no `--scope`, personal
+never graphs) and the interface is **CLI only** — the MCP surface stays at
+thirteen tools. `graph lint` reports only (orphans / dangling / stale); an edge
+endpoint that exists in *another* scope is a legitimate foreign link (a propose
+copy's `derived_from`), so lint skips it — pass `loadAllMemoryIds()` as the
+foreign set, never "fix" it by dropping the edge. The LLM half (semantic
+insights, missing-page alerts) is still open in §18 and must propose new memories
+through the normal flow, not write them.
 
 ## Design constraints — read the frozen design first
 

@@ -26,6 +26,10 @@ memory on your machine.
   a curated multilingual map of equivalents is indexed with every memory at
   write time, so no related wording misses the right answer. Deterministic
   and auditable, no embedding model required.
+- **A map, not just search**: a derived knowledge graph connects your project
+  memories — supersedes chains, shared tags, explicit mentions — and injects
+  a compiled outline at session start, so the agent sees what's in memory
+  without searching. Structural edges only, no LLM.
 
 ![Terminal demo: two memories saved on Monday, recalled by search in a fresh session on Friday](./docs/assets/open-memex-demo.svg)
 
@@ -38,6 +42,7 @@ depth once you're up and running.
 - [Quick start](#quick-start)
 - [Core concepts](#core-concepts)
 - [Which editors, which features](#which-editors-which-features)
+- [How it compares](#how-it-compares)
 - [Installation](#installation)
 - [Setting up your editor](#setting-up-your-editor)
 - [What `init` changes on your machine](#what-init-changes-on-your-machine)
@@ -52,6 +57,8 @@ depth once you're up and running.
 - [Storage layout](#storage-layout)
 - [Config](#config)
 - [CLI reference](#cli-reference)
+- [Session working state](#session-working-state)
+- [Knowledge graph](#knowledge-graph)
 - [MCP server](#mcp-server)
 - [Scopes, in detail](#scopes-in-detail)
 - [Troubleshooting](#troubleshooting)

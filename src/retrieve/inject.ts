@@ -31,11 +31,15 @@ export function buildContextBlock(scope: Scope, cfg: MyOMemoryConfig): string | 
   // front of the agent were "returned", so they count as exposure. It must
   // NOT touch the useful counters: passive surfacing never refreshes
   // usefulness (D77). The outline names representative memories too, so
-  // those ids join the same exposure pass.
+  // those ids join the same exposure pass — deduped, because
+  // recordRetrieved increments per occurrence and one injection must count
+  // one exposure (an outline snippet can also be a top-N hit).
   recordRetrieved([
-    ...project.map((m) => m.id),
-    ...user.map((m) => m.id),
-    ...outlineIds,
+    ...new Set([
+      ...project.map((m) => m.id),
+      ...user.map((m) => m.id),
+      ...outlineIds,
+    ]),
   ]);
 
   const lines: string[] = ["[OPEN-MEMEX]"];

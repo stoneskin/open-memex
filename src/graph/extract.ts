@@ -64,9 +64,11 @@ export function sharedTagConfidence(sharedCount: number): Confidence {
  * Crockford-base32 alphabet ULID (0-9, A-Z minus I, L, O, U) delimited by
  * non-alphanumerics. The look-arounds keep a longer prefixed token from
  * matching as a "mention": only a standalone id in the body counts as
- * explicit evidence.
+ * explicit evidence. The class must exclude L as well as I/O/U — a token
+ * like `FLATBATTERYWELLSXXQZABCDEF` is a word, not an id, and an EXTRACTED
+ * edge means the source said it explicitly.
  */
-const ULID_RE = /(?<![0-9A-Z])[0-9A-HJ-NP-TV-Z]{26}(?![0-9A-Z])/g;
+const ULID_RE = /(?<![0-9A-Z])[0-9A-HJKMNP-TV-Z]{26}(?![0-9A-Z])/g;
 
 /**
  * Per-node cap on INFERRED shared-tag edges. A dense tag vocabulary would

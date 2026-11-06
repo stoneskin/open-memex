@@ -1043,14 +1043,11 @@ ${body}
   ok("neighbours fails on an invented id", r.code !== 0 && /no memory with id/.test(r.out + r.err), (r.out + r.err).slice(0, 150));
 
   // Supersede one — the chain becomes an EXTRACTED edge via the write path.
-  const gNewA = ((): string => {
-    for (let i = 0; i < 5; i++) {
-      const rr = cli(["supersede", gTagA, "graph D91 deploy checklist runs on Thursdays now"], graphProj);
-      const m = rr.out.match(/superseded ([A-Z0-9]{26}) → ([A-Z0-9]{26})/) || [];
-      if (m[2]) return m[2];
-    }
-    return "";
-  })();
+  // One attempt; a missing match fails the subsequent assertions with a
+  // clear message instead of quietly superseding the fixture five times.
+  const gSup = cli(["supersede", gTagA, "graph D91 deploy checklist runs on Thursdays now"], graphProj);
+  const gNewA = (gSup.out.match(/superseded [A-Z0-9]{26} → ([A-Z0-9]{26})/) ?? [])[1] ?? "";
+  ok("supersede of the shared-tag memory returns the new id", gNewA.length === 26, gSup.out.slice(0, 200));
   r = cli(["graph", "neighbours", gNewA, "--depth", "1"], graphProj);
   ok(
     "supersede auto-refreshed the graph: chain edge EXTRACTED/high",

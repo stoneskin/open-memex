@@ -1175,6 +1175,21 @@ console.log("== D91 graph: extract / outline / queries / lint ==");
   }
 
   {
+    // Crockford excludes L (as well as I/O/U): a 26-char all-caps word
+    // containing L is a word, not an id — it must never become EXTRACTED
+    // evidence. Regression for the [0-9A-HJ-NP-TV-Z] class bug.
+    const edges = extractEdges([
+      node({ id: ID_A, body: "FLATBATTERYWELLSXXQZABCDEF flagged" }),
+      node({ id: ID_B }),
+    ]);
+    ok(
+      "L-containing 26-char word is not a body mention",
+      !edges.some((e) => e.type === "relates-to" && e.from === ID_A),
+      JSON.stringify(edges),
+    );
+  }
+
+  {
     // Determinism: the same build twice must agree byte for byte.
     const input = [
       node({ id: ID_A, tags: ["a", "b"], body: `ref ${ID_B}` }),

@@ -52,7 +52,7 @@ export function graphNeighbours(
   nodeIds: Iterable<string>,
   opts: { maxDepth?: number; maxNodes?: number } = {},
 ): NeighbourHit[] {
-  const maxDepth = Math.max(1, Math.min(opts.maxDepth ?? 1, 4));
+  const maxDepth = Math.max(1, Math.min(opts.maxDepth ?? 1, 6));
   const maxNodes = Math.max(1, Math.min(opts.maxNodes ?? 20, 100));
   const adj = buildAdjacency(edges, nodeIds);
   if (!adj.has(startId)) return [];

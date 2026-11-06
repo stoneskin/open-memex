@@ -76,7 +76,10 @@ export function renderOutline(
   edges: GraphEdge[],
   opts: { maxLines?: number } = {},
 ): OutlineResult {
-  const maxLines = Math.max(1, opts.maxLines ?? 10);
+  // Floor 1, ceiling 30 (the same bound `config set graphOutlineLines`
+  // enforces) — a hand-edited config file must not be able to blow up the
+  // session-start injection.
+  const maxLines = Math.min(30, Math.max(1, opts.maxLines ?? 10));
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
   const uf = new UnionFind();

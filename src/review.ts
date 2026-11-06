@@ -264,8 +264,11 @@ export function promoteMemory(
   // published transition passes through approved and does not re-count.
   // Always useful_team: promoteMemory is project-only by contract above.
   if (to === "approved") recordUseful(id, "team", "promote");
-  // D91 ingest: review_state participates in lint surface framing; the
-  // membership of active nodes can change with rejections/resubmission.
+  // D91 ingest: keep the write-path invariant uniform — every mutating
+  // review transition refreshes the owning scope's graph, even though a
+  // promote changes no node/edge field the extractor reads today. The
+  // refresh is cheap and the invariant ("all mutating paths refresh") is
+  // what keeps the layer from drifting as new fields are added.
   refreshGraphQuiet(mf.fm.scope_key);
   return { id, from, to, history: fm.review_history };
 }

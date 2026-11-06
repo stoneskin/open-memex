@@ -990,7 +990,12 @@ async function main() {
           maxDepth: depth ?? 1,
         });
         if (hits.length === 0) {
-          console.log(`no structural neighbours within depth ${depth ?? 1} — this memory is currently an orphan (see \`graph lint\`).`);
+          const status = nodes.find((n) => n.id === id)!.status;
+          console.log(
+            status === "active"
+              ? `no structural neighbours within depth ${depth ?? 1} — this memory is currently an orphan (see \`graph lint\`).`
+              : `no structural neighbours within depth ${depth ?? 1} for this ${status} memory.`,
+          );
           return;
         }
         for (const h of hits) {

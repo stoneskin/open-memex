@@ -213,9 +213,9 @@ through the normal flow, not write them.
 
 ## Design constraints — read the frozen design first
 
-`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D88 — log in `docs/design/decisions.md`; open questions tracked at the end of the doc). Per its §12:
+`docs/V2-DESIGN.md` is the frozen protocol v0.2 (decisions settled through D91 — log in `docs/design/decisions.md`; open questions tracked at the end of the doc). Per its §12:
 AGENTS.md answers "how should AI work here"; the design doc answers "why is it
-built this way" (principles, iron rules, the append-only decision log in `docs/design/decisions.md`, currently D1–D88). Before changing
+built this way" (principles, iron rules, the append-only decision log in `docs/design/decisions.md`, currently D1–D91). Before changing
 architecture, scope semantics, lifecycle, or the protocol surface (frontmatter
 schema, MCP tools, CLI contract), read the relevant design section — the decision
 log records what was already considered and rejected.

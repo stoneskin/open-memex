@@ -112,6 +112,23 @@ open-memex forget <id>          # delete (permanent)
 open-memex forget <id> --soft   # hide (retracted, one-way)
 ```
 
+## Structure: the knowledge graph
+
+The project's memories form a derived graph (D91) — what is connected to
+what, without searching. Use it when the user asks how memories relate, what
+an entry links to, or what is orphaned:
+
+```sh
+open-memex graph outline                 # topics + titles (also injected at session start)
+open-memex graph neighbours <id>         # what links to / from this memory, with provenance
+open-memex graph path <a> <b>            # how two memories connect
+open-memex graph lint                    # orphans, dangling edges, near-stale pairs (reports only)
+```
+
+Edges are `EXTRACTED` (structural fact) or `INFERRED` (heuristic) — quote
+that distinction when reporting. `lint` never fixes anything; a human decides.
+The graph is rebuilt automatically on writes; `graph build` forces it.
+
 ## Project outbox → repo (the sync flow)
 
 New project memories land in a local outbox (not in git). Review and publish:

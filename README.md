@@ -697,6 +697,8 @@ Defaults:
   "injectOnFirstTurn": true,  // [OPEN-MEMEX] system-prompt block
   "keywordCaptureEnabled": true,
   "logLevel": "info",          // info | debug
+  "graphOutline": true,        // inject the compiled graph outline at session start
+  "graphOutlineLines": 10,     // outline length cap (max 30)
   "memoryDir": ".ai/open-memex" // in-repo project-memory dir, relative to repo root
 }
 ```
@@ -708,10 +710,12 @@ setting after install:
 open-memex config set keywordCaptureEnabled false
 open-memex config set maxProjectMemories 12
 open-memex config set sync.autoPull true   # best-effort pull at MCP session start
+open-memex config set graphOutline false   # stop injecting the graph outline
 ```
 
 Settable keys: `maxProjectMemories`, `maxProfileItems`, `injectOnFirstTurn`,
-`keywordCaptureEnabled`, `captureAliases`, `logLevel`, `memoryDir`, and `sync.autoPull` (a dotted
+`keywordCaptureEnabled`, `captureAliases`, `logLevel`, `memoryDir`,
+`graphOutline`, `graphOutlineLines`, and `sync.autoPull` (a dotted
 key that writes into the nested `sync` object). Full design:
 [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
 
@@ -854,6 +858,8 @@ open-memex scopes       # list project scopes with memory counts
 open-memex reindex      # rebuild the SQLite index from markdown
 open-memex audit        # memory health: duplicate pairs, stale memories, broken chains, expired working-state notes
 open-memex wstate       # show the session working-state note (--clear deletes it)
+open-memex graph build  # rebuild the knowledge graph (structural edges only; runs automatically on writes)
+open-memex graph lint   # orphans, dangling edges, near-duplicate pairs (reports only)
 open-memex migrate --to-v2 [--dry-run]   # v1 data → v2 (renames user scope to personal)
 ```
 
@@ -880,6 +886,35 @@ notes, humans edit the plain file directly.
 open-memex wstate            # show the note (age + expiry)
 open-memex wstate --clear    # delete it
 ```
+
+## Knowledge graph
+
+A derived, rebuildable graph over the **current project's** memories (D91, §20
+deterministic half) — it answers "what is in memory and how is it connected"
+without searching, and it never touches the Markdown source of truth. Structural
+edges only, no LLM: `supersedes` chains, `derived-from` propose copies,
+`[[wiki-link]]` body mentions (EXTRACTED) and bare-ULID mentions (INFERRED),
+and shared-tag co-membership at a fixed
+confidence ladder (1 tag → low, 2 → medium, ≥3 → high). Every edge is marked
+`EXTRACTED` (structural fact) or `INFERRED` (heuristic) with its receipt.
+
+The graph refreshes automatically on every memory write. A **compiled outline**
+(medium+ confidence components, capped and cut-disclosed) is injected once at
+session start next to the working-state note; disable it with
+`config set graphOutline false`, tune its length with `graphOutlineLines`
+(default 10, max 30). Personal scope is never graphed.
+
+```sh
+open-memex graph build                 # rebuild now (writes do this automatically)
+open-memex graph outline               # the compiled outline, as injected
+open-memex graph neighbours <id> [--depth 1-6]   # BFS with per-edge provenance
+open-memex graph path <a> <b>          # shortest hop chain, with receipts
+open-memex graph lint [--json]         # orphans, dangling edges, near-stale pairs
+```
+
+`lint` reports only — nothing is auto-resolved; a human decides. The same report
+is the planned input for D78's pre-submit curation. The interface is CLI-only;
+the MCP surface stays at its thirteen memory tools.
 
 ## MCP server
 

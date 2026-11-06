@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS memories (
   cjk          TEXT NOT NULL DEFAULT '',
   content_hash TEXT NOT NULL DEFAULT '',
   superseded_by TEXT,
+  -- D91: the propose-copy's source memory id (frontmatter derived_from),
+  -- so the graph layer can extract derived-from edges from the index
+  -- alone. Nullable -- ordinary memories have none.
+  derived_from TEXT,
   source       TEXT NOT NULL DEFAULT '',
   file_path    TEXT NOT NULL,
   mtime_ms     REAL NOT NULL,
@@ -124,8 +128,10 @@ CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
 END;
 `;
 
-/** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change. */
-const SCHEMA_VERSION = 9;
+/** Current index schema version. Bump when TABLE_SCHEMA/FTS_SCHEMA change.
+ *  10 = D91 added the `derived_from` column (graph layer reads the chain
+ *  and derive edges from the index alone). */
+const SCHEMA_VERSION = 10;
 
 // D77-L2: reuse counters live in their own table, keyed by memory id. It is
 // created on every open (CREATE IF NOT EXISTS) and deliberately NOT part of

@@ -2,6 +2,7 @@ import { loadConfig, type MyOMemoryConfig } from "./config.ts";
 import { resolveProjectScope, resolveCwdScope, PERSONAL_SCOPE, type Scope } from "./scope.ts";
 import { db } from "./store/db.ts";
 import { syncScope, upsertFromFile } from "./store/sync.ts";
+import { refreshGraphQuiet } from "./store/graph.ts";
 import { scopeHasFiles } from "./store/migrate.ts";
 import {
   writeMemoryFile,
@@ -135,6 +136,9 @@ export function captureFromText(
       const { filePath } = writeMemoryFile(fm, content);
       const mf = readMemoryFile(filePath);
       if (mf) upsertFromFile(mf);
+      // D91 ingest: keyword capture is a normal write path too — the graph
+      // must not go stale until the next ops/CLI write. Personal no-ops.
+      refreshGraphQuiet(target.key, cfg);
       // Capture feedback: always visible (not debug-only) — the user said
       // "记住…", they should see that it landed. The opencode plugin API
       // offers no toast channel, so the plugin log is the feedback surface.

@@ -15,8 +15,8 @@ import { projectRoot, paths } from "../paths.ts";
 import { loadConfig } from "../config.ts";
 
 const UPSERT_SQL = `
-  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, aliases, expansions, alias, target, content, cjk, content_hash, superseded_by, source, file_path, mtime_ms, created_at, updated_at, review_state)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO memories (id, scope_key, scope, visibility, project_name, type, role, importance, status, tags, aliases, expansions, alias, target, content, cjk, content_hash, superseded_by, derived_from, source, file_path, mtime_ms, created_at, updated_at, review_state)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     scope_key    = excluded.scope_key,
     scope        = excluded.scope,
@@ -35,6 +35,7 @@ const UPSERT_SQL = `
     cjk          = excluded.cjk,
     content_hash = excluded.content_hash,
     superseded_by = excluded.superseded_by,
+    derived_from = excluded.derived_from,
     source       = excluded.source,
     review_state = excluded.review_state,
     file_path    = excluded.file_path,
@@ -101,6 +102,9 @@ function writeRow(mf: MemoryFile, mtimeMs: number): void {
     cjkIndexText(body + "\n" + tags + "\n" + aliases + "\n" + expansions),
     contentHash(body),
     fm.superseded_by ?? null,
+    // D91: derived_from joins the index so the graph layer reads the
+    // derive copy → original edge from the same store as everything else.
+    fm.derived_from ?? null,
     fm.source ?? "",
     filePath,
     mtimeMs,

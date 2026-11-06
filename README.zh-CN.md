@@ -431,6 +431,8 @@ npm install -g open-memex@latest   # 或 @alpha
   "injectOnFirstTurn": true,  // [OPEN-MEMEX] 系统提示块
   "keywordCaptureEnabled": true,
   "logLevel": "info",          // info | debug
+  "graphOutline": true,        // 会话开始时注入图谱编译大纲
+  "graphOutlineLines": 10,     // 大纲长度上限（最大 30）
   "memoryDir": ".ai/open-memex" // 仓库内项目记忆目录，相对于仓库根
 }
 ```
@@ -441,9 +443,10 @@ npm install -g open-memex@latest   # 或 @alpha
 open-memex config set keywordCaptureEnabled false
 open-memex config set maxProjectMemories 12
 open-memex config set sync.autoPull true   # MCP 会话开始时尽力而为地 pull
+open-memex config set graphOutline false   # 不再注入图谱大纲
 ```
 
-可设置的键：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、`keywordCaptureEnabled`、`captureAliases`、`logLevel`、`memoryDir`，以及 `sync.autoPull`（带点的键，写入嵌套的 `sync` 对象）。完整设计：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（英文）。
+可设置的键：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、`keywordCaptureEnabled`、`captureAliases`、`logLevel`、`memoryDir`、`graphOutline`、`graphOutlineLines`，以及 `sync.autoPull`（带点的键，写入嵌套的 `sync` 对象）。完整设计：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（英文）。
 
 ## CLI 参考
 
@@ -564,6 +567,8 @@ open-memex scopes       # 列出各项目作用域及记忆计数
 open-memex reindex      # 从 markdown 重建 SQLite 索引
 open-memex audit        # 记忆健康检查：近重复对、陈旧记忆、断裂的取代链、过期的工作状态笔记
 open-memex wstate       # 显示工作状态笔记（--clear 删除）
+open-memex graph build  # 重建知识图谱（仅结构边；写入时自动刷新）
+open-memex graph lint   # 孤立节点、悬空边、近重复对（只报告，不自动处理）
 open-memex migrate --to-v2 [--dry-run]   # v1 数据 → v2（把 user 作用域改名为 personal）
 ```
 
@@ -577,6 +582,22 @@ CLI 在 Node 22 下运行。从源码 checkout 跑时用内置的实验性 TypeS
 open-memex wstate            # 显示笔记（含年龄与到期）
 open-memex wstate --clear    # 删除
 ```
+
+## 知识图谱
+
+一张派生、可重建的图谱，覆盖**当前项目作用域**的记忆（D91，§20 确定性那一半）——不用搜索就能回答"记忆里有什么、彼此怎么连"，且永远不碰 Markdown 真源。只抽取结构边、不调用 LLM：`supersedes` 取代链、`derived-from` propose 副本、`[[wiki-link]]` 正文链接（EXTRACTED）与裸 ULID 提及（INFERRED），以及共享标签的固定置信阶梯（1 个标签 → low，2 个 → medium，≥3 个 → high）。每条边都标注 `EXTRACTED`（结构事实）或 `INFERRED`（启发式）并附推导凭据。
+
+图谱在每次写入记忆时自动刷新。一份**编译大纲**（medium+ 置信度的连通分量，带截断披露）会在会话开始时与工作状态笔记一起注入一次；用 `config set graphOutline false` 关闭，`graphOutlineLines` 调长度（默认 10，上限 30）。personal 作用域永不入图。
+
+```sh
+open-memex graph build                 # 立即重建（写入会自动做）
+open-memex graph outline               # 编译后的大纲（即注入内容）
+open-memex graph neighbours <id> [--depth 1-6]   # BFS，带每条边的来源
+open-memex graph path <a> <b>          # 最短跳链，带凭据
+open-memex graph lint [--json]         # 孤立节点、悬空边、近陈旧对
+```
+
+`lint` 只报告——不自动处理，由人决定。同一份报告就是 D78 提交前策展的既定输入。接口仅限 CLI；MCP 表面保持十三个记忆工具不变。
 
 ## MCP 服务器
 

@@ -36,6 +36,10 @@ import { z } from "zod";
 import { memoryAddArgs } from "../src/tools/ops.ts";
 import { dataRootPath, homeOverride } from "../src/paths.ts";
 import { configFilePath, loadConfig, stripJsonComments } from "../src/config.ts";
+import { extractEdges, sharedTagConfidence } from "../src/graph/extract.ts";
+import { renderOutline } from "../src/graph/outline.ts";
+import { graphNeighbours, shortestPath } from "../src/graph/queries.ts";
+import { lintGraph } from "../src/graph/lint.ts";
 
 console.log("== jsonc parsing + config invariants (P0) ==");
 {
@@ -1097,6 +1101,205 @@ console.log("== D77-L3 reuse report formatting ==")
     "zombie count is the true total, not the shown slice",
     lines.some((l) => l.includes("never confirmed useful): 2")),
   );
+}
+
+console.log("== D91 graph: extract / outline / queries / lint ==");
+{
+  // Deterministic twenty-six-char Crockford ids (no I, L, O, U) so test
+  // bodies can embed real id mentions.
+  const ID_A = "01AAAAAAAAAAAAAAAAAAAAAAAA";
+  const ID_B = "01BBBBBBBBBBBBBBBBBBBBBBBB";
+  const ID_C = "01CCCCCCCCCCCCCCCCCCCCCCCC";
+  const ID_D = "01DDDDDDDDDDDDDDDDDDDDDDDD";
+  const ID_E = "01EEEEEEEEEEEEEEEEEEEEEEEE";
+  const node = (over: Partial<Parameters<typeof extractEdges>[0][number]> & { id: string }) => ({
+    status: "active",
+    type: "fact",
+    tags: [] as string[],
+    body: "",
+    supersedes: null,
+    derived_from: null,
+    ...over,
+  });
+
+  ok("confidence ladder: 1→low, 2→medium, ≥3→high (fixed by D91)",
+    sharedTagConfidence(1) === "low" && sharedTagConfidence(2) === "medium" && sharedTagConfidence(3) === "high" && sharedTagConfidence(9) === "high");
+
+  {
+    const edges = extractEdges([
+      node({ id: ID_B, supersedes: ID_A }),
+      node({ id: ID_A }),
+      node({ id: ID_C, derived_from: ID_A }),
+    ]);
+    ok("supersedes edge new→old EXTRACTED/high",
+      edges.some((e) => e.from === ID_B && e.to === ID_A && e.type === "supersedes" && e.provenance === "EXTRACTED" && e.confidence === "high"));
+    ok("derived-from edge EXTRACTED/high",
+      edges.some((e) => e.from === ID_C && e.to === ID_A && e.type === "derived-from" && e.provenance === "EXTRACTED"));
+  }
+
+  {
+    const edges = extractEdges([
+      node({ id: ID_A, body: `see [[${ID_B}]] for the checklist` }),
+      node({ id: ID_B, tags: ["deploy", "ci"] }),
+      node({ id: ID_C, tags: ["deploy", "ci"] }),
+      node({ id: ID_D, tags: ["deploy"] }),
+    ]);
+    ok("[[wiki-link]] mention is EXTRACTED/high relates-to",
+      edges.some((e) => e.from === ID_A && e.to === ID_B && e.provenance === "EXTRACTED" && e.confidence === "high" && e.via === "wiki-link"));
+    ok("two shared tags → INFERRED/medium, canonical pair order",
+      edges.some((e) => e.from === ID_B && e.to === ID_C && e.provenance === "INFERRED" && e.confidence === "medium" && e.via === "shared-tag:ci,deploy"));
+    ok("one shared tag → INFERRED/low",
+      edges.some((e) => ((e.from === ID_B && e.to === ID_D) || (e.from === ID_C && e.to === ID_D)) && e.provenance === "INFERRED" && e.confidence === "low"));
+  }
+
+  {
+    // A bare ULID in prose is an INFERRED edge (D91/§20.3): the writer
+    // typed an id but did not mark it as a link, so it is never presented
+    // as evidence the source stated a relationship.
+    const edges = extractEdges([
+      node({ id: ID_A, body: `follow up ${ID_B} when parser lands` }),
+      node({ id: ID_B }),
+    ]);
+    ok("bare ULID mention is INFERRED/high relates-to",
+      edges.some((e) => e.from === ID_A && e.to === ID_B && e.type === "relates-to" && e.provenance === "INFERRED" && e.confidence === "high" && e.via === "body-mention"),
+      JSON.stringify(edges));
+  }
+
+  {
+    // Exhaustive collapse: an EXTRACTED body-mention wins the pair over
+    // the INFERRED shared-tag edge.
+    const edges = extractEdges([
+      node({ id: ID_A, body: `as in [[${ID_B}]], deploy first`, tags: ["deploy", "ci", "ops"] }),
+      node({ id: ID_B, tags: ["deploy", "ci", "ops"] }),
+    ]);
+    const rel = edges.filter((e) => e.type === "relates-to");
+    ok("one relates-to per pair, EXTRACTED wins",
+      rel.length === 1 && rel[0]!.from === ID_A && rel[0]!.to === ID_B && rel[0]!.provenance === "EXTRACTED",
+      JSON.stringify(rel));
+  }
+
+  {
+    const edges = extractEdges([
+      node({ id: ID_A, body: `self ${ID_A} ignore` }),
+      node({ id: ID_B, status: "superseded", empty: undefined } as never),
+    ]);
+    ok("self-mention not extracted", !edges.some((e) => e.type === "relates-to" && e.from === ID_A));
+    ok("superseded memory contributes no tag inference", edges.every((e) => e.provenance !== "INFERRED"));
+  }
+
+  {
+    // Crockford excludes L (as well as I/O/U): a 26-char all-caps word
+    // containing L is a word, not an id — it must never become EXTRACTED
+    // evidence. Regression for the [0-9A-HJ-NP-TV-Z] class bug.
+    const edges = extractEdges([
+      node({ id: ID_A, body: "FLATBATTERYWELLSXXQZABCDEF flagged" }),
+      node({ id: ID_B }),
+    ]);
+    ok(
+      "L-containing 26-char word is not a body mention",
+      !edges.some((e) => e.type === "relates-to" && e.from === ID_A),
+      JSON.stringify(edges),
+    );
+  }
+
+  {
+    // Determinism: the same build twice must agree byte for byte.
+    const input = [
+      node({ id: ID_A, tags: ["a", "b"], body: `ref ${ID_B}` }),
+      node({ id: ID_B, tags: ["a", "b"] }),
+      node({ id: ID_C, tags: ["b"] }),
+    ];
+    ok("two builds over the same data sort identically",
+      JSON.stringify(extractEdges(input)) === JSON.stringify(extractEdges([...input].reverse())));
+  }
+
+  console.log("  == outline: no universal-tag collapse ==");
+  {
+    // Five active memories all tagged "legacy" (a universal tag — every
+    // pair shares exactly ONE tag, so every inferred pair edge is low);
+    // plus two real topics via extra tags. Result: the store must NOT
+    // fuse into one "legacy (5)" topic.
+    const outlineNodes = [
+      node({ id: ID_A, tags: ["legacy", "deploy", "ci"], body: "deploy is ci-gated", snippet: "deploy is ci-gated" }),
+      node({ id: ID_B, tags: ["legacy", "deploy", "ci"], body: "deploy is manual", snippet: "deploy is manual" }),
+      node({ id: ID_C, tags: ["legacy", "editor", "parser"], body: "editor parsing", snippet: "editor parsing" }),
+      node({ id: ID_D, tags: ["legacy", "editor", "parser"], body: "parser rewrite", snippet: "parser rewrite" }),
+      // Legacy-only: one shared tag is the low band, which never joins topics.
+      node({ id: ID_E, tags: ["legacy"], body: `shared ${ID_B}` }),
+    ];
+    const outlineEdges = extractEdges(outlineNodes);
+    ok("universal-tag pairs stay in the low band",
+      outlineEdges
+        .filter((e) => e.type === "relates-to" && e.via === "shared-tag:legacy")
+        .every((e) => e.confidence === "low"),
+      JSON.stringify(outlineEdges.filter((e) => e.provenance === "INFERRED").map((e) => e.via)));
+    const r = renderOutline(outlineNodes, outlineEdges, { maxLines: 10 });
+    ok("two distinct topics survive the universal tag",
+      r.topics.length === 2 && r.topics.every((t) => t.name !== "legacy"),
+      JSON.stringify(r.topics.map((t) => t.name)));
+    ok("no topic spans five memories (the store did not fuse)",
+      r.topics.every((t) => t.size === 2), r.lines.join("\n"));
+    ok("legacy-only memory is outside every topic and disclosed",
+      r.outsideCount === 1 && r.lines.some((l) => l.includes("1 memory not in any topic")),
+      r.lines.join("\n"));
+    ok("topic lines carry truncated one-liners", r.lines.some((l) => l.includes("deploy is manual")));
+    ok("outline is capped in units of memory-not-topic disclosure",
+      r.exposureIds.length > 0 && r.exposureIds.every((id) => r.topics.some((t) => t.snippetIds.includes(id))));
+  }
+
+  console.log("  == outline: cap and disclosure ==");
+  {
+    const nodes: ReturnType<typeof node>[] = [];
+    const edges: Parameters<typeof renderOutline>[1] = [];
+    for (let i = 0; i < 4; i++) {
+      const a = `${i}AAAAAAA${ID_A.slice(8)}`;
+      const b = `${i}BBBBBBB${ID_B.slice(8)}`;
+      nodes.push(node({ id: a, tags: [`t${i}`], body: "" }));
+      nodes.push(node({ id: b, tags: [`t${i}`], body: "" }));
+      edges.push({ from: a, to: b, type: "relates-to", provenance: "INFERRED", confidence: "medium", via: `shared-tag:t${i}` });
+    }
+    const r = renderOutline(nodes, edges, { maxLines: 2 });
+    ok("cap respected", r.lines.length === 3); // 2 topics + the cut disclosure
+    ok("cut disclosed", r.lines.some((l) => l.includes("2 more topics not shown")));
+  }
+
+  console.log("  == queries ==");
+  {
+    const nodeIds = [ID_A, ID_B, ID_C, ID_D];
+    const edges: Parameters<typeof graphNeighbours>[1] = [
+      { from: ID_A, to: ID_B, type: "relates-to", provenance: "EXTRACTED", confidence: "high", via: "body-mention" },
+      { from: ID_B, to: ID_C, type: "relates-to", provenance: "INFERRED", confidence: "medium", via: "shared-tag:deploy" },
+      { from: ID_C, to: ID_E as never, type: "relates-to", provenance: "EXTRACTED", confidence: "high", via: "body-mention" },
+    ];
+    const nb = graphNeighbours(ID_A, edges, nodeIds, { maxDepth: 1 });
+    ok("depth-1 neighbour traversal", nb.length === 1 && nb[0]!.id === ID_B && nb[0]!.via.provenance === "EXTRACTED");
+    const nb2 = graphNeighbours(ID_A, edges, nodeIds, { maxDepth: 2 });
+    ok("depth-2 reaches two hops", nb2.length === 2 && nb2[1]!.id === ID_C && nb2[1]!.via.provenance === "INFERRED");
+    const p = shortestPath(ID_A, ID_C, edges, nodeIds);
+    ok("shortest path found through the chain with edge receipts",
+      p.found && p.hops.length === 2 && p.hops[0]!.from === ID_A && p.hops[1]!.to === ID_C,
+      JSON.stringify(p));
+    const miss = shortestPath(ID_A, "01ZZZZZZZZZZZZZZZZZZZZZZZZ", edges, nodeIds);
+    ok("path to a node outside the set fails cleanly", !miss.found && miss.hops.length === 0);
+    const dangling = graphNeighbours(ID_A, edges, nodeIds, { maxDepth: 3 });
+    ok("traversal never crosses into a missing node", !dangling.some((h) => h.id === ID_E));
+  }
+
+  console.log("  == lint ==");
+  {
+    const nodeIds: Parameters<typeof lintGraph>[0] = [
+      node({ id: ID_A, body: "deploy checklist: build, sign, upload" }),
+      node({ id: ID_B, status: "superseded", body: "deploy checklist: build, sign, upload" }),
+      node({ id: ID_C }),
+    ];
+    const edges: Parameters<typeof lintGraph>[1] = [
+      { from: ID_C, to: "01FFFFFFFFFFFFFFFFFFFFFFFF", type: "relates-to", provenance: "EXTRACTED", confidence: "high", via: "body-mention" },
+    ];
+    const f = lintGraph(nodeIds, edges);
+    ok("orphan reported for the active, unlinked memory", f.some((x) => x.kind === "orphan" && x.id === ID_A));
+    ok("dangling edge reported with the missing id", f.some((x) => x.kind === "dangling-edge" && x.other === "01FFFFFFFFFFFFFFFFFFFFFFFF"));
+    ok("stale detected: active near-duplicate of superseded", f.some((x) => x.kind === "stale" && x.id === ID_A && x.other === ID_B));
+  }
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);

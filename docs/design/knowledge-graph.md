@@ -1,6 +1,6 @@
 ## 20. Knowledge Graph & Compiled Wiki (v0.3 candidate)
 
-*Status (2026-11-02): 未实现 — v0.3 candidate as a whole. §20.1–20.4, §20.6, §20.8 unbuilt; §20.5/§20.7 are no-change statements (confirmed, nothing to build).*
+*Status (2026-11-06): 部分实现 — the **deterministic half** shipped in 0.9.0-alpha.6 (D91): §20.3 structural edge extraction (supersedes / derived-from / body-mention / shared-tag at a fixed confidence ladder, EXTRACTED-vs-INFERRED provenance, stored in `graph_edges`/`graph_meta`), §20.4's build + query + lint operations (`graph build` / `neighbours` / `path` / `lint`, auto-refresh on every mutating write), and the compiled outline injected at session start. The graph is project-scope only and the interface is CLI-only (the MCP surface stays at 13 tools); §20.5's no-LLM extraction path is what shipped; §20.7 holds unchanged. **Still unbuilt:** the LLM half — semantic extraction/insights (§20.3 semantic edges, §20.5's confirmation flow), missing-page alerts that propose new memories, and the wiki compiled pages (§20.2 third layer).*
 > v0.3 candidate (D88). Does not change the frozen v0.2 protocol; the graph/wiki is a derived layer (see §20.2). Sources: Karpathy's *LLM Wiki* (three layers / three operations) and Graphify (a working implementation of the same pattern on codebases, measured on muse-thinktank 2026-10-31: curated graph, 1029 nodes, edges tagged EXTRACTED/INFERRED with confidence). Both point to the same pattern: compile knowledge once, instead of re-deriving it on every query.
 
 ### 20.1 Why add a graph (motivation)

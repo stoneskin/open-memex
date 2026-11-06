@@ -460,8 +460,8 @@ ok("migrate personal→project runs", r.code === 0, (r.err || r.out).slice(0, 15
   const ver = (after.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
   const cols = (after.prepare("PRAGMA table_info(memories)").all() as { name: string }[]).map((c) => c.name);
   after.close();
-  ok("D87: stale store migrates to schema v9", ver === 9, `user_version=${ver}`);
-  ok("D87: migrated table has alias/target/expansions", ["alias", "target", "expansions"].every((c) => cols.includes(c)), cols.join(","));
+  ok("D87: stale store migrates to current schema (v10 since D91)", ver === 10, `user_version=${ver}`);
+  ok("D87: migrated table has alias/target/expansions/derived_from", ["alias", "target", "expansions", "derived_from"].every((c) => cols.includes(c)), cols.join(","));
 }
 
 // ---------- 10. capture / doctor / mcp --print-config / init ----------
@@ -936,7 +936,7 @@ ${body}
   {
     const D = createRequire(import.meta.url)("better-sqlite3");
     const conn = new D(dbPath);
-    conn.exec("PRAGMA user_version = 8");
+    conn.exec("PRAGMA user_version = 9"); // stale only vs the current v10 (D91)
     conn.close();
     cliRetry(["list"], d77Proj); // opens db() -> rebuildIndexSchema -> syncScope
     const after = new D(dbPath, { readonly: true });
@@ -946,7 +946,7 @@ ${body}
       const usage = after
         .prepare("SELECT retrieved_count, useful_self, useful_team FROM memory_usage WHERE id = ?")
         .get(uId) as { retrieved_count: number; useful_self: number; useful_team: number } | undefined;
-      ok("forced schema rebuild happened (v8 -> v9)", ver === 9, `user_version=${ver}`);
+      ok("forced schema rebuild happened (v9 -> v10)", ver === 10, `user_version=${ver}`);
       ok("rebuild re-synced memories from Markdown", mem.n === 1, `memories=${mem.n}`);
       ok(
         "counters survive the schema rebuild (D77-L2)",
@@ -1010,6 +1010,78 @@ ${body}
     "inventory json counts hidden without the entries",
     invJson2.hidden !== undefined && !("hiddenEntries" in invJson2),
   );
+
+  // ---------- D91: graph (§20 deterministic half) ----------
+  // graph build / neighbours / path / lint / outline on a scratch project:
+  // shared tags → one medium edge, a supersedes pair, an orphan, and the
+  // write-path refresh (a later add lands in the graph with no rebuild).
+  console.log("== graph (D91) ==");
+  const graphProj = mkproj("graphproj");
+  const gTagA = addMem(["graph D91 deploy checklist runs on Fridays", "--tag", "deploy,ci"], graphProj);
+  const gTagB = addMem(["graph D91 ci gates every deploy", "--tag", "deploy,ci"], graphProj);
+  const gOrphan = addMem(["graph D91 unrelated editor parser note", "--tag", "editor"], graphProj);
+  ok("graph fixture: three project memories", gTagA && gTagB && gOrphan);
+
+  r = cli(["graph", "build"], graphProj);
+  ok("graph build reports nodes/edges", /graph built for project__.*: 3 memories/.test(r.out) && /1 edges/.test(r.out), r.out.slice(0, 200));
+
+  r = cli(["graph", "neighbours", gTagB], graphProj);
+  ok(
+    "shared-tag edge shows with provenance and confidence",
+    r.out.includes(gTagA) && /relates-to INFERRED\/medium \(shared-tag:ci,deploy\)/.test(r.out),
+    r.out.slice(0, 300),
+  );
+
+  r = cli(["graph", "neighbours", gOrphan], graphProj);
+  ok(
+    "orphan explains itself with the lint pointer",
+    r.code === 0 && /currently an orphan/.test(r.out) && /graph lint/.test(r.out),
+    (r.out + r.err).slice(0, 200),
+  );
+  // D63-style honesty for an unknown node.
+  r = cli(["graph", "neighbours", "01AAAAAAAAAAAAAAAAAAAAAAAA"], graphProj);
+  ok("neighbours fails on an invented id", r.code !== 0 && /no memory with id/.test(r.out + r.err), (r.out + r.err).slice(0, 150));
+
+  // Supersede one — the chain becomes an EXTRACTED edge via the write path.
+  // One attempt; a missing match fails the subsequent assertions with a
+  // clear message instead of quietly superseding the fixture five times.
+  const gSup = cli(["supersede", gTagA, "graph D91 deploy checklist runs on Thursdays now"], graphProj);
+  const gNewA = (gSup.out.match(/superseded [A-Z0-9]{26} → ([A-Z0-9]{26})/) ?? [])[1] ?? "";
+  ok("supersede of the shared-tag memory returns the new id", gNewA.length === 26, gSup.out.slice(0, 200));
+  r = cli(["graph", "neighbours", gNewA, "--depth", "1"], graphProj);
+  ok(
+    "supersede auto-refreshed the graph: chain edge EXTRACTED/high",
+    r.out.includes(gTagA) && /supersedes EXTRACTED\/high/.test(r.out),
+    r.out.slice(0, 300),
+  );
+
+  r = cli(["graph", "lint"], graphProj);
+  ok("lint reports the orphan and nothing dangling", /\borphans 1\b/.test(r.out) && /dangling 0\b/.test(r.out), r.out.slice(0, 300));
+  ok("lint states the reports-only posture", /nothing is auto-resolved/.test(r.out));
+
+  r = cli(["graph", "lint", "--json"], graphProj);
+  ok(
+    "lint --json emits structured findings",
+    /"findings"/.test(r.out) && new RegExp(`"id": "${gOrphan}"`).test(r.out),
+    r.out.slice(0, 200),
+  );
+
+  r = cli(["graph", "outline"], graphProj);
+  ok("outline prints topics with the cap disclosure", /deploy|ci/.test(r.out), r.out.slice(0, 300));
+
+  // Path: two hops through a live body mention added after the last build
+  // (write-path refresh must keep the graph current without `graph build`).
+  const gTail = addMem([`graph D91 follow up [[${gOrphan}]] when parser lands`, "--tag", "followup"], graphProj);
+  r = cli(["graph", "path", gOrphan, gTail], graphProj);
+  ok(
+    "path builds the hop chain from a wiki-link edge",
+    r.out.includes(gOrphan) && r.out.includes(gTail) && /relates-to EXTRACTED\/high/.test(r.out),
+    r.out.slice(0, 300),
+  );
+
+  // Unknown scope id on both sides still escapes clearly.
+  r = cli(["graph", "path", gTagB, "01BBBBBBBBBBBBBBBBBBBBBBBB"], graphProj);
+  ok("path fails on a missing endpoint", r.code !== 0 && /no memory with id/.test(r.out + r.err));
 }
 
 console.log("\n================ SUMMARY ================");

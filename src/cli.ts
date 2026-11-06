@@ -26,6 +26,9 @@ import { loadConfig, configSource } from "./config.ts";
 import { paths, projectRoot, isInRepoMemoryFile } from "./paths.ts";
 import { redact } from "./redact.ts";
 import { readWorkingState, clearWorkingState, workingStatePath } from "./working-state.ts";
+import { refreshGraph, refreshGraphQuiet, ensureGraph, loadGraphEdges, loadGraphNodes, loadAllMemoryIds } from "./store/graph.ts";
+import { graphNeighbours, shortestPath } from "./graph/queries.ts";
+import { lintGraph } from "./graph/lint.ts";
 import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -465,6 +468,32 @@ Flags:
 Example:
   open-memex audit --scope both`,
 
+  graph: `Work with the compiled memory graph (§20, D88/D91) — a derived layer
+of structural edges between memories, rebuilt from the Markdown source of
+truth, never hand-edited.
+
+Usage:
+  open-memex graph build                 rebuild edges + the compiled outline for this project
+  open-memex graph neighbours <id> [--depth N]   neighbours via BFS (default 1, max 6)
+  open-memex graph path <idA> <idB> [--depth N]  shortest path (default 4, max 6)
+  open-memex graph lint [--json]         health check: orphans, dangling refs, stale chains
+  open-memex graph outline               print the compiled outline as it is injected
+
+Every hop reports its edge type, provenance and confidence — EXTRACTED
+means the link was explicit in the source (a supersede chain, a
+derived-from copy, or the body mentioning the other memory's id);
+INFERRED means the system noticed it (shared tags). Inferred links are
+suggestions, never facts that were in the source.
+
+Writes (add / supersede / forget / propose / promote) refresh the graph
+automatically; graph build is the manual repair. Lint only reports.
+
+Examples:
+  open-memex graph build
+  open-memex graph neighbours 01ABC --depth 2
+  open-memex graph path 01ABC 01DEF
+  open-memex graph lint`,
+
   wstate: `Show the project's session working-state note (D89, §3.6) — the
 ephemeral scratch note the agent refreshes at wrap-up so an interrupted task
 can resume. The file itself is plain Markdown and editable directly.
@@ -505,6 +534,7 @@ Usage:
   open-memex pr-status [--apply]
   open-memex reindex
   open-memex audit [--scope project|personal|both]
+  open-memex graph <build|neighbours <id>|path <a> <b>|lint|outline> [--depth N] [--json]
   open-memex wstate [--clear]
   open-memex scopes
   open-memex migrate [--from <key>] [--to <key>]
@@ -914,6 +944,146 @@ async function main() {
     return;
   }
 
+  // D91: the graph surface (§20 deterministic half). Project scope only —
+  // the graph covers the cwd's project scope like every other command;
+  // no --scope flag exists because personal has no reader this iteration.
+  if (cmd === "graph") {
+    const sub = rest[0] ?? "";
+    const flags = parseFlags(rest.slice(1));
+    // --depth is opt-in per command: neighbours defaults to 1, path to 4,
+    // and an explicit flag is clamped to [1, 6]. Absent = undefined so the
+    // default reads cleanly where it is applied.
+    const depth = (() => {
+      if (flags.depth === undefined || flags.depth === "true") return undefined;
+      const n = Number(flags.depth);
+      if (!Number.isInteger(n) || n < 1 || n > 6) return undefined;
+      return n;
+    })();
+
+    const syncThen = (fn: () => void) => {
+      syncScope(project.key, "cli");
+      fn();
+    };
+
+    if (sub === "build") {
+      syncThen(() => {
+        const s = refreshGraph(project.key, cfg);
+        console.log(
+          `graph built for ${s.scopeKey}: ${s.nodes} memories, ${s.edges} edges, ` +
+            `${s.topics} topic(s), outline ${s.outlineLines} line(s)`,
+        );
+      });
+      return;
+    }
+
+    if (sub === "neighbours") {
+      const id = rest[1];
+      if (!id) usage();
+      syncThen(() => {
+        ensureGraph(project.key, cfg);
+        const nodes = loadGraphNodes(project.key);
+        if (!nodes.some((n) => n.id === id)) {
+          console.error(`neighbours: no memory with id ${id} in scope ${project.key} — graph findings never invent nodes.`);
+          process.exit(1);
+        }
+        const hits = graphNeighbours(id, loadGraphEdges(project.key), nodes.map((n) => n.id), {
+          maxDepth: depth ?? 1,
+        });
+        if (hits.length === 0) {
+          const status = nodes.find((n) => n.id === id)!.status;
+          console.log(
+            status === "active"
+              ? `no structural neighbours within depth ${depth ?? 1} — this memory is currently an orphan (see \`graph lint\`).`
+              : `no structural neighbours within depth ${depth ?? 1} for this ${status} memory.`,
+          );
+          return;
+        }
+        for (const h of hits) {
+          const n = nodes.find((x) => x.id === h.id)!;
+          console.log(
+            `- ${h.id} (depth ${h.depth}) ${h.via.type} ${h.via.provenance}/${h.via.confidence} (${h.via.via})` +
+              ` [${n.status}] ${n.body.replace(/\s+/g, " ").trim().slice(0, 120)}`,
+          );
+        }
+      });
+      return;
+    }
+
+    if (sub === "path") {
+      const a = rest[1];
+      const b = rest[2];
+      if (!a || !b) usage();
+      syncThen(() => {
+        ensureGraph(project.key, cfg);
+        const nodes = loadGraphNodes(project.key);
+        for (const id of [a, b]) {
+          if (!nodes.some((n) => n.id === id)) {
+            console.error(`path: no memory with id ${id} in scope ${project.key}.`);
+            process.exit(1);
+          }
+        }
+        const p = shortestPath(a, b, loadGraphEdges(project.key), nodes.map((n) => n.id), {
+          maxDepth: depth ?? 4,
+        });
+        if (!p.found) {
+          console.log(
+            `no path found between ${a} and ${b} within depth ${depth ?? 4}. Weaker links (single shared tags) exist outside the built edge cap — \`graph neighbours\` per side may still connect them.`,
+          );
+          return;
+        }
+        console.log(`${a} [${nodes.find((n) => n.id === a)!.status}]`);
+        for (const h of p.hops) {
+          console.log(`  --(${h.type} ${h.provenance}/${h.confidence} via ${h.via})-->`);
+          console.log(`${h.to} [${nodes.find((n) => n.id === h.to)!.status}]`);
+        }
+      });
+      return;
+    }
+    if (sub === "lint") {
+      syncThen(() => {
+        ensureGraph(project.key, cfg);
+        // Cross-scope ids (e.g. a propose copy's personal original) are not
+        // findings — lint skips endpoints the store knows about.
+        const f = lintGraph(loadGraphNodes(project.key), loadGraphEdges(project.key), loadAllMemoryIds());
+        const counts = {
+          orphan: 0,
+          "dangling-edge": 0,
+          stale: 0,
+        };
+        for (const x of f) counts[x.kind]++;
+        if (flags.json === "true") {
+          console.log(JSON.stringify({ findings: f, counts }, null, 2));
+          return;
+        }
+        console.log(
+          `graph lint (${project.key}): ${f.length} finding(s) — orphans ${counts.orphan}, dangling ${counts["dangling-edge"]}, stale ${counts.stale}. Reports only — a human decides; nothing is auto-resolved.`,
+        );
+        for (const x of f) {
+          console.log(`  [${x.kind}] ${x.id}${x.other ? ` ↔ ${x.other}` : ""}: ${x.detail}`);
+        }
+        if (f.length > 0) {
+          console.log(`feed these to the review flow when curating; D78's pre-submit lint consumes the same report later.`);
+        }
+      });
+      return;
+    }
+
+    if (sub === "outline") {
+      syncThen(() => {
+        const g = ensureGraph(project.key, cfg);
+        if (!g || !g.outline) {
+          console.log("no compiled outline for this scope yet — `graph build` creates one.");
+          return;
+        }
+        console.log(`outline built ${g.builtAt} (${g.nodes} memories / ${g.edges} edges):`);
+        for (const line of g.outline.split("\n")) console.log(line);
+      });
+      return;
+    }
+
+    usage();
+  }
+
   // `config` prints the effective configuration (defaults + file). No DB needed.
   // `config set <key> <value>` persists a setting to the config file.
   if (cmd === "config") {
@@ -1201,6 +1371,8 @@ async function main() {
     const { filePath } = writeMemoryFile(fm, red);
     const mf = readMemoryFile(filePath);
     if (mf) upsertFromFile(mf);
+    // D91 ingest: refresh the project graph quietly (personal no-ops inside).
+    refreshGraphQuiet(s.key, cfg);
     console.log(`saved ${fm.id} [${s.kind}] -> ${filePath}`);
     if (hadSecret) {
       console.log(
@@ -1241,6 +1413,7 @@ async function main() {
       });
       upsertFromFile(oldMf);
       upsertFromFile(newMf);
+      refreshGraphQuiet(oldMf.fm.scope_key, cfg);
       console.log(`superseded ${oldMf.fm.id} → ${newMf.fm.id}`);
       if (hadSecret) {
         console.log(
@@ -1261,6 +1434,7 @@ async function main() {
     try {
       const mf = setStatus(id, st as "active" | "deprecated" | "retracted" | "archived");
       upsertFromFile(mf);
+      refreshGraphQuiet(mf.fm.scope_key, cfg);
       console.log(`status ${id} → ${mf.fm.status}`);
     } catch (e) {
       console.error(`status failed: ${(e as Error).message}`);
@@ -1275,12 +1449,13 @@ async function main() {
     // D68: --soft hides (retracts) instead of deleting — same action as
     // the memory_forget tool's soft flag. One-way (D64).
     if (rest.includes("--soft")) {
-      const target = db().prepare(`SELECT file_path FROM memories WHERE id = ?`).get(id) as
-        | { file_path: string }
+      const target = db().prepare(`SELECT file_path, scope_key FROM memories WHERE id = ?`).get(id) as
+        | { file_path: string; scope_key: string }
         | undefined;
       try {
         const mf = setStatus(id, "retracted");
         upsertFromFile(mf);
+        refreshGraphQuiet(mf.fm.scope_key, cfg);
         console.log(`hidden ${id} (retracted — out of lists and search; save it again as a new memory to bring it back)`);
         // D70: same honesty as the hard delete — a retraction of an in-repo
         // memory is a local working-tree edit until it is committed and pushed.
@@ -1295,8 +1470,8 @@ async function main() {
       }
       return;
     }
-    const row = db().prepare(`SELECT file_path FROM memories WHERE id = ?`).get(id) as
-      | { file_path: string }
+    const row = db().prepare(`SELECT file_path, scope_key FROM memories WHERE id = ?`).get(id) as
+      | { file_path: string; scope_key: string }
       | undefined;
     if (!row) {
       console.error("not found");
@@ -1317,6 +1492,8 @@ async function main() {
       }
     }
     deleteFromIndex(id);
+    // D91 ingest: the node left the graph — refresh its scope quietly.
+    refreshGraphQuiet(row.scope_key);
     // D77-L2: hard forget prunes the usage row with the memory (the tool
     // path does the same); branch-switch removals go through syncScope and
     // keep counters for that reason.

@@ -36,6 +36,7 @@ import {
 } from "./store/markdown.ts";
 import { findMemoryFile } from "./store/lifecycle.ts";
 import { upsertFromFile } from "./store/sync.ts";
+import { refreshGraphQuiet } from "./store/graph.ts";
 import { recordUseful } from "./store/usage.ts";
 
 /** Best-effort author identity: git user.name, else the OS user. */
@@ -144,6 +145,8 @@ function copyPersonalToProject(
   // approved state, so no later step would otherwise count it — and the
   // later `approved → published` promote stays non-counting for both paths.
   if (targetState === "approved") recordUseful(fm.id, "team", "promote");
+  // D91 ingest: a propose-copy is a new project node (derived_from edge).
+  refreshGraphQuiet(project.key);
   return { id: fm.id, filePath, reviewState: fm.review_state };
 }
 
@@ -261,6 +264,12 @@ export function promoteMemory(
   // published transition passes through approved and does not re-count.
   // Always useful_team: promoteMemory is project-only by contract above.
   if (to === "approved") recordUseful(id, "team", "promote");
+  // D91 ingest: keep the write-path invariant uniform — every mutating
+  // review transition refreshes the owning scope's graph, even though a
+  // promote changes no node/edge field the extractor reads today. The
+  // refresh is cheap and the invariant ("all mutating paths refresh") is
+  // what keeps the layer from drifting as new fields are added.
+  refreshGraphQuiet(mf.fm.scope_key);
   return { id, from, to, history: fm.review_history };
 }
 

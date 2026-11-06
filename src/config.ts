@@ -23,6 +23,14 @@ export interface MyOMemoryConfig {
    */
   workingStateEnabled: boolean;
   workingStateTtlDays: number;
+  /**
+   * D91: the compiled project memory map (§20.4). `graphOutline` gates the
+   * session-start injection of the outline; `graphOutlineLines` caps its
+   * size (the injection-cost discipline — topics stay compact, details
+   * stay on-demand via graph neighbours/search).
+   */
+  graphOutline: boolean;
+  graphOutlineLines: number;
   /** Patterns whose capture group 1 becomes the memory body; saved to the current scope. */
   keywordPatterns: string[];
   /** Same shape, but hits are forced into the personal scope (e.g. "remember for me"). */
@@ -53,6 +61,8 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   captureAliases: true,
   workingStateEnabled: true,
   workingStateTtlDays: 7,
+  graphOutline: true,
+  graphOutlineLines: 10,
   keywordPatterns: [
     "^\\s*remember(?!\\s+for\\s+me)(?:\\s+that|\\s+to)?[:,]?\\s+(.+)$",
     "^\\s*(?:please\\s+)?note(?:\\s+that)?[:,]?\\s+(.+)$",
@@ -197,6 +207,13 @@ export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
   workingStateTtlDays: (v) => {
     const n = toNonNegInt(v);
     if (n < 1) throw new Error("must be a positive integer (days)");
+    return n;
+  },
+  graphOutline: toBool,
+  graphOutlineLines: (v) => {
+    const n = toNonNegInt(v);
+    if (n < 1) throw new Error("must be a positive integer (topic lines)");
+    if (n > 30) throw new Error("must be 30 or less — the injected outline stays compact");
     return n;
   },
   memoryDir: toRelativeDir,

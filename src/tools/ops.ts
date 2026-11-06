@@ -40,6 +40,7 @@ import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "../github.ts";
 import { isInRepoMemoryFile } from "../paths.ts";
+import { refreshGraphQuiet } from "../store/graph.ts";
 import {
   writeWorkingState,
   readWorkingState,
@@ -431,6 +432,9 @@ export async function addMemory(
   const { filePath } = writeMemoryFile(fm, redacted);
   const mf = readMemoryFile(filePath);
   if (mf) upsertFromFile(mf);
+  // D91 ingest: the project graph (edges + compiled outline) refreshes on
+  // the write path — quiet, never fails the save.
+  refreshGraphQuiet(s.key, cfg);
   let output = `Saved to ${s.kind} scope (${s.key}) as ${fm.type}. id=${fm.id}${secretNote}`;
   for (const n of dups.near) {
     output += `\nNote: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id} — ${n.snippet}. Use memory_supersede if this replaces it.`;
@@ -561,6 +565,8 @@ export async function supersedeMemory(
     });
     upsertFromFile(oldMf);
     upsertFromFile(newMf);
+    // D91 ingest: the chain has changed — refresh the owning scope quietly.
+    refreshGraphQuiet(oldMf.fm.scope_key, cfg);
     return {
       title: `memory: superseded ${oldMf.fm.id}`,
       output: `Replaced ${oldMf.fm.id} with ${newMf.fm.id} (old kept as history).${secretNote}`,
@@ -575,8 +581,8 @@ export async function supersedeMemory(
 
 export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> {
   const row = db()
-    .prepare(`SELECT file_path FROM memories WHERE id = ?`)
-    .get(args.id) as { file_path: string } | undefined;
+    .prepare(`SELECT file_path, scope_key FROM memories WHERE id = ?`)
+    .get(args.id) as { file_path: string; scope_key: string } | undefined;
   if (!row) {
     return { title: "memory: not found", output: `No memory with id ${args.id}.` };
   }
@@ -587,6 +593,7 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
     try {
       const mf = setStatus(args.id, "retracted");
       upsertFromFile(mf);
+      refreshGraphQuiet(row.scope_key);
       return {
         title: "memory: hidden",
         output:
@@ -624,6 +631,8 @@ export async function forgetMemory(args: MemoryForgetArgs): Promise<ToolResult> 
   // Only the hard path prunes the usage row; status flips and index removal
   // (branch switches remove in-repo files transiently) keep it.
   deleteUsage(args.id);
+  // D91 ingest: a node left the graph — refresh its scope quietly.
+  refreshGraphQuiet(row.scope_key);
   // D64: forgetting an in-repo memory deletes a file inside the user's
   // git working tree. Say so — the deletion should ride a commit, or the
   // file silently diverges from what teammates have.

@@ -4,13 +4,14 @@
  * memory rows already on this machine.
  *
  * Borrowing Graphify's tree-sitter principle (§20.5): structure is
- * *extracted*, not inferred. What the memory states in frontmatter
- * (supersedes chain, derived_from) and in its body (an explicit mention of
- * another memory's id) becomes an EXTRACTED edge — explicit evidence in
- * the source, confidence `high`. What the system merely notices (two
- * active memories sharing a tag) is an INFERRED edge — a suggestion, never
- * presented as a fact (§11's trust model). Inferred edges are always
- * marked, so a graph hit can never quietly become "the source said so".
+ * *extracted*, not inferred. What the memory states explicitly in
+ * frontmatter (supersedes chain, derived_from) and in its body (a
+ * `[[wiki-link]]` around another memory's id) becomes an EXTRACTED edge —
+ * evidence the source itself wrote, confidence `high`. What the system
+ * merely notices (a bare id in prose, two active memories sharing a tag)
+ * is an INFERRED edge — a suggestion, never presented as a fact (§11's
+ * trust model). Inferred edges are always marked, so a graph hit can never
+ * quietly become "the source said so".
  *
  * Whether `related` enters the frontmatter is a v0.3 protocol decision
  * (§20.8); until then edges live only in this derived layer. The layer is
@@ -68,7 +69,15 @@ export function sharedTagConfidence(sharedCount: number): Confidence {
  * like `FLATBATTERYWELLSXXQZABCDEF` is a word, not an id, and an EXTRACTED
  * edge means the source said it explicitly.
  */
-const ULID_RE = /(?<![0-9A-Z])[0-9A-HJKMNP-TV-Z]{26}(?![0-9A-Z])/g;
+const ULID_BODY = "[0-9A-HJKMNP-TV-Z]{26}";
+
+/**
+ * A `[[ULID]]` wiki-link is the writer's explicit statement that this is a
+ * reference — EXTRACTED. A bare ULID is an id typed in prose: the system
+ * noticed it, it was not marked as a link — INFERRED (§20.3, D91).
+ */
+const WIKI_LINK_RE = new RegExp(`\\[\\[(${ULID_BODY})\\]\\]`, "g");
+const BARE_ULID_RE = new RegExp(`(?<![0-9A-Z])${ULID_BODY}(?![0-9A-Z])`, "g");
 
 /**
  * Per-node cap on INFERRED shared-tag edges. A dense tag vocabulary would
@@ -100,11 +109,12 @@ const pairKey = (a: string, b: string) => (a < b ? `${a}\u0000${b}` : `${b}\u000
  *
  * - `supersedes`   — frontmatter chain, new → old (EXTRACTED / high).
  * - `derived-from` — frontmatter `derived_from`, copy → original (EXTRACTED / high).
- * - `relates-to`   — EXTRACTED when one body explicitly mentions another
- *                    memory's ULID; INFERRED (with the shared-tag
- *                    confidence ladder) when two active memories share
- *                    tags. One edge per unordered pair; the EXTRACTED
- *                    body-mention beats the INFERRED link for the same pair.
+ * - `relates-to`   — EXTRACTED when one body wraps another memory's ULID in
+ *                    `[[ ]]` (an explicit link); INFERRED/high when an id
+ *                    appears bare in prose; INFERRED at the shared-tag
+ *                    confidence ladder when two active memories share tags.
+ *                    One edge per unordered pair; an EXTRACTED body-mention
+ *                    beats the INFERRED links for the same pair.
  *
  * Edges are returned sorted (from, to, type) so two builds over the same
  * data produce byte-identical output — the graph must behave like a
@@ -140,14 +150,36 @@ export function extractEdges(nodes: GraphNode[]): GraphEdge[] {
   // lint enumerates it (graph/lint.ts); the query layer simply never
   // traverses into a node that does not exist.
   for (const n of nodes) {
-    const mentioned = n.body.match(ULID_RE) ?? [];
-    for (const m of mentioned) {
-      if (m === n.id || m === n.supersedes || m === n.derived_from) continue;
+    const skip = new Set<string>(
+      [n.id, n.supersedes, n.derived_from].filter((x): x is string => Boolean(x)),
+    );
+    // Explicit wiki-links first so dedupInsert keeps the EXTRACTED edge
+    // when the same pair is also mentioned bare somewhere in the body.
+    for (const m of n.body.matchAll(WIKI_LINK_RE)) {
+      const id = m[1]!;
+      if (skip.has(id)) continue;
       dedupInsert(raw, {
         from: n.id,
-        to: m,
+        to: id,
         type: "relates-to",
         provenance: "EXTRACTED",
+        confidence: "high",
+        via: "wiki-link",
+      });
+    }
+    // Bare ids: the system noticed an id in prose, the writer did not link
+    // it — INFERRED/high (a 26-char id is an unambiguous id, not a guess;
+    // the uncertainty is about the *relationship*, hence not EXTRACTED).
+    // Strip the wiki-links first so they are not counted twice.
+    const bare = n.body.replace(WIKI_LINK_RE, " ");
+    for (const m of bare.matchAll(BARE_ULID_RE)) {
+      const id = m[0];
+      if (skip.has(id)) continue;
+      dedupInsert(raw, {
+        from: n.id,
+        to: id,
+        type: "relates-to",
+        provenance: "INFERRED",
         confidence: "high",
         via: "body-mention",
       });

@@ -201,8 +201,8 @@ components **only by medium+ edges** (universal-tag collapse guard; fixture in
 `smoke-pure.ts`) and is injected once at session start (`graphOutline`,
 `graphOutlineLines`; exposure counts as D77 `retrieved`, never useful).
 Every mutating path must call `refreshGraphQuiet` after the write — if you add
-one (new tool, CLI verb, review transition), add the refresh in the same
-change. The graph covers the cwd's **project** scope only (no `--scope`, personal
+one (new tool, CLI verb, keyword-capture pattern, review transition), add the
+refresh in the same change. The graph covers the cwd's **project** scope only (no `--scope`, personal
 never graphs) and the interface is **CLI only** — the MCP surface stays at
 thirteen tools. `graph lint` reports only (orphans / dangling / stale); an edge
 endpoint that exists in *another* scope is a legitimate foreign link (a propose

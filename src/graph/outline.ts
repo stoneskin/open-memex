@@ -87,6 +87,11 @@ export function renderOutline(
   for (const e of edges) {
     if (e.provenance !== "INFERRED") continue;
     if (e.confidence !== "medium" && e.confidence !== "high") continue;
+    // Only shared-tag evidence creates topics. A supersede chain, a
+    // derive copy or a body mention (even an INFERRED bare-id mention) is
+    // a query/lint relation, not topic glue — otherwise two memories with
+    // no common subject could form a "related" topic.
+    if (!e.via.startsWith("shared-tag:")) continue;
     if (!byId.has(e.from) || !byId.has(e.to)) continue;
     uf.union(e.from, e.to);
   }

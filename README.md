@@ -893,7 +893,8 @@ A derived, rebuildable graph over the **current project's** memories (D91, §20
 deterministic half) — it answers "what is in memory and how is it connected"
 without searching, and it never touches the Markdown source of truth. Structural
 edges only, no LLM: `supersedes` chains, `derived-from` propose copies,
-`[[wiki-link]]` / ULID body mentions, and shared-tag co-membership at a fixed
+`[[wiki-link]]` body mentions (EXTRACTED) and bare-ULID mentions (INFERRED),
+and shared-tag co-membership at a fixed
 confidence ladder (1 tag → low, 2 → medium, ≥3 → high). Every edge is marked
 `EXTRACTED` (structural fact) or `INFERRED` (heuristic) with its receipt.
 

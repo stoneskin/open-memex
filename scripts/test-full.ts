@@ -461,7 +461,7 @@ ok("migrate personal→project runs", r.code === 0, (r.err || r.out).slice(0, 15
   const cols = (after.prepare("PRAGMA table_info(memories)").all() as { name: string }[]).map((c) => c.name);
   after.close();
   ok("D87: stale store migrates to current schema (v10 since D91)", ver === 10, `user_version=${ver}`);
-  ok("D87: migrated table has alias/target/expansions", ["alias", "target", "expansions"].every((c) => cols.includes(c)), cols.join(","));
+  ok("D87: migrated table has alias/target/expansions/derived_from", ["alias", "target", "expansions", "derived_from"].every((c) => cols.includes(c)), cols.join(","));
 }
 
 // ---------- 10. capture / doctor / mcp --print-config / init ----------
@@ -1071,10 +1071,10 @@ ${body}
 
   // Path: two hops through a live body mention added after the last build
   // (write-path refresh must keep the graph current without `graph build`).
-  const gTail = addMem([`graph D91 follow up ${gOrphan} when parser lands`, "--tag", "followup"], graphProj);
+  const gTail = addMem([`graph D91 follow up [[${gOrphan}]] when parser lands`, "--tag", "followup"], graphProj);
   r = cli(["graph", "path", gOrphan, gTail], graphProj);
   ok(
-    "path builds the hop chain from a body-mention edge",
+    "path builds the hop chain from a wiki-link edge",
     r.out.includes(gOrphan) && r.out.includes(gTail) && /relates-to EXTRACTED\/high/.test(r.out),
     r.out.slice(0, 300),
   );

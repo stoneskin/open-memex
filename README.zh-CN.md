@@ -585,7 +585,7 @@ open-memex wstate --clear    # 删除
 
 ## 知识图谱
 
-一张派生、可重建的图谱，覆盖**当前项目作用域**的记忆（D91，§20 确定性那一半）——不用搜索就能回答"记忆里有什么、彼此怎么连"，且永远不碰 Markdown 真源。只抽取结构边、不调用 LLM：`supersedes` 取代链、`derived-from` propose 副本、`[[wiki-link]]` / ULID 正文提及，以及共享标签的固定置信阶梯（1 个标签 → low，2 个 → medium，≥3 个 → high）。每条边都标注 `EXTRACTED`（结构事实）或 `INFERRED`（启发式）并附推导凭据。
+一张派生、可重建的图谱，覆盖**当前项目作用域**的记忆（D91，§20 确定性那一半）——不用搜索就能回答"记忆里有什么、彼此怎么连"，且永远不碰 Markdown 真源。只抽取结构边、不调用 LLM：`supersedes` 取代链、`derived-from` propose 副本、`[[wiki-link]]` 正文链接（EXTRACTED）与裸 ULID 提及（INFERRED），以及共享标签的固定置信阶梯（1 个标签 → low，2 个 → medium，≥3 个 → high）。每条边都标注 `EXTRACTED`（结构事实）或 `INFERRED`（启发式）并附推导凭据。
 
 图谱在每次写入记忆时自动刷新。一份**编译大纲**（medium+ 置信度的连通分量，带截断披露）会在会话开始时与工作状态笔记一起注入一次；用 `config set graphOutline false` 关闭，`graphOutlineLines` 调长度（默认 10，上限 30）。personal 作用域永不入图。
 

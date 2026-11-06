@@ -1139,13 +1139,13 @@ console.log("== D91 graph: extract / outline / queries / lint ==");
 
   {
     const edges = extractEdges([
-      node({ id: ID_A, body: `see ${ID_B} for the checklist` }),
+      node({ id: ID_A, body: `see [[${ID_B}]] for the checklist` }),
       node({ id: ID_B, tags: ["deploy", "ci"] }),
       node({ id: ID_C, tags: ["deploy", "ci"] }),
       node({ id: ID_D, tags: ["deploy"] }),
     ]);
-    ok("body mention is EXTRACTED/high relates-to",
-      edges.some((e) => e.from === ID_A && e.to === ID_B && e.provenance === "EXTRACTED" && e.confidence === "high" && e.via === "body-mention"));
+    ok("[[wiki-link]] mention is EXTRACTED/high relates-to",
+      edges.some((e) => e.from === ID_A && e.to === ID_B && e.provenance === "EXTRACTED" && e.confidence === "high" && e.via === "wiki-link"));
     ok("two shared tags → INFERRED/medium, canonical pair order",
       edges.some((e) => e.from === ID_B && e.to === ID_C && e.provenance === "INFERRED" && e.confidence === "medium" && e.via === "shared-tag:ci,deploy"));
     ok("one shared tag → INFERRED/low",
@@ -1153,10 +1153,23 @@ console.log("== D91 graph: extract / outline / queries / lint ==");
   }
 
   {
+    // A bare ULID in prose is an INFERRED edge (D91/§20.3): the writer
+    // typed an id but did not mark it as a link, so it is never presented
+    // as evidence the source stated a relationship.
+    const edges = extractEdges([
+      node({ id: ID_A, body: `follow up ${ID_B} when parser lands` }),
+      node({ id: ID_B }),
+    ]);
+    ok("bare ULID mention is INFERRED/high relates-to",
+      edges.some((e) => e.from === ID_A && e.to === ID_B && e.type === "relates-to" && e.provenance === "INFERRED" && e.confidence === "high" && e.via === "body-mention"),
+      JSON.stringify(edges));
+  }
+
+  {
     // Exhaustive collapse: an EXTRACTED body-mention wins the pair over
     // the INFERRED shared-tag edge.
     const edges = extractEdges([
-      node({ id: ID_A, body: `as in ${ID_B}, deploy first`, tags: ["deploy", "ci", "ops"] }),
+      node({ id: ID_A, body: `as in [[${ID_B}]], deploy first`, tags: ["deploy", "ci", "ops"] }),
       node({ id: ID_B, tags: ["deploy", "ci", "ops"] }),
     ]);
     const rel = edges.filter((e) => e.type === "relates-to");

@@ -23,6 +23,7 @@ import { MEMORIES, QUERIES } from "./retrieval-eval/fixture.ts";
 import { serialize, normalizeFrontmatter } from "../src/store/markdown.ts";
 import { syncScope } from "../src/store/sync.ts";
 import { search } from "../src/retrieve/search.ts";
+import { recordRetrieved, recordUseful } from "../src/store/usage.ts";
 import { memoriesDirPath } from "../src/paths.ts";
 
 const K = 5;
@@ -44,6 +45,15 @@ for (const m of MEMORIES) {
   fs.writeFileSync(path.join(dir, `${m.id}.md`), serialize(fm, m.body), "utf8");
 }
 const stats = syncScope("personal");
+// D79: seed the D77-L2 counters the feedback slice needs. This is the
+// "telemetry a real user already produced" — written through the same store
+// API as the tool surfaces, not injected into the ranking. The baseline
+// (feedback off) ignores it; the weighted run reads it.
+for (const m of MEMORIES) {
+  if (!m.usage) continue;
+  for (let i = 0; i < m.usage.retrieved; i++) recordRetrieved([m.id]);
+  for (let i = 0; i < (m.usage.usefulSelf ?? 0); i++) recordUseful(m.id, "self", "tool");
+}
 console.log(`seeded ${MEMORIES.length} memories (indexed: ${stats.added})\n`);
 
 // --- run ---

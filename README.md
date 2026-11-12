@@ -570,13 +570,13 @@ the opencode plugin injects it directly on the first turn.
 ### Retrieval evaluation
 
 We measure recall on a checked-in synthetic fixture instead of asserting it:
-54 memories + 44 queries (exact terms, paraphrases, synonyms, Chinese,
-cross-language hard cases, synonym-only queries, and D81 user-defined
-alias queries) — reproduce with
+60 memories + 47 queries (exact terms, paraphrases, synonyms, Chinese,
+cross-language hard cases, synonym-only queries, D81 user-defined alias
+queries, and a D79 reuse-signal slice) — reproduce with
 `node --experimental-strip-types scripts/retrieval-eval.ts`.
 Current baseline, with index-time synonym/translation expansion (D80) and
-query-time user alias expansion (D81):
-**recall@1 0.75, recall@5 0.98, MRR 0.86**.
+query-time user alias expansion (D81), feedback weighting off by default:
+**recall@1 0.66, recall@5 0.98, MRR 0.80**.
 Small synthetic corpus, so read it as a regression guard and a starting point,
 not a real-world claim.
 

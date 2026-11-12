@@ -1,13 +1,15 @@
 /**
  * Synthetic retrieval-eval fixture (D77).
  *
- * 54 personal-scope memories + 44 queries with gold ids. Written BEFORE
+ * 60 personal-scope memories + 47 queries with gold ids. Written BEFORE
  * running the eval — the fixture is the test, not tuned to the results.
  * All memories share one scope/tier so the measured ranking is pure BM25.
  * Mixed EN/ZH; includes paraphrase and synonym queries (the hard cases
  * from the retrieval-robustness question), near-duplicate distractors,
- * and D81 user-defined alias vocabulary (bidirectional query-time
- * expansion: 香蕉计划 ↔ 支付系统重构项目).
+ * D81 user-defined alias vocabulary (bidirectional query-time expansion:
+ * 香蕉计划 ↔ 支付系统重构项目), and a 3-query D79 feedback slice where
+ * the gold memory carries useful-reuse counters and a retrieved-only
+ * distractor can outrank it on plain BM25.
  */
 
 export interface FixtureMemory {
@@ -18,6 +20,14 @@ export interface FixtureMemory {
   /** D81: user-defined alias vocabulary (nickname → referent). */
   alias?: string;
   target?: string;
+  /**
+   * D79 (first slice): seed D77-L2 telemetry for this memory before the eval
+   * runs. `retrieved` is written via recordRetrieved, `usefulSelf` via
+   * recordUseful. The retrieval-eval search calls pass `record: false`, so
+   * these are the only counters the run sees — and the baseline (feedback
+   * off) ignores them entirely.
+   */
+  usage?: { retrieved: number; usefulSelf?: number };
   body: string;
 }
 
@@ -25,6 +35,8 @@ export interface FixtureQuery {
   query: string;
   gold: string[];
   note: string;
+  /** Optional reporting slice, e.g. "feedback" for the D79 weighting rows. */
+  slice?: string;
 }
 
 export const MEMORIES: FixtureMemory[] = [
@@ -113,6 +125,53 @@ export const MEMORIES: FixtureMemory[] = [
   { id: "mem-052", type: "fact", tags: ["alias"], alias: "香蕉计划", target: "支付系统重构项目", body: "香蕉计划是支付系统重构项目的内部代号，团队日常用香蕉计划指代这个项目。" },
   { id: "mem-053", type: "decision", tags: ["backend"], body: "支付系统重构项目决定用 Go 重写网关层，Q4 启动。" },
   { id: "mem-054", type: "fact", tags: ["planning"], body: "香蕉计划下周一启动评审，材料周五前提交。" },
+
+  // ---- D79 feedback slice: near-tied pairs, one confirmed useful, one only retrieved ----
+  // Each pair is on-topic and similar in length; the distractor repeats the
+  // query vocabulary more often, so plain BM25 can put it first. The gold
+  // memory carries the D77 counters a real user would have produced.
+  {
+    id: "mem-055",
+    type: "decision",
+    tags: ["deploy", "release"],
+    usage: { retrieved: 6, usefulSelf: 3 },
+    body: "The production release train leaves every Thursday at 10:00 from the release branch. Hotfixes need the TL to announce the reason in the release channel; no Friday deploys.",
+  },
+  {
+    id: "mem-056",
+    type: "fact",
+    tags: ["deploy", "release"],
+    usage: { retrieved: 6 },
+    body: "Release channel and release branch rules: the release train schedule, release branch cut time, and release channel announcement template live in the runbook. Friday release questions go to the release channel.",
+  },
+  {
+    id: "mem-057",
+    type: "fact",
+    tags: ["database", "backup"],
+    usage: { retrieved: 5, usefulSelf: 3 },
+    body: "Database backups run daily at 02:00, keep thirty full copies, and a restore drill happens every quarter.",
+  },
+  {
+    id: "mem-058",
+    type: "fact",
+    tags: ["database", "backup"],
+    usage: { retrieved: 5 },
+    body: "Database backup policy: backup retention, backup restore drill, backup schedule, and database backup ownership are listed in the backup policy spreadsheet; daily backup jobs run from the database backup service.",
+  },
+  {
+    id: "mem-059",
+    type: "constraint",
+    tags: ["auth", "sso"],
+    usage: { retrieved: 5, usefulSelf: 3 },
+    body: "SSO through OIDC is mandatory for internal tools; password-only login was removed after the March credential-stuffing incident.",
+  },
+  {
+    id: "mem-060",
+    type: "fact",
+    tags: ["auth", "sso"],
+    usage: { retrieved: 5 },
+    body: "Auth policy: SSO provider config, OIDC login flow, password login removal checklist, and SSO provider ownership are documented in the auth policy wiki; internal tools login through the SSO provider.",
+  },
 ];
 
 export const QUERIES: FixtureQuery[] = [
@@ -179,4 +238,9 @@ export const QUERIES: FixtureQuery[] = [
   { query: "香蕉计划用什么语言重写网关", gold: ["mem-053"], note: "alias→target: round 2 must find mem-053 via 支付系统重构项目" },
   { query: "支付系统重构项目什么时候启动评审", gold: ["mem-054"], note: "target→alias: round 2 must find mem-054 via 香蕉计划" },
   { query: "香蕉计划是哪个项目的代号", gold: ["mem-052"], note: "alias memory itself, round 1" },
+
+  // ---- D79 feedback slice (gold = the memory with confirmed useful reuse) ----
+  { query: "release train schedule release branch thursday", gold: ["mem-055"], note: "feedback: useful mem vs retrieved-only distractor", slice: "feedback" },
+  { query: "database backup retention restore drill schedule", gold: ["mem-057"], note: "feedback: useful mem vs retrieved-only distractor", slice: "feedback" },
+  { query: "SSO OIDC internal tools password login", gold: ["mem-059"], note: "feedback: useful mem vs retrieved-only distractor", slice: "feedback" },
 ];

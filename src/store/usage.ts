@@ -122,6 +122,31 @@ export function recordUseful(
   return getUsage(id)!;
 }
 
+/**
+ * D79: batch-read the counters a search ranking needs, keyed by id. One
+ * query per retrieval pass, not one per candidate; missing ids are simply
+ * absent (no exposure yet), never synthesized.
+ */
+export function loadUsageForIds(ids: readonly string[]): Map<string, MemoryUsage> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+  const rows = db()
+    .prepare(
+      `SELECT id, retrieved_count, useful_self, useful_team,
+              last_retrieved_at, last_useful_at, updated_at
+       FROM memory_usage WHERE id IN (${unique.map(() => "?").join(",")})`,
+    )
+    .all(...(unique as unknown[])) as MemoryUsage[];
+  const map = new Map<string, MemoryUsage>();
+  for (const row of rows) {
+    row.retrieved_count = Number(row.retrieved_count) || 0;
+    row.useful_self = Number(row.useful_self) || 0;
+    row.useful_team = Number(row.useful_team) || 0;
+    map.set(row.id, row);
+  }
+  return map;
+}
+
 export function getUsage(id: string): MemoryUsage | null {
   const row = db()
     .prepare(

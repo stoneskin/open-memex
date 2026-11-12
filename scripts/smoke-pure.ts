@@ -10,6 +10,11 @@ import { cjkIndexText, cjkQueryExpr, hasCjk } from "../src/retrieve/cjk.ts";
 import { toFtsQuery } from "../src/retrieve/query.ts";
 import { expansionVariantsForDoc, MAX_AUTO_VARIANTS } from "../src/retrieve/synonyms.ts";
 import { BM25_WEIGHTS, DEFAULT_EXPANSIONS_WEIGHT } from "../src/retrieve/weights.ts";
+import {
+  applyFeedbackRanking,
+  FEEDBACK_MIN_RETRIEVED,
+  DEFAULT_FEEDBACK_BAND_RATIO,
+} from "../src/retrieve/feedback.ts";
 import { formatReuseReport } from "../src/reuse-report.ts";
 import {
   planAliasExpansions,
@@ -968,6 +973,45 @@ console.log("== D83 expansions BM25 weight + matchedVia ==");
   ok("expansions keeps non-zero weight (D80 rescue slice must survive)",
     BM25_WEIGHTS[3] > 0, String(BM25_WEIGHTS[3]));
   ok("body stays the strongest column", BM25_WEIGHTS[0] >= BM25_WEIGHTS[3], JSON.stringify(BM25_WEIGHTS));
+}
+
+console.log("== D79 feedback ranking (reuse signal) ==");
+{
+  const hits = [
+    { id: "fresh", score: 20 },
+    { id: "zombie", score: 18 },
+    { id: "proven", score: 17 },
+    { id: "far", score: 5 },
+  ];
+  const usage = new Map([
+    ["fresh", { retrieved: 1, useful: 0 }], // too few samples — must not move
+    ["proven", { retrieved: 6, useful: 3 }], // rate 0.5
+    ["zombie", { retrieved: 9, useful: 0 }], // enough samples, no useful
+  ]);
+  const r = applyFeedbackRanking(hits, usage);
+  const order = r.ordered.map((h) => h.id).join(",");
+  ok("fresh memory keeps its BM25 place (min sample guard)", order.startsWith("fresh"), order);
+  // proven starts BELOW zombie on BM25; this assertion fails if the reorder
+  // is a no-op (the old fixture already had proven above zombie).
+  ok(
+    "proven swaps above the higher-BM25 retrieved-only hit",
+    order === "fresh,proven,zombie,far",
+    `${hits.map((h) => h.id).join(",")} -> ${order}`,
+  );
+  ok("large score gap is not crossed", r.ordered[3]!.id === "far", order);
+  ok("ineligible vs eligible is reported", r.info.get("fresh")!.eligible === false && r.info.get("proven")!.eligible === true);
+  ok("reuse rate may exceed 1.0 (signal, not probability)", (() => {
+    const x = applyFeedbackRanking(
+      [{ id: "a", score: 10 }, { id: "b", score: 9 }],
+      new Map([["b", { retrieved: 2, useful: 4 }]]),
+    );
+    return x.info.get("b")!.rate === 2 && x.ordered[0]!.id === "a"; // 2 < min retrieved
+  })());
+  ok("min sample is 3 and band is 0.75", FEEDBACK_MIN_RETRIEVED === 3 && DEFAULT_FEEDBACK_BAND_RATIO === 0.75);
+  ok("empty usage map changes nothing", (() => {
+    const x = applyFeedbackRanking(hits, new Map());
+    return x.ordered.map((h) => h.id).join(",") === hits.map((h) => h.id).join(",");
+  })());
 }
 
 console.log("== D89 working-state note (§3.6) ==");

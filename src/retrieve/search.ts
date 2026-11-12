@@ -6,7 +6,14 @@ import {
   planAliasExpansions,
   mergeRounds,
 } from "./alias-memory.ts";
-import { recordRetrieved } from "../store/usage.ts";
+import { recordRetrieved, loadUsageForIds, usefulCount } from "../store/usage.ts";
+import {
+  applyFeedbackRanking,
+  FEEDBACK_MIN_RETRIEVED,
+  DEFAULT_FEEDBACK_BAND_RATIO,
+  type FeedbackHitInfo,
+  type FeedbackSignal,
+} from "./feedback.ts";
 
 /** D83: which indexed column a hit's match came from. */
 export type MatchedVia = "body" | "alias" | "expansion" | "other";
@@ -32,6 +39,12 @@ export interface SearchHit {
   /** D68: provenance + creation time for the plain-language inventory. */
   source: string;
   created_at: number;
+  /**
+   * D79: present only when feedback weighting ran for this search. `promoted`
+   * is how many places this hit moved up (0 = stayed put); a negative value
+   * would mean it moved down, which the band sort never does.
+   */
+  feedback?: FeedbackHitInfo & { promoted: number };
 }
 
 interface RawRow {
@@ -138,6 +151,19 @@ export interface SearchStats {
   hiddenExcluded: number;
   /** D81: query-time alias expansions actually run (rounds 2+, raw text). */
   aliasExpansions: string[];
+  /** D79: feedback-weighting state and the hits it moved up. */
+  feedback?: {
+    enabled: boolean;
+    minRetrieved: number;
+    bandRatio: number;
+    promotions: Array<{
+      id: string;
+      promoted: number;
+      rate: number | null;
+      retrieved: number;
+      useful: number;
+    }>;
+  };
 }
 
 /**
@@ -148,7 +174,17 @@ export interface SearchStats {
  *   drafts/rejected rank after unreviewed content;
  * - deprecated stays visible as a warning but ranks after active.
  */
-function resolveVisible(rows: RawRow[], limit: number, stats?: SearchStats): SearchHit[] {
+interface FeedbackOptions {
+  minRetrieved?: number;
+  bandRatio?: number;
+}
+
+function resolveVisible(
+  rows: RawRow[],
+  limit: number,
+  stats?: SearchStats,
+  feedback?: FeedbackOptions,
+): SearchHit[] {
   const byId = new Map(rows.map((r) => [r.id, r]));
   const fullRow = (id: string): RawRow | undefined => {
     const cached = byId.get(id);
@@ -198,7 +234,47 @@ function resolveVisible(rows: RawRow[], limit: number, stats?: SearchStats): Sea
     if (target.status === "deprecated") deprecated.push(hit);
     else tiers[reviewTier(target)].push(hit);
   }
-  return [...tiers[0], ...tiers[1], ...tiers[2], ...deprecated].slice(0, limit);
+  // D79: tiers are reordered independently, so feedback can never lift a
+  // draft over reviewed knowledge. Without feedback this is exactly the old
+  // concatenation.
+  const before = [...tiers[0], ...tiers[1], ...tiers[2], ...deprecated];
+  if (!feedback) return before.slice(0, limit);
+
+  const usageById = loadUsageForIds(before.map((h) => h.id));
+  const signals = new Map<string, FeedbackSignal>();
+  for (const [id, u] of usageById) {
+    signals.set(id, { retrieved: u.retrieved_count, useful: usefulCount(u) });
+  }
+  const beforeRank = new Map(before.map((h, i) => [h.id, i]));
+  const infoById = new Map<string, FeedbackHitInfo>();
+  const ordered: SearchHit[] = [];
+  for (const tier of [...tiers, deprecated]) {
+    const r = applyFeedbackRanking(tier, signals, feedback);
+    ordered.push(...r.ordered);
+    for (const [id, info] of r.info) infoById.set(id, info);
+  }
+  ordered.forEach((h, i) => {
+    const info = infoById.get(h.id);
+    if (!info) return;
+    h.feedback = { ...info, promoted: (beforeRank.get(h.id) ?? i) - i };
+  });
+  if (stats) {
+    stats.feedback = {
+      enabled: true,
+      minRetrieved: feedback.minRetrieved ?? FEEDBACK_MIN_RETRIEVED,
+      bandRatio: feedback.bandRatio ?? DEFAULT_FEEDBACK_BAND_RATIO,
+      promotions: ordered
+        .filter((h) => (h.feedback?.promoted ?? 0) > 0)
+        .map((h) => ({
+          id: h.id,
+          promoted: h.feedback!.promoted,
+          rate: h.feedback!.rate,
+          retrieved: h.feedback!.retrieved,
+          useful: h.feedback!.useful,
+        })),
+    };
+  }
+  return ordered.slice(0, limit);
 }
 
 /**
@@ -230,6 +306,15 @@ export function search(
      * leave it off so fixture runs never pollute real telemetry.
      */
     record?: boolean;
+    /**
+     * D79: apply the D77 reuse-signal nudge inside near-tied BM25 bands.
+     * Default off — callers pass `cfg.feedbackWeighting`; the eval script
+     * passes both values to measure the delta. The score is never changed.
+     */
+    feedback?: boolean;
+    /** D79 ablation knobs; shipped defaults come from feedback.ts. */
+    feedbackMinRetrieved?: number;
+    feedbackBandRatio?: number;
   } = {},
 ): SearchHit[] {
   const qflags = { stopwords: opts.stopwords, orJoin: opts.orJoin, prefix: opts.prefix };
@@ -240,6 +325,12 @@ export function search(
     opts.stats.hiddenSuperseded = 0;
     opts.stats.hiddenExcluded = 0;
     opts.stats.aliasExpansions = [];
+    opts.stats.feedback = {
+      enabled: opts.feedback === true,
+      minRetrieved: opts.feedbackMinRetrieved ?? FEEDBACK_MIN_RETRIEVED,
+      bandRatio: opts.feedbackBandRatio ?? DEFAULT_FEEDBACK_BAND_RATIO,
+      promotions: [],
+    };
   }
   if (!q) return [];
   const limit = Math.max(1, Math.min(opts.limit ?? 8, 50));
@@ -337,7 +428,10 @@ export function search(
   // expands variants into the indexed aliases column at sync time), so
   // without a user alias the query side stays a single FTS round.
   if (opts.stats) opts.stats.candidates = merged.length;
-  const hits = resolveVisible(merged, limit, opts.stats);
+  const feedback = opts.feedback === true
+    ? { minRetrieved: opts.feedbackMinRetrieved, bandRatio: opts.feedbackBandRatio }
+    : undefined;
+  const hits = resolveVisible(merged, limit, opts.stats, feedback);
   // D77-L2: record only the ids actually returned — the candidate pool is
   // not an exposure, and #53 guarantees the cut below is the final result.
   if (opts.record && hits.length > 0) recordRetrieved(hits.map((h) => h.id));

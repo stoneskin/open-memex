@@ -73,7 +73,7 @@ export function makeTools(getScope: () => Scope, cfg: MyOMemoryConfig) {
     args: memorySearchArgs,
     async execute(args) {
       syncFirst();
-      return searchMemories(getScope, args);
+      return searchMemories(getScope, cfg, args);
     },
   });
 

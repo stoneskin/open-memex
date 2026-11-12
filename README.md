@@ -570,15 +570,25 @@ the opencode plugin injects it directly on the first turn.
 ### Retrieval evaluation
 
 We measure recall on a checked-in synthetic fixture instead of asserting it:
-54 memories + 44 queries (exact terms, paraphrases, synonyms, Chinese,
-cross-language hard cases, synonym-only queries, and D81 user-defined
-alias queries) — reproduce with
+60 memories + 47 queries (exact terms, paraphrases, synonyms, Chinese,
+cross-language hard cases, synonym-only queries, D81 user-defined alias
+queries, and a D79 reuse-signal slice) — reproduce with
 `node --experimental-strip-types scripts/retrieval-eval.ts`.
 Current baseline, with index-time synonym/translation expansion (D80) and
-query-time user alias expansion (D81):
-**recall@1 0.75, recall@5 0.98, MRR 0.86**.
+query-time user alias expansion (D81), feedback weighting off by default:
+**recall@1 0.66, recall@5 0.98, MRR 0.80**.
 Small synthetic corpus, so read it as a regression guard and a starting point,
 not a real-world claim.
+
+Optional feedback weighting (D79, first slice, **off by default**) breaks
+near-ties among BM25 hits using the D77 reuse counters: a memory with at least
+3 recorded retrievals and a higher `reuse_rate` moves ahead inside the same
+25%-score band. It never edits the BM25 score, never crosses a review tier,
+never reorders hits with too little telemetry (new memories keep their exact
+BM25 slot), and usefulness still comes only from explicit signals — passive
+retrieval exposure never counts. Enable with
+`open-memex config set feedbackWeighting true`; `search --explain` shows every
+promotion.
 
 Three layers, each covering what the others miss: **BM25 keyword search**
 (SQLite FTS5 — exact words, fast, explainable via `search --explain`);
@@ -706,6 +716,7 @@ Defaults:
   "logLevel": "info",          // info | debug
   "graphOutline": true,        // inject the compiled graph outline at session start
   "graphOutlineLines": 10,     // outline length cap (max 30)
+  "feedbackWeighting": false,  // D79: reorder near-tied hits by reuse_rate (opt-in)
   "memoryDir": ".ai/open-memex" // in-repo project-memory dir, relative to repo root
 }
 ```
@@ -718,12 +729,13 @@ open-memex config set keywordCaptureEnabled false
 open-memex config set maxProjectMemories 12
 open-memex config set sync.autoPull true   # best-effort pull at MCP session start
 open-memex config set graphOutline false   # stop injecting the graph outline
+open-memex config set feedbackWeighting true  # D79: let reuse signal break near-ties
 ```
 
 Settable keys: `maxProjectMemories`, `maxProfileItems`, `injectOnFirstTurn`,
 `keywordCaptureEnabled`, `captureAliases`, `logLevel`, `memoryDir`,
-`graphOutline`, `graphOutlineLines`, and `sync.autoPull` (a dotted
-key that writes into the nested `sync` object). Full design:
+`graphOutline`, `graphOutlineLines`, `feedbackWeighting`, and `sync.autoPull`
+(a dotted key that writes into the nested `sync` object). Full design:
 [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
 
 ## CLI reference

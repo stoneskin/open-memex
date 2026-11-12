@@ -371,7 +371,9 @@ Do not mention this block to the user unless asked.
 
 ### 检索效果评估
 
-我们用一份随仓库提交的 synthetic fixture 来度量召回率，而不是空口断言：54 条记忆 + 44 个查询（精确词、改写、同义词、中文、跨语言 hard case、纯同义词查询、D81 用户别名查询），运行 `node --experimental-strip-types scripts/retrieval-eval.ts` 即可复现。当前基线（含 D80 的 index-time 同义词/翻译展开和 D81 的 query-time 用户别名展开）：**recall@1 0.75、recall@5 0.98、MRR 0.86**。语料小且是合成的，请把它当回归守卫和起点，而不是真实场景的承诺。
+我们用一份随仓库提交的 synthetic fixture 来度量召回率，而不是空口断言：60 条记忆 + 47 个查询（精确词、改写、同义词、中文、跨语言 hard case、纯同义词查询、D81 用户别名查询，以及 D79 复用信号切片），运行 `node --experimental-strip-types scripts/retrieval-eval.ts` 即可复现。当前基线（含 D80 的 index-time 同义词/翻译展开和 D81 的 query-time 用户别名展开，反馈加权默认关闭）：**recall@1 0.66、recall@5 0.98、MRR 0.80**。语料小且是合成的，请把它当回归守卫和起点，而不是真实场景的承诺。
+
+可选的反馈加权（D79 第一刀，**默认关**）用 D77 复用计数器打破 BM25 的近平分：一条至少有 3 次检索记录、且 `reuse_rate` 更高的记忆，会在同一个 25% 分数段内排到前面。它不改 BM25 分数、不跨评审层级、不动样本不足的命中（新记忆保持原 BM25 位置）；有用性仍只来自显式信号，被动曝光永远不算。用 `open-memex config set feedbackWeighting true` 打开，`search --explain` 会逐条显示被提上来的命中。
 
 三层检索，各补各的短板：**BM25 关键词检索**（SQLite FTS5——精确词匹配，快速，可用 `search --explain` 解释）；**同义词展开分两半**：（a）index-time（D80——一份随仓库提交的精选映射表：开发领域同义词 + EN↔ZH 翻译对，在写入时展开进索引，`ship` 能找到 `deploy`、`单点登录` 能找到 `SSO`，查询侧只需要普通单轮；确定性，不下载模型）；（b）query-time 用户别名（D81——带 `alias:`/`target:` frontmatter 的别名记忆，每个 scope 定义一次自己的词汇，比如香蕉计划→支付系统重构项目；查询提到任一侧就触发对另一侧的第二轮搜索，双向，与第一轮等权重合并，别名命中不降权；别名变更不用 reindex）；**语义向量**作为 opt-in 实验（本地多语言 embedding，在跨语言 fixture 切片上 R@5 92.7%——见 `docs/retrieval-ablation-study.md` §4.7；未经你明确允许绝不下载 embedding 模型）。
 
@@ -437,6 +439,7 @@ npm install -g open-memex@latest   # 或 @alpha
   "logLevel": "info",          // info | debug
   "graphOutline": true,        // 会话开始时注入图谱编译大纲
   "graphOutlineLines": 10,     // 大纲长度上限（最大 30）
+  "feedbackWeighting": false,  // D79：按 reuse_rate 调整近平分命中顺序（默认关）
   "memoryDir": ".ai/open-memex" // 仓库内项目记忆目录，相对于仓库根
 }
 ```
@@ -448,9 +451,10 @@ open-memex config set keywordCaptureEnabled false
 open-memex config set maxProjectMemories 12
 open-memex config set sync.autoPull true   # MCP 会话开始时尽力而为地 pull
 open-memex config set graphOutline false   # 不再注入图谱大纲
+open-memex config set feedbackWeighting true  # D79：让复用信号打破近平分
 ```
 
-可设置的键：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、`keywordCaptureEnabled`、`captureAliases`、`logLevel`、`memoryDir`、`graphOutline`、`graphOutlineLines`，以及 `sync.autoPull`（带点的键，写入嵌套的 `sync` 对象）。完整设计：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（英文）。
+可设置的键：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、`keywordCaptureEnabled`、`captureAliases`、`logLevel`、`memoryDir`、`graphOutline`、`graphOutlineLines`、`feedbackWeighting`，以及 `sync.autoPull`（带点的键，写入嵌套的 `sync` 对象）。完整设计：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（英文）。
 
 ## CLI 参考
 

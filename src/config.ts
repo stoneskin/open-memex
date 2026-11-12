@@ -31,6 +31,13 @@ export interface MyOMemoryConfig {
    */
   graphOutline: boolean;
   graphOutlineLines: number;
+  /**
+   * D79 (first slice): reorder near-tied BM25 hits by D77 reuse_rate. Off by
+   * default — the counters start empty on a new install, and the loop is
+   * only worth trusting once explicit useful signals exist. Flat key, so
+   * `loadConfig`'s shallow merge cannot drop it.
+   */
+  feedbackWeighting: boolean;
   /** Patterns whose capture group 1 becomes the memory body; saved to the current scope. */
   keywordPatterns: string[];
   /** Same shape, but hits are forced into the personal scope (e.g. "remember for me"). */
@@ -63,6 +70,7 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   workingStateTtlDays: 7,
   graphOutline: true,
   graphOutlineLines: 10,
+  feedbackWeighting: false,
   keywordPatterns: [
     "^\\s*remember(?!\\s+for\\s+me)(?:\\s+that|\\s+to)?[:,]?\\s+(.+)$",
     "^\\s*(?:please\\s+)?note(?:\\s+that)?[:,]?\\s+(.+)$",
@@ -210,6 +218,7 @@ export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
     return n;
   },
   graphOutline: toBool,
+  feedbackWeighting: toBool,
   graphOutlineLines: (v) => {
     const n = toNonNegInt(v);
     if (n < 1) throw new Error("must be a positive integer (topic lines)");

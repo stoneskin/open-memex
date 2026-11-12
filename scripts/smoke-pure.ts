@@ -1007,7 +1007,7 @@ console.log("== D79 feedback ranking (reuse signal) ==");
     );
     return x.info.get("b")!.rate === 2 && x.ordered[0]!.id === "a"; // 2 < min retrieved
   })());
-  ok("min sample is 3 and band is 0.8", FEEDBACK_MIN_RETRIEVED === 3 && DEFAULT_FEEDBACK_BAND_RATIO === 0.8);
+  ok("min sample is 3 and band is 0.75", FEEDBACK_MIN_RETRIEVED === 3 && DEFAULT_FEEDBACK_BAND_RATIO === 0.75);
   ok("empty usage map changes nothing", (() => {
     const x = applyFeedbackRanking(hits, new Map());
     return x.ordered.map((h) => h.id).join(",") === hits.map((h) => h.id).join(",");

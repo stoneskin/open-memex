@@ -27,10 +27,10 @@ export const FEEDBACK_MIN_RETRIEVED = 3;
 
 /**
  * A hit is in the same band as the band head while its score is at least
- * this fraction of the head's. 0.8 = within 20%, i.e. a near-tie, not a
+ * this fraction of the head's. 0.75 = within 25%, i.e. a near-tie, not a
  * relevance gap. Measured on the D79 fixture (see docs/design/decisions.md).
  */
-export const DEFAULT_FEEDBACK_BAND_RATIO = 0.8;
+export const DEFAULT_FEEDBACK_BAND_RATIO = 0.75;
 
 export interface FeedbackSignal {
   retrieved: number;

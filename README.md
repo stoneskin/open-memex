@@ -583,7 +583,7 @@ not a real-world claim.
 Optional feedback weighting (D79, first slice, **off by default**) breaks
 near-ties among BM25 hits using the D77 reuse counters: a memory with at least
 3 recorded retrievals and a higher `reuse_rate` moves ahead inside the same
-20%-score band. It never edits the BM25 score, never crosses a review tier,
+25%-score band. It never edits the BM25 score, never crosses a review tier,
 never reorders hits with too little telemetry (new memories keep their exact
 BM25 slot), and usefulness still comes only from explicit signals — passive
 retrieval exposure never counts. Enable with

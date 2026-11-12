@@ -979,8 +979,8 @@ console.log("== D79 feedback ranking (reuse signal) ==");
 {
   const hits = [
     { id: "fresh", score: 20 },
-    { id: "proven", score: 18 },
-    { id: "zombie", score: 17 },
+    { id: "zombie", score: 18 },
+    { id: "proven", score: 17 },
     { id: "far", score: 5 },
   ];
   const usage = new Map([
@@ -991,7 +991,13 @@ console.log("== D79 feedback ranking (reuse signal) ==");
   const r = applyFeedbackRanking(hits, usage);
   const order = r.ordered.map((h) => h.id).join(",");
   ok("fresh memory keeps its BM25 place (min sample guard)", order.startsWith("fresh"), order);
-  ok("proven memory is promoted inside its band", order === "fresh,proven,zombie,far", order);
+  // proven starts BELOW zombie on BM25; this assertion fails if the reorder
+  // is a no-op (the old fixture already had proven above zombie).
+  ok(
+    "proven swaps above the higher-BM25 retrieved-only hit",
+    order === "fresh,proven,zombie,far",
+    `${hits.map((h) => h.id).join(",")} -> ${order}`,
+  );
   ok("large score gap is not crossed", r.ordered[3]!.id === "far", order);
   ok("ineligible vs eligible is reported", r.info.get("fresh")!.eligible === false && r.info.get("proven")!.eligible === true);
   ok("reuse rate may exceed 1.0 (signal, not probability)", (() => {

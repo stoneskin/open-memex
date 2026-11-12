@@ -240,7 +240,7 @@ export async function runMcpServer() {
       inputSchema: z.object(memorySearchArgs),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    withSync((args) => toMcp(searchMemories(getScope, args))),
+    withSync((args) => toMcp(searchMemories(getScope, cfg, args))),
   );
 
   server.registerTool(

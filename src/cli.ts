@@ -9,7 +9,7 @@ import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
 import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatReviewHistory } from "./review.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
-import { search, list, countList, hitStateLabel } from "./retrieve/search.ts";
+import { search, list, countList, hitStateLabel, type SearchStats } from "./retrieve/search.ts";
 import { recordUseful, getUsage, reuseRate, usefulCount, usefulKindFor, deleteUsage, loadReuseReport } from "./store/usage.ts";
 import { formatReuseReport } from "./reuse-report.ts";
 import { DEFAULT_EXPANSIONS_WEIGHT } from "./retrieve/weights.ts";
@@ -123,8 +123,9 @@ Flags:
   --scope    project (default), personal, or both
   --type     filter by memory type
   --limit    max results
-  --explain  show the FTS expression, per-hit score, and how many matches
-             lifecycle hid (superseded / retracted / archived)
+  --explain  show the FTS expression, per-hit score, how many matches
+             lifecycle hid (superseded / retracted / archived), and whether
+             D79 feedback weighting moved any hit up
 
 Example:
   open-memex search "deploy checklist" --scope both`,
@@ -1254,8 +1255,8 @@ async function main() {
           ? [project.key]
           : [project.key, PERSONAL_SCOPE.key];
     const explain = flags.explain === "true";
-    const stats = explain
-      ? { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, aliasExpansions: [] as string[] }
+    const stats: SearchStats | undefined = explain
+      ? { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, aliasExpansions: [] }
       : undefined;
     const hits = search(query, {
       scopeKeys: keys,
@@ -1263,6 +1264,7 @@ async function main() {
       type: flags.type,
       stats,
       record: true,
+      feedback: cfg.feedbackWeighting,
     });
     if (explain && stats) {
       console.log(`fts: ${stats.ftsQuery || "(empty query)"}`);
@@ -1271,6 +1273,31 @@ async function main() {
       );
       if (stats.aliasExpansions.length > 0) {
         console.log(`alias rounds: ${stats.aliasExpansions.map((q) => `"${q}"`).join(" → ")}`);
+      }
+      // D79: say whether the reuse-signal nudge ran and exactly which hits it
+      // moved. The score column below stays the raw BM25 value — feedback
+      // reorders bands, it never edits the number.
+      if (stats.feedback) {
+        const fb = stats.feedback;
+        console.log(
+          `feedback weighting: ${
+            fb.enabled
+              ? `on (min retrieved=${fb.minRetrieved}, band=${fb.bandRatio})`
+              : "off (default; enable with: open-memex config set feedbackWeighting true)"
+          }`,
+        );
+        if (fb.enabled) {
+          if (fb.promotions.length === 0) {
+            console.log("  no hits moved by reuse signal");
+          } else {
+            for (const p of fb.promotions) {
+              const rate = p.rate === null ? "n/a" : p.rate.toFixed(2);
+              console.log(
+                `  ↑ ${p.id} +${p.promoted} (reuse ${rate}, retrieved=${p.retrieved}, useful=${p.useful})`,
+              );
+            }
+          }
+        }
       }
       // D83: which indexed column each hit matched on. `expansion` means the
       // hit only surfaced through a D80 derived variant, so it ranks below an

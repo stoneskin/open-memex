@@ -444,6 +444,7 @@ export async function addMemory(
 
 export async function searchMemories(
   getScope: () => Scope,
+  cfg: MyOMemoryConfig,
   args: MemorySearchArgs,
 ): Promise<ToolResult> {
   const project = getScope();
@@ -459,6 +460,7 @@ export async function searchMemories(
     limit: args.limit,
     type: args.type,
     record: true,
+    feedback: cfg.feedbackWeighting,
   });
   if (hits.length === 0) {
     return {

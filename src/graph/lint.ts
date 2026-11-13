@@ -81,11 +81,19 @@ export function lintGraph(
   }
 
   // Stale: active content that nearly duplicates a superseded/deprecated
-  // memory — the newer copy and the old chain never met.
+  // memory - the newer copy and the old chain never met. D78 merges exact
+  // duplicates INTO the chain, so an intentional chain link is not stale.
+  const chained = new Set<string>();
+  for (const e of edges) {
+    if (e.type !== "supersedes") continue;
+    chained.add(`${e.from}|${e.to}`);
+    chained.add(`${e.to}|${e.from}`);
+  }
   const retired = nodes.filter((n) => n.status === "superseded" || n.status === "deprecated");
   for (const n of nodes) {
     if (n.status !== "active") continue;
     for (const r of retired) {
+      if (chained.has(`${n.id}|${r.id}`)) continue;
       const score = similarity(n.body, r.body);
       if (score < NEAR_DUP_THRESHOLD) continue;
       findings.push({

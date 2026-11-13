@@ -105,6 +105,9 @@ them by these full names.
   open the PR, or will you handle it yourself?" NEVER create branches, push, or
   open PRs without the user's explicit approval. A "yes, you do it" covers the
   whole chain — do NOT re-ask at each step.
+- memory_submit prints its deterministic curation receipts (duplicate merges,
+  empty-body archives, title normalization) with undo commands. Relay them; do
+  not hide an automatic change to the user's memories.
 - BE PROACTIVE about facts the user states directly: when the user shares a
   decision, preference, project convention, or fix-and-cause worth remembering
   across sessions, call memory_add without being asked. Keep each memory to one

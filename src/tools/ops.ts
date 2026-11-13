@@ -35,6 +35,7 @@ import {
   loadReuseReport,
 } from "../store/usage.ts";
 import { formatReuseReport } from "../reuse-report.ts";
+import { formatCurationAction } from "../curate.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
@@ -94,7 +95,7 @@ export const TOOL_DESCRIPTIONS = {
   memory_status:
     "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed — plus the D77 reuse report: per-scope retrieved/useful rates, the most-reused memories, and \"zombies\" (retrieved but never confirmed useful). Call this at session start, when the server reports drafts waiting for review, when the user says 'sync memory' (or '同步记忆'), or when they ask what memory is pulling its weight. Then ask the user which drafts to sync. For the memories themselves use memory_list; for PR review state use memory_pr_status. (MCP server and the `open-memex sync-status` CLI; the opencode native plugin does not expose this tool.)",
   memory_submit:
-    "Move outbox drafts into the repo memory dir for review: copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically. (MCP server and the `open-memex submit` CLI; the opencode native plugin does not expose this tool.) Unknown ids or a failed local commit abort the submit with the reason; nothing is published automatically.",
+    "Move outbox drafts into the repo memory dir for review. Before copying, reports graph lint (never blocking) and auto-applies only deterministic curation: exact-duplicate merges, empty-body archives, and first-line title normalization. Near-duplicates are reported, never merged. Every applied action appears in the output with its undo command; pass noCurate=true to skip the auto-apply tier while keeping the lint report. Then copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically. (MCP server and the `open-memex submit` CLI; the opencode native plugin does not expose this tool.) Unknown ids or a failed local commit abort the submit with the reason; nothing is published automatically.",
   memory_propose:
     "Copy personal memories into the project outbox as review drafts. The personal originals stay put. Use this when personal knowledge should enter a project's review flow; memory_submit then moves the drafts into the repo, and memory_promote advances drafts already there. (MCP server and the `open-memex propose` CLI; the opencode native plugin does not expose this tool.)",
   memory_promote:
@@ -246,6 +247,10 @@ export const memorySubmitArgs = {
     .string()
     .optional()
     .describe("PR base branch override. Default: the branch the submit ran on."),
+  noCurate: z
+    .boolean()
+    .optional()
+    .describe("Skip the deterministic pre-submit auto-apply tier; the graph lint report still runs. Default false."),
 };
 export type MemorySubmitArgs = z.infer<z.ZodObject<typeof memorySubmitArgs>>;
 
@@ -704,8 +709,22 @@ export async function statusMemories(): Promise<ToolResult> {
 }
 
 export async function submitMemoriesOp(args: MemorySubmitArgs): Promise<ToolResult> {
-  const r = submitMemories(args.ids, { branch: args.branch, base: args.base });
+  const r = submitMemories(args.ids, { branch: args.branch, base: args.base, noCurate: args.noCurate });
   const lines: string[] = [];
+  const c = r.curation;
+  lines.push(
+    `curation lint: ${c.lintFindings.length} finding(s) - orphans ${c.lintCounts.orphan}, dangling ${c.lintCounts["dangling-edge"]}, stale ${c.lintCounts.stale} (report only)`,
+  );
+  if (c.disabled) {
+    lines.push("curation auto-apply skipped (noCurate=true)");
+  } else if (c.applied.length === 0) {
+    lines.push("curation auto-applied: 0");
+  } else {
+    lines.push(`curation auto-applied: ${c.applied.length}`);
+    for (const a of c.applied) lines.push(`  ${formatCurationAction(a.action)}`);
+  }
+  for (const s of c.skipped) lines.push(`curation skipped ${s.id}: ${s.reason}`);
+  for (const w of c.warnings) lines.push(`curation note: ${w}`);
   for (const s of r.submitted) lines.push(`submitted ${s.id} [${s.reviewState}]`);
   for (const id of r.skippedIdentical) lines.push(`already on branch: ${id} (outbox copy removed)`);
   lines.push(r.committed ? `committed on ${r.branch} (you are still on this branch).` : `nothing new to commit on ${r.branch}.`);

@@ -304,6 +304,9 @@ interface Curated {
   merged: number;
   archived: number;
   normalized: number;
+  submittedCount: number;
+  prTitleCount: number | null;
+  prBody: string;
   receipts: string[];
   output: string;
 }
@@ -312,11 +315,15 @@ function curated(s: Seed): Curated {
   const r = run(["submit", ...s.batchIds], s.project);
   const output = `${r.out}${r.err}`;
   const applied = Number((/curation auto-applied:\s*(\d+)/.exec(output) ?? [])[1] ?? 0);
+  const titleCount = /--title "mem: review (\d+) /.exec(output);
   return {
     autoApplied: applied,
     merged: (output.match(/\bmerged\b/g) ?? []).length,
     archived: (output.match(/\barchived\b/g) ?? []).length,
     normalized: (output.match(/\bnormalized\b/g) ?? []).length,
+    submittedCount: (output.match(/^submitted /gm) ?? []).length,
+    prTitleCount: titleCount ? Number(titleCount[1]) : null,
+    prBody: (/--body "([^"]*)"/.exec(output) ?? [])[1] ?? "",
     receipts: output
       .split("\n")
       .map((l) => l.trim())
@@ -363,6 +370,19 @@ for (const r of after.receipts) console.log(`  ${r}`);
 if (after.autoApplied === 0) {
   console.log("  (no curation summary yet - this is the pre-D78 baseline run)");
 }
+const bodyIds = (/IDs: ([^.]+)\./.exec(after.prBody) ?? [])[1]?.trim().split(/\s+/).filter(Boolean)
+  .length ?? 0;
+const prOk =
+  after.submittedCount > 0 &&
+  after.prTitleCount === after.submittedCount &&
+  bodyIds === after.submittedCount &&
+  /Lint before curation: 9 finding\(s\) \(orphans 7, dangling 1, stale 1; report only\)\. Auto-applied 3: merged 1, archived 1, normalized 1\.$/.test(
+    after.prBody,
+  );
+console.log(
+  `pr command: title ${after.prTitleCount ?? "missing"} (submitted ${after.submittedCount}), body ids ${bodyIds}, summary ${prOk ? "ok" : "MISSING"}`,
+);
+if (!prOk) throw new Error(`PR command does not match the submitted set:\n${after.output}`);
 
 const noSeed = seed("no-curate");
 const no = noCurate(noSeed);
@@ -373,4 +393,7 @@ console.log(
 const undoIds = [id("DUPB"), id("TITLE"), id("EMPTY")];
 const undoResults = undoIds.map((memId) => run(["curate", "undo", memId], curSeed.project));
 console.log(`undo checks: ${undoResults.filter((r) => r.code === 0).length}/${undoResults.length} succeeded`);
+undoResults.forEach((r, i) => {
+  if (r.code !== 0) console.log(`  undo ${undoIds[i]} failed: ${(r.err || r.out).trim()}`);
+});
 console.log(`scratch: ${T}`);

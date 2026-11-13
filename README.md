@@ -812,6 +812,8 @@ open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
 # (exact-duplicate merge, empty-body archive, first-line title cleanup).
 # --no-curate skips the cleanup but still prints lint. Near-duplicates are
 # reported, never merged. Every applied action prints its undo command.
+# The generated gh pr create body carries the lint + curation summary and
+# counts only the ids actually submitted (not the pre-curation batch).
 # All-or-nothing; conflicts (same id, different content) abort cleanly.
 # Prints the push + gh pr commands; an agent holding your Yes carries
 # through push/PR itself. --branch <name> creates the branch first

@@ -515,6 +515,8 @@ open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
 # 复制前：只读图谱 lint + 确定性策展（完全重复合并、空正文归档、
 # 首行标题清理）。--no-curate 跳过清理但仍打印 lint；近重复只报告，
 # 永不自动合并。每个已应用动作都会打印撤销命令。
+# 生成的 gh pr create body 带 lint + 策展摘要，人数只算实际提交的 id
+#（不是提交前的批次）。
 # 全有全无；冲突（同 id 不同内容）干净地中止。
 # 打印 push + gh pr 命令；持有你 Yes 的助手可以一并执行 push/PR。
 # --branch <name> 先建分支（助手全链路路径）。PR base 默认是当前分支

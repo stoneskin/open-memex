@@ -60,6 +60,26 @@ function fail(msg: string): never {
   throw new Error(`[open-memex] ${msg}`);
 }
 
+function curationPrBody(ids: string[], curation: CurationReport): string {
+  const c = curation.lintCounts;
+  const lint = `${curation.lintFindings.length} finding(s) (orphans ${c.orphan}, dangling ${c["dangling-edge"]}, stale ${c.stale}; report only)`;
+  let applied = "Auto-applied 0.";
+  if (curation.disabled) {
+    applied = "Auto-apply skipped (--no-curate).";
+  } else if (curation.applied.length > 0) {
+    let merged = 0;
+    let archived = 0;
+    let normalized = 0;
+    for (const a of curation.applied) {
+      if (a.action.kind === "merge-duplicate") merged++;
+      else if (a.action.kind === "archive-empty") archived++;
+      else normalized++;
+    }
+    applied = `Auto-applied ${curation.applied.length}: merged ${merged}, archived ${archived}, normalized ${normalized}.`;
+  }
+  return `Submitted from the open-memex outbox. IDs: ${ids.join(" ")}. Lint before curation: ${lint}. ${applied}`;
+}
+
 function git(root: string, args: string[]): string {
   try {
     return execFileSync("git", args, {
@@ -573,15 +593,28 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     throw e;
   }
 
-  const ids8 = validated.map((v) => v.id.slice(0, 8)).join(" ");
-  // D31: the submit itself is a sync event — visible in sync-status.
+  const curationReport: CurationReport = {
+    disabled: opts.noCurate === true,
+    lintFindings,
+    lintCounts,
+    plan,
+    applied,
+    skipped: curationSkipped,
+    warnings,
+  };
+  const submittedIds8 = submitted.map((s) => s.id.slice(0, 8));
+  const submittedCount = submitted.length;
+  const prTitle = `mem: review ${submittedCount} ${submittedCount === 1 ? "memory" : "memories"}`;
+  const prBody = curationPrBody(submittedIds8, curationReport);
+  const ghPr = `gh pr create --base ${base} --title "${prTitle}" --body "${prBody}"`;
+  // D31: the submit itself is a sync event - visible in sync-status.
   recordSync(scope.key, "submit", {
     added: submitted.length,
     updated: skippedIdentical.length,
     removed: 0,
     scanned: validated.length,
   });
-  // D36: no auto-branch — the commit sits on the branch you were already on.
+  // D36: no auto-branch - the commit sits on the branch you were already on.
   // Next steps are printed, not run. For a separate memory PR, create a branch
   // first (the commit comes along), then push + open the PR.
   const branchCmd = `git checkout -b mem/sync-YYYYMMDD`;
@@ -593,17 +626,12 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     committed,
     createdBranch,
     pushCommand: `git push -u origin ${branch}`,
-    prCommand: createdBranch
-      ? `gh pr create --base ${base} --title "mem: review ${validated.length} ${validated.length === 1 ? "memory" : "memories"}" --body "Submitted from the open-memex outbox: ${ids8}."`
-      : `${branchCmd}  # if you want a separate memory PR (else push ${branch} directly)\n  git push -u origin <new-branch> && gh pr create --base ${base} --title "mem: review ${validated.length}" --body "Submitted from the open-memex outbox: ${ids8}."`,
-    curation: {
-      disabled: opts.noCurate === true,
-      lintFindings,
-      lintCounts,
-      plan,
-      applied,
-      skipped: curationSkipped,
-      warnings,
-    },
+    prCommand:
+      submittedCount === 0
+        ? "nothing to submit after curation - no PR to open."
+        : createdBranch
+          ? ghPr
+          : `${branchCmd}  # if you want a separate memory PR (else push ${branch} directly)\n  git push -u origin <new-branch> && ${ghPr}`,
+    curation: curationReport,
   };
 }

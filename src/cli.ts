@@ -344,8 +344,9 @@ Example:
   curate: `Undo one deterministic curation action applied by submit.
 
 Every action is recorded in the memory file's review_history, so undo works
-across branches and machines. The latest curation on that id is undone; run it
-again to undo an older one (where the latest is itself an undo, it refuses).
+across branches and machines. Only the most recent curation action on an id is
+undoable: an undo appends its own receipt, so a second run refuses. Inspect the
+file's review_history for the older trail.
 
 Usage: open-memex curate undo <id>
 

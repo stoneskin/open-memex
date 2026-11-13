@@ -6,7 +6,7 @@ import { syncScope, upsertFromFile, deleteFromIndex } from "./store/sync.ts";
 import { migrateScope, scopeHasFiles, type ConflictStrategy } from "./store/migrate.ts";
 import { migrateV2 } from "./store/v2migrate.ts";
 import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
-import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatReviewHistory } from "./review.ts";
+import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatReviewHistory, currentAuthor } from "./review.ts";
 import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
 import { search, list, countList, hitStateLabel, type SearchStats } from "./retrieve/search.ts";
@@ -29,6 +29,8 @@ import { readWorkingState, clearWorkingState, workingStatePath } from "./working
 import { refreshGraph, refreshGraphQuiet, ensureGraph, loadGraphEdges, loadGraphNodes, loadAllMemoryIds } from "./store/graph.ts";
 import { graphNeighbours, shortestPath } from "./graph/queries.ts";
 import { lintGraph } from "./graph/lint.ts";
+import { formatCurationAction } from "./curate.ts";
+import { undoCuration } from "./store/curate.ts";
 import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -322,15 +324,33 @@ the repo memory dir as proposed (a local-approved copy keeps its approval),
 commits locally on the CURRENT branch, and moves the outbox originals out.
 Never creates a branch on its own — branch creation is your call.
 
-Usage: open-memex submit <id...> [--branch <name>] [--base <branch>]
+Usage: open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
+
+D78: submit reports graph lint (report-only, never blocks) and auto-applies
+only deterministic curation: exact duplicate merges, empty-body archives, and
+first-line title whitespace normalization. Every change is listed with its
+undo command. Near-duplicates stay report-only - a human decides.
 
 Flags:
-  --branch  create this branch and submit onto it (only with your explicit
-            approval for the full chain); default: stay on current branch
-  --base    PR base override (default: the branch you're on)
+  --branch     create this branch and submit onto it (only with your explicit
+               approval for the full chain); default: stay on current branch
+  --base       PR base override (default: the branch you're on)
+  --no-curate  skip the deterministic auto-apply tier; lint still reports
 
 Example:
-  open-memex submit 01ABC 01DEF`,
+  open-memex submit 01ABC 01DEF
+  open-memex submit 01ABC --no-curate`,
+
+  curate: `Undo one deterministic curation action applied by submit.
+
+Every action is recorded in the memory file's review_history, so undo works
+across branches and machines. The latest curation on that id is undone; run it
+again to undo an older one (where the latest is itself an undo, it refuses).
+
+Usage: open-memex curate undo <id>
+
+Example:
+  open-memex curate undo 01ABC`,
 
   "pr-status": `Map the current branch's GitHub PR state back onto review_state:
 merged → published, approval → approved (approved_by = the reviewer),
@@ -531,7 +551,8 @@ Usage:
   open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
   open-memex import <bundle.tar.gz> [--dry-run]
   open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]
-  open-memex submit <id...> [--branch <name>] [--base <branch>]
+  open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
+  open-memex curate undo <id>
   open-memex pr-status [--apply]
   open-memex reindex
   open-memex audit [--scope project|personal|both]
@@ -614,7 +635,7 @@ function setConfigPath(key: string, value: unknown): Record<string, unknown> {
   return { [top]: cur };
 }
 
-function parseFlags(argv: string[]): Record<string, string> {
+function parseFlags(argv: string[], booleans: ReadonlySet<string> = new Set()): Record<string, string> {
   const out: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -625,6 +646,10 @@ function parseFlags(argv: string[]): Record<string, string> {
         // D44: accept --key=value as well as --key value (issue #7 — the
         // = form was silently misparsed before, dropping the flag).
         out[raw.slice(0, eq)] = raw.slice(eq + 1);
+        continue;
+      }
+      if (booleans.has(raw)) {
+        out[raw] = "true";
         continue;
       }
       const val = argv[i + 1];
@@ -1561,11 +1586,13 @@ async function main() {
   }
 
 /** Positional args with flags (and their values) skipped. */
-function positionalArgs(argv: string[]): string[] {
+function positionalArgs(argv: string[], booleans: ReadonlySet<string> = new Set()): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a.startsWith("--")) {
+      const raw = a.slice(2);
+      if (raw.includes("=") || booleans.has(raw)) continue;
       const val = argv[i + 1];
       if (val !== undefined && !val.startsWith("--")) i++; // skip the flag's value
     } else {
@@ -1913,12 +1940,39 @@ function positionalArgs(argv: string[]): string[] {
   }
 
   if (cmd === "submit") {
-    const flags = parseFlags(rest);
-    const ids = positionalArgs(rest);
+    const booleans = new Set(["no-curate"]);
+    const flags = parseFlags(rest, booleans);
+    const ids = positionalArgs(rest, booleans);
     if (ids.length === 0) usage();
     syncScope(project.key, "submit");
     try {
-      const r = submitMemories(ids, { branch: flags.branch, base: flags.base });
+      const r = submitMemories(ids, {
+        branch: flags.branch,
+        base: flags.base,
+        noCurate: flags["no-curate"] === "true",
+      });
+      const c = r.curation;
+      console.log(
+        `curation: ${c.lintFindings.length} lint finding(s) - orphans ${c.lintCounts.orphan}, dangling ${c.lintCounts["dangling-edge"]}, stale ${c.lintCounts.stale}. Reports only - a human decides; nothing is auto-resolved.`,
+      );
+      for (const f of c.lintFindings.slice(0, 5)) {
+        console.log(`  [${f.kind}] ${f.id}${f.other ? `  ${f.other}` : ""}: ${f.detail}`);
+      }
+      if (c.lintFindings.length > 5) {
+        console.log(`  ... and ${c.lintFindings.length - 5} more (full list: open-memex graph lint)`);
+      }
+      if (c.disabled) {
+        console.log("curation auto-apply skipped (--no-curate); no files were changed by curation.");
+      } else if (c.applied.length === 0) {
+        console.log("curation auto-applied: 0 (nothing deterministic to fix)");
+      } else {
+        console.log(`curation auto-applied: ${c.applied.length}`);
+        for (const a of c.applied) console.log(`  ${formatCurationAction(a.action)}`);
+      }
+      for (const s of c.skipped) {
+        console.log(`  curation skipped ${s.id}: ${s.reason}`);
+      }
+      for (const w of c.warnings) console.log(`  curation note: ${w}`);
       for (const s of r.submitted) {
         console.log(`submitted ${s.id} → ${path.relative(process.cwd(), s.filePath)}  [${s.reviewState}]`);
       }
@@ -1935,6 +1989,25 @@ function positionalArgs(argv: string[]): string[] {
       console.log(`  ${r.prCommand}`);
     } catch (e) {
       console.error(`submit failed: ${(e as Error).message}`);
+      process.exit(2);
+    }
+    return;
+  }
+
+  if (cmd === "curate") {
+    const sub = rest[0];
+    const id = rest[1];
+    if (sub !== "undo" || !id) usage();
+    syncScope(project.key, "cli");
+    try {
+      const r = undoCuration(id, { by: currentAuthor() });
+      refreshGraphQuiet(project.key, cfg);
+      console.log(`curation undone: ${r.kind} ${id}`);
+      for (const p of r.filePaths) {
+        console.log(`  ${path.relative(process.cwd(), p)}`);
+      }
+    } catch (e) {
+      console.error(`curate undo failed: ${(e as Error).message}`);
       process.exit(2);
     }
     return;

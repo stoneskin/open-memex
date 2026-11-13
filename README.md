@@ -465,7 +465,7 @@ they only matter once you share memories through Git.
 | ● `memory_workingstate` | Read/write/clear the per-project working-state note (§3.6, D89) — resumes an interrupted task; scratch state, never a memory |
 | ● `memory_useful`    | Mark a memory as useful (D77) — explicit confirmation only; exposure is counted separately as `retrieved_count` |
 | `memory_status`      | Show the sync queue (outbox drafts, repo review states, uncommitted files) plus the D77 reuse report |
-| `memory_submit`      | Move named drafts into the repo memory dir (local branch + commit) |
+| `memory_submit`      | Curate deterministic fixes, then move named drafts into the repo memory dir (local branch + commit) |
 | `memory_propose`     | Copy personal memories into the project scope as review candidates |
 | `memory_promote`     | Advance `proposed → approved → published` (or reject / resubmit) |
 | `memory_resolve`     | List conflicted memory files / 3-way-merge one of them |
@@ -531,9 +531,14 @@ capture → outbox (draft, local) → submit → repo (.ai/open-memex/) → PR r
    git); `open-memex sync-status` — or just saying "sync memory" in chat —
    shows what's pending.
 3. **Submit** — you name the memories; they move into `<repo>/.ai/open-memex/`
-   with a local commit on your current branch. open-memex never pushes on its
-   own; it prints the push + PR commands, and an agent holding your explicit
-   yes can carry them out.
+   with a local commit on your current branch. Before copying, `submit` prints
+   a report-only graph lint and auto-applies only deterministic cleanup: exact
+   duplicates are merged through the supersede chain, empty bodies are
+   archived, and ragged first-line titles are normalized. Near-duplicates stay
+   report-only; semantic merge/split needs a human. Every change prints its
+   undo command, and `--no-curate` skips the cleanup while keeping the lint
+   report. open-memex never pushes on its own; it prints the push + PR
+   commands, and an agent holding your explicit yes can carry them out.
 4. **PR review** — memories are plain Markdown; reviewers approve, request
    changes, or reject through the normal branch/PR process.
 5. **Recall** — published memories are injected at session start and searchable
@@ -798,17 +803,27 @@ open-memex sync-status
 # (draft / proposed / approved / published / rejected),
 # and any uncommitted repo memory files.
 
-open-memex submit <id...> [--branch <name>] [--base <branch>]
+open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
 # move your named drafts into .ai/open-memex/ as "proposed":
 # copies, flips review_state, local git commit ON THE CURRENT BRANCH.
 # Never creates a branch on its own — branch creation is your call
 # (or the agent's, only with your explicit approval for the full chain).
+# Before copying: report-only graph lint + deterministic curation
+# (exact-duplicate merge, empty-body archive, first-line title cleanup).
+# --no-curate skips the cleanup but still prints lint. Near-duplicates are
+# reported, never merged. Every applied action prints its undo command.
 # All-or-nothing; conflicts (same id, different content) abort cleanly.
 # Prints the push + gh pr commands; an agent holding your Yes carries
 # through push/PR itself. --branch <name> creates the branch first
 # (agent full-chain path). Default PR base is the current branch (memory
 # PRs stack onto your working branch); --base redirects it to main or
 # wherever you review.
+
+open-memex curate undo <id>
+# reverse the latest automatic curation on one memory (merge or title fix).
+# The receipt lives in the file's review_history, so this works across
+# branches and machines; an empty-body archive is restored with
+# `open-memex status <id> active`.
 
 open-memex pr-status [--apply]
 # read the branch's GitHub PR and map its state onto each in-repo memory:
@@ -932,8 +947,9 @@ open-memex graph lint [--json]         # orphans, dangling edges, near-stale pai
 ```
 
 `lint` reports only — nothing is auto-resolved; a human decides. The same report
-is the planned input for D78's pre-submit curation. The interface is CLI-only;
-the MCP surface stays at its thirteen memory tools.
+is the input for D78's pre-submit curation (D93): `submit` prints it before the
+deterministic cleanup. The graph interface is CLI-only; the MCP surface stays at
+its thirteen memory tools.
 
 ## MCP server
 

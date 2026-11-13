@@ -222,20 +222,33 @@ interface Measure {
   nearPairs: number;
 }
 
-function measure(s: Seed): Measure {
-  const lint = run(["graph", "lint", "--json"], s.project);
-  let counts = { orphan: 0, "dangling-edge": 0, stale: 0 };
-  let total = 0;
+interface LintCounts {
+  total: number;
+  orphan: number;
+  dangling: number;
+  stale: number;
+}
+
+function lint(s: Seed): LintCounts {
+  const r = run(["graph", "lint", "--json"], s.project);
   try {
-    const parsed = JSON.parse(lint.out) as {
+    const parsed = JSON.parse(r.out) as {
       findings: unknown[];
       counts: { orphan: number; "dangling-edge": number; stale: number };
     };
-    total = parsed.findings.length;
-    counts = parsed.counts;
+    return {
+      total: parsed.findings.length,
+      orphan: parsed.counts.orphan,
+      dangling: parsed.counts["dangling-edge"],
+      stale: parsed.counts.stale,
+    };
   } catch {
-    throw new Error(`graph lint --json did not parse: ${lint.out}${lint.err}`);
+    throw new Error(`graph lint --json did not parse: ${r.out}${r.err}`);
   }
+}
+
+function measure(s: Seed): Measure {
+  const counts = lint(s);
 
   const batch = s.batchIds.map((memId) => {
     const raw = fs.readFileSync(path.join(s.outboxDir, `${memId}.md`), "utf8");
@@ -275,9 +288,9 @@ function measure(s: Seed): Measure {
   }
 
   return {
-    lintTotal: total,
+    lintTotal: counts.total,
     orphan: counts.orphan,
-    dangling: counts["dangling-edge"],
+    dangling: counts.dangling,
     stale: counts.stale,
     exactDuplicates,
     emptyBodies,
@@ -291,6 +304,7 @@ interface Curated {
   merged: number;
   archived: number;
   normalized: number;
+  receipts: string[];
   output: string;
 }
 
@@ -303,6 +317,20 @@ function curated(s: Seed): Curated {
     merged: (output.match(/\bmerged\b/g) ?? []).length,
     archived: (output.match(/\barchived\b/g) ?? []).length,
     normalized: (output.match(/\bnormalized\b/g) ?? []).length,
+    receipts: output
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => /^(merged|archived|normalized) /.test(l)),
+    output,
+  };
+}
+
+function noCurate(s: Seed): { disabled: boolean; autoApplied: number; output: string } {
+  const r = run(["submit", "--no-curate", ...s.batchIds], s.project);
+  const output = `${r.out}${r.err}`;
+  return {
+    disabled: /curation auto-apply skipped \(--no-curate\)/.test(output),
+    autoApplied: Number((/curation auto-applied:\s*(\d+)/.exec(output) ?? [])[1] ?? 0),
     output,
   };
 }
@@ -324,10 +352,25 @@ const curSeed = seed("curated");
 const before = measure(curSeed);
 const after = curated(curSeed);
 console.log(line("curated pre-submit", before));
+const afterLint = lint(curSeed);
+console.log(
+  `curated lint after submit: ${afterLint.total} (orphan ${afterLint.orphan}, dangling ${afterLint.dangling}, stale ${afterLint.stale})`,
+);
 console.log(
   `curated auto-applied: ${after.autoApplied} (merged ${after.merged}, archived ${after.archived}, normalized ${after.normalized})`,
 );
+for (const r of after.receipts) console.log(`  ${r}`);
 if (after.autoApplied === 0) {
   console.log("  (no curation summary yet - this is the pre-D78 baseline run)");
 }
+
+const noSeed = seed("no-curate");
+const no = noCurate(noSeed);
+console.log(
+  `--no-curate: ${no.disabled ? "curation skipped as requested" : "MISSING SKIP LINE"}; auto-applied ${no.autoApplied}`,
+);
+
+const undoIds = [id("DUPB"), id("TITLE"), id("EMPTY")];
+const undoResults = undoIds.map((memId) => run(["curate", "undo", memId], curSeed.project));
+console.log(`undo checks: ${undoResults.filter((r) => r.code === 0).length}/${undoResults.length} succeeded`);
 console.log(`scratch: ${T}`);

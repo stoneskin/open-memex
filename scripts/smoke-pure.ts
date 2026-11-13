@@ -45,6 +45,7 @@ import { extractEdges, sharedTagConfidence } from "../src/graph/extract.ts";
 import { renderOutline } from "../src/graph/outline.ts";
 import { graphNeighbours, shortestPath } from "../src/graph/queries.ts";
 import { lintGraph } from "../src/graph/lint.ts";
+import { formatCurationAction, normalizeTitle, planCuration } from "../src/curate.ts";
 
 console.log("== jsonc parsing + config invariants (P0) ==");
 {
@@ -1343,7 +1344,73 @@ console.log("== D91 graph: extract / outline / queries / lint ==");
     ok("orphan reported for the active, unlinked memory", f.some((x) => x.kind === "orphan" && x.id === ID_A));
     ok("dangling edge reported with the missing id", f.some((x) => x.kind === "dangling-edge" && x.other === "01FFFFFFFFFFFFFFFFFFFFFFFF"));
     ok("stale detected: active near-duplicate of superseded", f.some((x) => x.kind === "stale" && x.id === ID_A && x.other === ID_B));
+
+    const chainEdges: Parameters<typeof lintGraph>[1] = [
+      { from: ID_A, to: ID_B, type: "supersedes", provenance: "EXTRACTED", confidence: "high", via: "frontmatter" },
+    ];
+    const cf = lintGraph(nodeIds, chainEdges);
+    ok("D78: an intentional supersede-chain duplicate is not stale",
+      !cf.some((x) => x.kind === "stale" && x.id === ID_A && x.other === ID_B));
   }
+}
+
+console.log("  == D78 curation (deterministic tier) ==");
+{
+  const rec = (
+    id: string,
+    body: string,
+    createdAt: string,
+    extra: Partial<{ status: string; supersedes: string | null; supersededBy: string | null }> = {},
+  ) => ({
+    id,
+    body,
+    createdAt,
+    status: extra.status ?? "active",
+    supersedes: extra.supersedes ?? null,
+    supersededBy: extra.supersededBy ?? null,
+  });
+
+  const dup = "deploy window is Thursday 14:00 UTC";
+  const titleBody = "  deploy   checklist  \n\nsecond line stays";
+  const nearA = "release notes deploy window opens thursday morning after standup sync";
+  const nearB = "release notes deploy window opens friday morning after standup sync";
+  const plan = planCuration([
+    rec("01D78DUPB0000000000000000", dup, "2026-01-01T00:00:02Z"),
+    rec("01D78DUPA0000000000000000", dup, "2026-01-01T00:00:01Z"),
+    rec("01D78EMPTY000000000000000", "   \n\t\n", "2026-01-01T00:00:03Z"),
+    rec("01D78TITLE000000000000000", titleBody, "2026-01-01T00:00:04Z"),
+    rec("01D78NEARA000000000000000", nearA, "2026-01-01T00:00:05Z"),
+    rec("01D78NEARB000000000000000", nearB, "2026-01-01T00:00:06Z"),
+    rec("01D78CHAINB000000000000000", dup, "2026-01-01T00:00:00Z", {
+      supersedes: "01D78CHAINC000000000000000",
+    }),
+  ]);
+  const action = (kind: string, id: string) => plan.actions.find((a) => a.kind === kind && a.id === id);
+  ok("oldest duplicate survives; newer merges into it",
+    action("merge-duplicate", "01D78DUPB0000000000000000")?.canonicalId === "01D78DUPA0000000000000000");
+  ok("already-chained duplicate is skipped, not merged",
+    !action("merge-duplicate", "01D78CHAINB000000000000000") &&
+      plan.skipped.some((s) => s.id === "01D78CHAINB000000000000000"));
+  ok("empty fragment is archived deterministically",
+    action("archive-empty", "01D78EMPTY000000000000000") !== undefined);
+  const title = action("normalize-title", "01D78TITLE000000000000000");
+  ok("first-line title whitespace normalized, body otherwise preserved",
+    title?.before === "  deploy   checklist  " && title.after === "deploy checklist");
+  const normalized = normalizeTitle(titleBody);
+  ok("title rewrite preserves line count and the second line",
+    normalized !== null && normalized.body.split("\n").length === titleBody.split("\n").length &&
+      normalized.body.endsWith("second line stays"));
+  ok("near duplicates are reported, never auto-applied",
+    plan.nearDuplicates.length === 1 && plan.actions.every((a) => a.kind !== "merge-duplicate" ||
+      !["01D78NEARA000000000000000", "01D78NEARB000000000000000"].includes(a.id)));
+  ok("action order is archive -> merge -> title",
+    plan.actions.map((a) => a.kind).join(",") ===
+      "archive-empty,merge-duplicate,normalize-title");
+  const receipts = plan.actions.map(formatCurationAction).join("\n");
+  ok("every receipt names its undo path",
+    receipts.includes("undo: open-memex curate undo 01D78DUPB0000000000000000") &&
+      receipts.includes("undo: open-memex status 01D78EMPTY000000000000000 active") &&
+      receipts.includes("undo: open-memex curate undo 01D78TITLE000000000000000"));
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);

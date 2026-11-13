@@ -32,11 +32,29 @@ import {
   readMemoryFile,
   serialize,
   atomicWriteTextSync,
+  type Frontmatter,
   type ReviewState,
 } from "./store/markdown.ts";
 import { upsertFromFile, recordSync, readSyncState } from "./store/sync.ts";
 import { db } from "./store/db.ts";
 import { currentAuthor } from "./review.ts";
+import {
+  planCuration,
+  type CurationPlan,
+  type CurationSkip,
+} from "./curate.ts";
+import {
+  applyCurationPlan,
+  undoCuration,
+  type AppliedCuration,
+} from "./store/curate.ts";
+import {
+  loadAllMemoryIds,
+  loadGraphEdges,
+  loadGraphNodes,
+  refreshGraphQuiet,
+} from "./store/graph.ts";
+import { lintGraph, type LintFinding, type LintKind } from "./graph/lint.ts";
 
 function fail(msg: string): never {
   throw new Error(`[open-memex] ${msg}`);
@@ -80,6 +98,8 @@ export interface SyncStatus {
   scopeKey: string;
   projectName: string;
   outbox: StatusEntry[]; // appdata drafts waiting for submit
+  /** D78: curated-out files (archived/superseded) kept as history in appdata */
+  outboxHistory: number;
   inRepo: StatusEntry[]; // files in the repo dir (any review_state)
   uncommitted: StatusEntry[]; // repo files not yet committed (the untracked window)
 }
@@ -114,11 +134,12 @@ export function getSyncStatus(): SyncStatus {
 
   const rows = db()
     .prepare(
-      `SELECT id, review_state, file_path, content FROM memories WHERE scope_key = ? ORDER BY updated_at DESC`,
+      `SELECT id, review_state, status, file_path, content FROM memories WHERE scope_key = ? ORDER BY updated_at DESC`,
     )
     .all(scope.key) as Array<{
     id: string;
     review_state: string;
+    status: string;
     file_path: string;
     content: string;
   }>;
@@ -127,6 +148,7 @@ export function getSyncStatus(): SyncStatus {
   const outbox: StatusEntry[] = [];
   const inRepo: StatusEntry[] = [];
   const uncommittedList: StatusEntry[] = [];
+  let outboxHistory = 0;
 
   for (const r of rows) {
     const inOutbox = r.file_path.startsWith(outboxDir + path.sep);
@@ -138,6 +160,12 @@ export function getSyncStatus(): SyncStatus {
       gitState: "n/a",
     };
     if (inOutbox) {
+      // D78: a curated-out outbox file is history, not a pending draft. It
+      // stays in appdata (the source of truth) but no longer reads as work.
+      if (r.status !== "active") {
+        outboxHistory++;
+        continue;
+      }
       outbox.push(entry);
     } else {
       entry.gitState = uncommitted.has(path.resolve(r.file_path)) ? "uncommitted" : "committed";
@@ -149,6 +177,7 @@ export function getSyncStatus(): SyncStatus {
     scopeKey: scope.key,
     projectName: scope.projectName,
     outbox,
+    outboxHistory,
     inRepo,
     uncommitted: uncommittedList,
   };
@@ -164,7 +193,7 @@ export function outboxDraftCount(scopeKey: string): number {
   const outboxDir = memoriesDirPath(scopeKey);
   const row = db()
     .prepare(
-      `SELECT COUNT(*) AS n FROM memories WHERE scope_key = ? AND instr(file_path, ?) = 1`,
+      `SELECT COUNT(*) AS n FROM memories WHERE scope_key = ? AND status = 'active' AND instr(file_path, ?) = 1`,
     )
     .get(scopeKey, outboxDir + path.sep) as { n: number } | undefined;
   return row?.n ?? 0;
@@ -192,6 +221,9 @@ export function formatSyncStatus(st: SyncStatus, opts: { cap?: number } = {}): s
     lines.push(`  ${e.id}  [${e.reviewState}] ${e.title}`);
   }
   if (st.outbox.length > CAP) lines.push(more(st.outbox.length - CAP));
+  if (st.outboxHistory > 0) {
+    lines.push(`outbox history (curated, not submitted): ${st.outboxHistory} - files kept in appdata`);
+  }
   const byState = new Map<string, number>();
   for (const e of st.inRepo) byState.set(e.reviewState, (byState.get(e.reviewState) ?? 0) + 1);
   const breakdown = [...byState.entries()].map(([s, n]) => `${n} ${s}`).join(", ") || "none";
@@ -221,6 +253,20 @@ export interface SubmitOptions {
   branch?: string;
   /** PR base override (default: the branch the submit ran on). */
   base?: string;
+  /** D78: skip the deterministic auto-apply tier. Lint still reports. */
+  noCurate?: boolean;
+}
+
+export interface CurationReport {
+  /** true when `--no-curate` skipped the deterministic tier */
+  disabled: boolean;
+  lintFindings: LintFinding[];
+  lintCounts: Record<LintKind, number>;
+  plan: CurationPlan | null;
+  applied: AppliedCuration[];
+  skipped: CurationSkip[];
+  /** non-fatal problems (lint unavailable, planner failure, ...) */
+  warnings: string[];
 }
 
 export interface SubmitResult {
@@ -235,12 +281,15 @@ export interface SubmitResult {
   committed: boolean;
   pushCommand: string;
   prCommand: string;
+  /** D78: lint + deterministic curation receipts */
+  curation: CurationReport;
 }
 
 interface Validated {
   id: string;
   srcPath: string;
   body: string;
+  fm: Frontmatter;
   reviewState: ReviewState;
 }
 
@@ -285,13 +334,19 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
       problems.push(`${id}: scope is ${mf.fm.scope}, only project memories can be submitted`);
       continue;
     }
+    // D78: curation archives empties and supersedes duplicate copies in the
+    // outbox. A non-active record is history, not something to submit.
+    if (mf.fm.status !== "active") {
+      problems.push(`${id}: status is ${mf.fm.status}, only active memories can be submitted`);
+      continue;
+    }
     const rs = (mf.fm.review_state ?? "draft") as ReviewState;
     // draft/rejected move to proposed; a local-approved copy keeps its approval.
     if (rs !== "draft" && rs !== "rejected" && rs !== "approved") {
       problems.push(`${id}: review_state is ${rs}, only draft/rejected/approved can be submitted`);
       continue;
     }
-    validated.push({ id, srcPath, body: mf.body, reviewState: rs });
+    validated.push({ id, srcPath, body: mf.body, fm: mf.fm, reviewState: rs });
   }
   if (problems.length > 0) {
     fail(`submit aborted — nothing was written:\n  ${problems.join("\n  ")}`);
@@ -321,104 +376,201 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
   const base = opts.base ?? startBranch;
   const author = currentAuthor();
 
-  // 3. Copy drafts into the repo dir as proposed (same id — one memory, one id).
-  //    Same id + different content on the branch = conflict → abort, human judges.
+  // 3. Preflight the branch copies BEFORE curation. Same id + different
+  //    content on the branch = conflict -> abort, human judges. Nothing is
+  //    curated or written yet, so an abort leaves no trace.
   const submitted: Array<{ id: string; filePath: string; reviewState: ReviewState }> = [];
   const skippedIdentical: string[] = [];
-  const now = msToRfc3339(Date.now());
   const written: Array<{ id: string; srcPath: string; destPath: string; hash: string }> = [];
   const conflicts: string[] = [];
   for (const v of validated) {
     const destPath = path.join(repoDir, `${v.id}.md`);
     const raw = fs.existsSync(destPath) ? fs.readFileSync(destPath, "utf8") : null;
-    if (raw !== null) {
-      const existing = parseMemory(raw);
-      const sameContent = existing !== null && contentHash(existing.body) === contentHash(v.body);
-      if (sameContent) {
-        skippedIdentical.push(v.id);
-        written.push({ id: v.id, srcPath: v.srcPath, destPath, hash: contentHash(v.body) });
-        continue;
-      }
-      conflicts.push(`${v.id}: already on branch ${branch} with different content — resolve it manually, then re-submit`);
+    if (raw === null) continue;
+    const existing = parseMemory(raw);
+    const sameContent = existing !== null && contentHash(existing.body) === contentHash(v.body);
+    if (sameContent) {
+      skippedIdentical.push(v.id);
+      written.push({ id: v.id, srcPath: v.srcPath, destPath, hash: contentHash(v.body) });
       continue;
     }
-    const parsed = parseMemory(fs.readFileSync(v.srcPath, "utf8"));
-    if (!parsed) fail(`${v.id}: unreadable source file`);
-    // draft/rejected → proposed; a local-approved copy arrives already
-    // approved and keeps its approval (and its approved_by).
-    const destState: ReviewState = v.reviewState === "approved" ? "approved" : "proposed";
-    const fm = {
-      ...parsed.fm,
-      review_state: destState,
-      updated_at: now,
-      proposed_by: parsed.fm.proposed_by ?? author,
-      // D29: the outbox → repo move is part of the audit trail.
-      review_history: [
-        ...(parsed.fm.review_history ?? []),
-        {
-          at: now,
-          by: author,
-          from: parsed.fm.review_state ?? "draft",
-          to: destState,
-          note: `submitted to branch ${branch}`,
-        },
-      ],
-    };
-    const text = serialize(fm, parsed.body);
-    atomicWriteTextSync(destPath, text);
-    written.push({ id: v.id, srcPath: v.srcPath, destPath, hash: contentHash(parsed.body) });
-    submitted.push({ id: v.id, filePath: destPath, reviewState: destState });
+    conflicts.push(`${v.id}: already on branch ${branch} with different content - resolve it manually, then re-submit`);
   }
   if (conflicts.length > 0) {
-    // Roll back the copies we just made — nothing half-submitted.
-    for (const w of written) {
-      if (submitted.some((s) => s.id === w.id) && fs.existsSync(w.destPath)) {
-        fs.unlinkSync(w.destPath);
-      }
-    }
-    // If we created the branch and never committed, remove it too — an
-    // aborted submit leaves no trace.
     if (createdBranch) {
       try {
         git(root, ["checkout", "--quiet", startBranch]);
         git(root, ["branch", "--quiet", "-D", branch]);
       } catch {
-        /* best effort — the error below is what matters */
+        /* best effort - the error below is what matters */
       }
     }
-    fail(`submit aborted — nothing was committed:\n  ${conflicts.join("\n  ")}`);
+    fail(`submit aborted - nothing was committed:\n  ${conflicts.join("\n  ")}`);
+  }
+  const skippedSet = new Set(skippedIdentical);
+
+  // 3b. D78: report existing graph lint, then auto-apply only the
+  //     deterministic tier. Lint is report-only and never blocks submit.
+  const warnings: string[] = [];
+  let lintFindings: LintFinding[] = [];
+  const lintCounts: Record<LintKind, number> = {
+    orphan: 0,
+    "dangling-edge": 0,
+    stale: 0,
+  };
+  try {
+    refreshGraphQuiet(scope.key, cfg);
+    lintFindings = lintGraph(
+      loadGraphNodes(scope.key),
+      loadGraphEdges(scope.key),
+      loadAllMemoryIds(),
+    );
+    for (const f of lintFindings) lintCounts[f.kind]++;
+  } catch (e) {
+    warnings.push(`lint report unavailable: ${(e as Error).message}`);
   }
 
-  // 4. Commit locally (tool automates local git only — D27 line).
-  //    Only our own files are committed: anything else the user staged stays
-  //    staged and untouched.
-  const destPaths = written.map((w) => w.destPath);
-  const relPaths = destPaths.map((p: string) => path.relative(root, p));
-  git(root, ["add", "--", ...destPaths]);
-  const staged = git(root, ["diff", "--cached", "--name-only", "--", ...relPaths]);
-  let committed = false;
-  if (staged.trim()) {
-    const short = submitted.map((s) => s.id.slice(0, 8)).join(" ");
-    git(root, ["commit", "-m", `mem: submit ${submitted.length} ${submitted.length === 1 ? "memory" : "memories"} for review (${short})`, "--", ...relPaths]);
-    committed = true;
-  }
-
-  // 5. Verify the committed copies, then move the outbox originals out
-  //    (copy + verify + delete — never a bare rename across the move).
-  for (const w of written) {
-    const back = fs.readFileSync(w.destPath, "utf8");
-    const bParsed = parseMemory(back);
-    if (!bParsed || contentHash(bParsed.body) !== w.hash) {
-      fail(`${w.id}: verification failed after commit — outbox copy kept at ${w.srcPath}`);
+  let plan: CurationPlan | null = null;
+  let applied: AppliedCuration[] = [];
+  let curationSkipped: CurationSkip[] = [];
+  if (opts.noCurate) {
+    // Explicit opt-out: the lint report still prints, the files are untouched.
+  } else {
+    try {
+      plan = planCuration(
+        validated.map((v) => ({
+          id: v.id,
+          body: v.body,
+          status: v.fm.status,
+          createdAt: v.fm.created_at,
+          supersedes: v.fm.supersedes,
+          supersededBy: v.fm.superseded_by,
+        })),
+      );
+      // A record already on the branch needs no action of its own, but it can
+      // still be the canonical target for a duplicate in this batch.
+      plan.actions = plan.actions.filter((a) => !skippedSet.has(a.id));
+      const result = applyCurationPlan(plan, { by: author });
+      applied = result.applied;
+      curationSkipped = result.skipped;
+      if (applied.length > 0) refreshGraphQuiet(scope.key, cfg);
+    } catch (e) {
+      warnings.push(`curation planning failed: ${(e as Error).message}`);
+      plan = null;
     }
-    // Same id, new home: ON CONFLICT(id) rewrites the row to the repo path.
-    upsertFromFile({
-      fm: bParsed.fm,
-      body: bParsed.body,
-      filePath: w.destPath,
-      mtimeMs: fs.statSync(w.destPath).mtimeMs,
-    });
-    fs.unlinkSync(w.srcPath);
+  }
+
+  // Curation can archive or supersede a batch member. Re-read every file and
+  // submit only what is still active - history stays in the outbox, never as
+  // a proposed memory on the branch.
+  const activeValidated: Validated[] = [];
+  for (const v of validated) {
+    if (skippedSet.has(v.id)) continue;
+    const after = readMemoryFile(v.srcPath);
+    if (!after) {
+      warnings.push(`${v.id}: outbox file vanished during curation - not submitted`);
+      continue;
+    }
+    if (after.fm.status !== "active") continue;
+    activeValidated.push({ ...v, body: after.body, fm: after.fm });
+  }
+
+  const now = msToRfc3339(Date.now());
+  let committed = false;
+  let commitDone = false;
+  try {
+    // 4. Copy drafts into the repo dir as proposed (same id - one memory, one id).
+    for (const v of activeValidated) {
+      const destPath = path.join(repoDir, `${v.id}.md`);
+      const parsed = parseMemory(fs.readFileSync(v.srcPath, "utf8"));
+      if (!parsed) fail(`${v.id}: unreadable source file`);
+      // draft/rejected -> proposed; a local-approved copy arrives already
+      // approved and keeps its approval (and its approved_by).
+      const destState: ReviewState = v.reviewState === "approved" ? "approved" : "proposed";
+      const fm = {
+        ...parsed.fm,
+        review_state: destState,
+        updated_at: now,
+        proposed_by: parsed.fm.proposed_by ?? author,
+        // D29: the outbox -> repo move is part of the audit trail.
+        review_history: [
+          ...(parsed.fm.review_history ?? []),
+          {
+            at: now,
+            by: author,
+            from: parsed.fm.review_state ?? "draft",
+            to: destState,
+            note: `submitted to branch ${branch}`,
+          },
+        ],
+      };
+      atomicWriteTextSync(destPath, serialize(fm, parsed.body));
+      written.push({ id: v.id, srcPath: v.srcPath, destPath, hash: contentHash(parsed.body) });
+      submitted.push({ id: v.id, filePath: destPath, reviewState: destState });
+    }
+
+    // 5. Commit locally (tool automates local git only - D27 line).
+    //    Only our own files are committed: anything else the user staged stays
+    //    staged and untouched.
+    const destPaths = written.map((w) => w.destPath);
+    const relPaths = destPaths.map((p: string) => path.relative(root, p));
+    git(root, ["add", "--", ...destPaths]);
+    const staged = git(root, ["diff", "--cached", "--name-only", "--", ...relPaths]);
+    if (staged.trim()) {
+      const short = submitted.map((s) => s.id.slice(0, 8)).join(" ");
+      git(root, ["commit", "-m", `mem: submit ${submitted.length} ${submitted.length === 1 ? "memory" : "memories"} for review (${short})`, "--", ...relPaths]);
+      committed = true;
+    }
+    commitDone = true;
+
+    // 6. Verify the committed copies, then move the outbox originals out
+    //    (copy + verify + delete - never a bare rename across the move).
+    for (const w of written) {
+      const back = fs.readFileSync(w.destPath, "utf8");
+      const bParsed = parseMemory(back);
+      if (!bParsed || contentHash(bParsed.body) !== w.hash) {
+        fail(`${w.id}: verification failed after commit - outbox copy kept at ${w.srcPath}`);
+      }
+      // Same id, new home: ON CONFLICT(id) rewrites the row to the repo path.
+      upsertFromFile({
+        fm: bParsed.fm,
+        body: bParsed.body,
+        filePath: w.destPath,
+        mtimeMs: fs.statSync(w.destPath).mtimeMs,
+      });
+      fs.unlinkSync(w.srcPath);
+    }
+  } catch (e) {
+    // Nothing reached the branch: undo the deterministic curation and the
+    // copies so a failed submit leaves the outbox exactly as it was.
+    if (!commitDone) {
+      for (const a of applied.slice().reverse()) {
+        try {
+          undoCuration(a.action.id, { by: author });
+        } catch {
+          /* best effort - the original submit error is what matters */
+        }
+      }
+      if (applied.length > 0) refreshGraphQuiet(scope.key, cfg);
+      for (const w of written) {
+        if (submitted.some((s) => s.id === w.id) && fs.existsSync(w.destPath)) {
+          try {
+            fs.unlinkSync(w.destPath);
+          } catch {
+            /* best effort */
+          }
+        }
+      }
+      if (createdBranch) {
+        try {
+          git(root, ["checkout", "--quiet", startBranch]);
+          git(root, ["branch", "--quiet", "-D", branch]);
+        } catch {
+          /* best effort */
+        }
+      }
+    }
+    throw e;
   }
 
   const ids8 = validated.map((v) => v.id.slice(0, 8)).join(" ");
@@ -444,5 +596,14 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     prCommand: createdBranch
       ? `gh pr create --base ${base} --title "mem: review ${validated.length} ${validated.length === 1 ? "memory" : "memories"}" --body "Submitted from the open-memex outbox: ${ids8}."`
       : `${branchCmd}  # if you want a separate memory PR (else push ${branch} directly)\n  git push -u origin <new-branch> && gh pr create --base ${base} --title "mem: review ${validated.length}" --body "Submitted from the open-memex outbox: ${ids8}."`,
+    curation: {
+      disabled: opts.noCurate === true,
+      lintFindings,
+      lintCounts,
+      plan,
+      applied,
+      skipped: curationSkipped,
+      warnings,
+    },
   };
 }

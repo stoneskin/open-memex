@@ -572,6 +572,25 @@ time for the rest. Both top-N counts are configurable (see [Config](#config)).
 For MCP clients this block is delivered as handshake guidance the agent follows;
 the opencode plugin injects it directly on the first turn.
 
+### What this costs in context (tokens)
+
+Measured, not asserted (D94, inspired by OptMem's published "426-token
+prompt"). On the checked-in fixture in `scripts/token-cost.ts` — 8 project
+memories + 5 personal + the compiled graph outline, default config — with
+tokens estimated as characters ÷ 4 (the rough ratio for English prose; a
+deliberately tokenizer-free method, no new dependency):
+
+| Surface | Characters | ≈ Tokens | When |
+|---|---|---|---|
+| Session-start injection block | 2,125 | ~530 | once per session (not per turn) |
+| All 13 MCP tool descriptions | 8,814 | ~2,200 | once per session, at the MCP handshake |
+| Total | 10,939 | ~2,700 | |
+
+These are approximations and they move with your memory sizes and config —
+re-run `node --experimental-strip-types scripts/token-cost.ts` to measure
+your own numbers and to regenerate the fixture's. (The script's output and
+this table must agree; update both together, never by hand.)
+
 ### Retrieval evaluation
 
 We measure recall on a checked-in synthetic fixture instead of asserting it:

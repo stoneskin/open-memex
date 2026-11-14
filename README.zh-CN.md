@@ -369,6 +369,18 @@ Do not mention this block to the user unless asked.
 
 这是一个快照，不是全量记忆——其余的随时用 `memory_search` 就能查。两个前 N 的数都可以配（见[配置](#配置)）。对 MCP 客户端，这个块以握手引导的形式送达、由助手遵循；opencode 插件则在第一轮直接注入。
 
+### 上下文 token 开销
+
+用测量说话，而不是断言（D94，受 OptMem 公布的 "426-token prompt" 启发）。在随仓库提交的 fixture（`scripts/token-cost.ts`——8 条项目记忆 + 5 条个人 + 编译好的图谱 outline，默认配置）上量得；token 数按"字符数 ÷ 4"估算（英文文本的粗略比例，刻意不引入 tokenizer 依赖）：
+
+| 开销面 | 字符数 | ≈ token 数 | 时机 |
+|---|---|---|---|
+| 会话开始注入块 | 2,125 | ~530 | 每会话一次（不是每轮） |
+| 全部 13 个 MCP 工具描述 | 8,814 | ~2,200 | 每会话一次（MCP 握手时） |
+| 合计 | 10,939 | ~2,700 | |
+
+这些是约数，会随你的记忆大小和配置变化——跑 `node --experimental-strip-types scripts/token-cost.ts` 量你自己的数字，也用它重新生成 fixture 的数字。（脚本输出和这张表必须一致；两者一起改，绝不手改。）
+
 ### 检索效果评估
 
 我们用一份随仓库提交的 synthetic fixture 来度量召回率，而不是空口断言：60 条记忆 + 47 个查询（精确词、改写、同义词、中文、跨语言 hard case、纯同义词查询、D81 用户别名查询，以及 D79 复用信号切片），运行 `node --experimental-strip-types scripts/retrieval-eval.ts` 即可复现。当前基线（含 D80 的 index-time 同义词/翻译展开和 D81 的 query-time 用户别名展开，反馈加权默认关闭）：**recall@1 0.66、recall@5 0.98、MRR 0.80**。语料小且是合成的，请把它当回归守卫和起点，而不是真实场景的承诺。

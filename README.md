@@ -572,6 +572,27 @@ time for the rest. Both top-N counts are configurable (see [Config](#config)).
 For MCP clients this block is delivered as handshake guidance the agent follows;
 the opencode plugin injects it directly on the first turn.
 
+### The session-start ritual (wake)
+
+open-memex sessions start from what is already in context, not from questions:
+
+1. Read the `[OPEN-MEMEX]` block injected at session start (opencode) — or the
+   equivalent guidance in the MCP handshake instructions. It carries the top
+   project memories, your preferences, the working-state note from a previous
+   session (if any), and the compiled memory map.
+2. If the block is empty or doesn't cover the current task, call `memory_search`
+   **once** with the task's keywords (try 2–3 phrasings, both scopes) before
+   concluding anything is missing.
+3. Don't ask the user to re-explain what memory already holds — repeated
+   "didn't we decide X?" questions are the failure mode open-memex exists to
+   prevent. Ask only about what neither the block nor search can answer.
+
+The block is injected **once per session, not once per turn** — mid-session,
+open-memex adds nothing to the context unless a tool is called. The same
+ritual is written into the bundled `open-memex` Agent Skill and the MCP
+handshake instructions, so an agent that reads only one of the three still
+behaves the same way.
+
 ### What this costs in context (tokens)
 
 Measured, not asserted (D94, inspired by OptMem's published "426-token

@@ -89,6 +89,13 @@ memory_forget, memory_useful, memory_workingstate, memory_status, memory_submit,
 memory_propose, memory_promote, memory_resolve, memory_pr_status — always call
 them by these full names.
 
+- Session start (the wake ritual): treat these instructions as already-known
+  context, not as something to re-confirm. If the task needs more than they
+  cover, call memory_search once with the task's keywords — try 2-3 phrasings
+  and check both scopes — before concluding anything is missing. Do not ask
+  the user to re-explain past decisions or preferences memory may already
+  hold; search first, and only ask about what search cannot answer.
+
 - The server tells you when project outbox drafts are waiting for review —
   in tool results, and in these session-start instructions. When it does,
   summarize them (one line each) and ask the user which ones to sync into the

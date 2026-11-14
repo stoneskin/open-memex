@@ -407,11 +407,16 @@ Three ways memories get in:
   own sentence: the plugin tells the agent what it just stored, and a
   `memory_add` that re-saves the same words within the next few minutes is
   refused with the stored id (D73) — one thing you said is one memory, not
-  three copies of it.
+  three copies of it. A keyword match over the 2000-character hard cap is
+  dropped, never truncated into a memory — the agent is told in its session
+  context (D94) and can re-save a shortened version.
 - **The agent saves it**: in any editor, ask your agent to remember something
   (or it saves on its own when you state a fact worth keeping) — it calls
   `memory_add`. The routing above is a heuristic; you can always say "save this
-  to my personal memory" or use the CLI with `--scope` to be explicit.
+  to my personal memory" or use the CLI with `--scope` to be explicit. Long
+  bodies are never refused: over 500 characters the save proceeds and the
+  result just carries a soft hint that shorter, self-contained statements
+  retrieve better (D94).
 - **Checkpoint proposals**: when a task wraps up, the agent proposes 1–3 short
   candidate memories distilled from the session — decisions and their reasons,
   conventions, gotchas, approaches tried and abandoned — and saves only the
@@ -571,6 +576,46 @@ It's a snapshot, not the whole memory — the agent can call `memory_search` any
 time for the rest. Both top-N counts are configurable (see [Config](#config)).
 For MCP clients this block is delivered as handshake guidance the agent follows;
 the opencode plugin injects it directly on the first turn.
+
+### The session-start ritual (wake)
+
+open-memex sessions start from what is already in context, not from questions:
+
+1. Read the `[OPEN-MEMEX]` block injected at session start (opencode) — or the
+   equivalent guidance in the MCP handshake instructions. It carries the top
+   project memories, your preferences, the working-state note from a previous
+   session (if any), and the compiled memory map.
+2. If the block is empty or doesn't cover the current task, call `memory_search`
+   **once** with the task's keywords (try 2–3 phrasings, both scopes) before
+   concluding anything is missing.
+3. Don't ask the user to re-explain what memory already holds — repeated
+   "didn't we decide X?" questions are the failure mode open-memex exists to
+   prevent. Ask only about what neither the block nor search can answer.
+
+The block is injected **once per session, not once per turn** — mid-session,
+open-memex adds nothing to the context unless a tool is called. The same
+ritual is written into the bundled `open-memex` Agent Skill and the MCP
+handshake instructions, so an agent that reads only one of the three still
+behaves the same way.
+
+### What this costs in context (tokens)
+
+Measured, not asserted (D94, inspired by OptMem's published "426-token
+prompt"). On the checked-in fixture in `scripts/token-cost.ts` — 8 project
+memories + 5 personal + the compiled graph outline, default config — with
+tokens estimated as characters ÷ 4 (the rough ratio for English prose; a
+deliberately tokenizer-free method, no new dependency):
+
+| Surface | Characters | ≈ Tokens | When |
+|---|---|---|---|
+| Session-start injection block | 2,125 | ~530 | once per session (not per turn) |
+| All 13 MCP tool descriptions | 8,814 | ~2,200 | once per session, at the MCP handshake |
+| Total | 10,939 | ~2,700 | |
+
+These are approximations and they move with your memory sizes and config —
+re-run `node --experimental-strip-types scripts/token-cost.ts` to measure
+your own numbers and to regenerate the fixture's. (The script's output and
+this table must agree; update both together, never by hand.)
 
 ### Retrieval evaluation
 

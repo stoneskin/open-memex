@@ -12,6 +12,22 @@ If `open-memex` MCP tools (`memory_add`, `memory_search`, …) are available in
 this session, prefer them. Otherwise use the CLI below. If `open-memex` is not
 on PATH, prefix commands with `npx -y open-memex@latest`.
 
+## Session start - the wake ritual
+
+Start the session from what memory already holds, not from questions to the
+user:
+
+- Read the `[OPEN-MEMEX]` block injected at session start (opencode plugin) or
+  the equivalent guidance in the MCP handshake instructions. It carries the top
+  project memories, the user's preferences, the working-state note from a
+  previous session (if any), and the compiled memory map.
+- If the block is empty or doesn't cover the current task, call `memory_search`
+  once with the task's keywords - try 2-3 phrasings and check both scopes -
+  before concluding anything is missing.
+- Do not ask the user to re-explain what memory already holds; repeated
+  "didn't we decide X?" questions are the failure open-memex exists to prevent.
+  Ask only about what neither the block nor search can answer.
+
 ## Save — be proactive
 
 When the user shares something worth remembering — a fact, preference,

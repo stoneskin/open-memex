@@ -147,6 +147,7 @@ Every write path (tool, keyword hook, CLI `add`) must:
 3. Check `findDuplicates` (design §3.4): identical content is idempotent (return existing id); near-duplicates (similarity ≥ 0.8) warn but save — suggest `supersede` when the new content replaces the old.
 4. `writeMemoryFile` first, then `readMemoryFile` + `upsertFromFile` to keep FTS in sync.
 5. Deletion reports honestly (D63): only ENOENT counts as "deleted"; any other unlink failure keeps the index row and returns failure — the file is the source of truth and would otherwise resurrect the memory on next sync.
+6. **Length nudge (D94): hint, never refusal.** Content over 500 characters still saves normally; append `lengthNudge()` (`src/capture/length.ts`) to the result — tool path via `addMemory`, CLI via `add`. Never reject or truncate a save for length; the only hard cap is keyword capture's `MAX_CAPTURE_CHARS` (2000, D67), unchanged, and an over-cap keyword drop surfaces to the agent in the D73 hand-off note (`formatCaptureDropBlock`) so it can re-save a shortened version. The keywords debug log stays.
 
 Capture-time aliases (D61): `memory_add`/`supersede` may carry up to 4
 `aliases` (alternate phrasings) into frontmatter; they index in their own FTS
@@ -157,6 +158,17 @@ installs that set it manually, but new installs never see the question. Always p
 invents aliases. Checkpoint-proposal guidance (propose, never auto-draft) is
 copy, not mechanism: keep the rubric wording in sync across the skill, the
 AGENTS.md hygiene footer, the MCP handshake, and the tool descriptions.
+
+**Wake convention (D94) — documentation-only, no new surface.** The
+session-start ritual is written in README (en + zh), the bundled Agent
+Skill, and the MCP `SERVER_INSTRUCTIONS`; those three must keep saying the
+same thing, and an agent that reads only one still has to behave. The
+ritual: read the injected `[OPEN-MEMEX]` block (the working-state note and
+the compiled graph outline ride it); if the block is empty or insufficient,
+one `memory_search` with the task's keywords; never ask the user to
+re-explain what memory may already hold. Do not invent tool names for it —
+§18's `memory_recall` does not exist — and do not add an MCP tool or CLI
+verb for the ritual.
 
 ## Lifecycle invariants (design §3.3)
 

@@ -35,7 +35,9 @@ import {
   isTurnEcho,
   freshCaptures,
   formatHandoffBlock,
+  formatCaptureDropBlock,
 } from "../src/capture/handoff.ts";
+import { LENGTH_NUDGE_CHARS, lengthNudge } from "../src/capture/length.ts";
 import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePluginEntry, mergeV2PluginEntry, removeV2PluginEntry, opencodeGlobalConfigPath, printManualEntryHint, parseJsonConfig, removeServerEntry, removePluginEntry, removeInstructionsSection, LEGACY_PACKAGE_NAME, shouldInstallSkill } from "../src/init.ts";
 import { z } from "zod";
 import { memoryAddArgs } from "../src/tools/ops.ts";
@@ -715,6 +717,28 @@ ok(
   !formatHandoffBlock([{ ...rec, content: "a\n\n  b" }]).includes("\n\n"),
 );
 ok("window is 10 minutes", TURN_ECHO_WINDOW_MS === 10 * 60 * 1000);
+
+console.log("== capture length nudge (D94) ==");
+// Threshold logic is pure and inclusive-boundary: 500 chars = no hint, 501 = hint.
+ok("threshold is 500", LENGTH_NUDGE_CHARS === 500);
+ok("empty body → no nudge", lengthNudge("") === null);
+ok("at threshold → no nudge", lengthNudge("a".repeat(500)) === null);
+ok("one over threshold → nudge", lengthNudge("a".repeat(501)) !== null);
+const nudge = lengthNudge("a".repeat(1234))!;
+ok("nudge reports the length", nudge.includes("1234"));
+ok("nudge says the save happened", nudge.includes("saved fine"));
+ok("nudge is a hint, not a refusal", !nudge.includes("Not saved") && nudge.includes("saved fine"));
+
+console.log("== over-cap drop hand-off note (D94) ==");
+ok("no drops → no block", formatCaptureDropBlock([]) === "");
+const drop = { content: "a".repeat(2500), at: now };
+const dropBlock = formatCaptureDropBlock([drop]);
+ok("drop block reports the cap", dropBlock.includes("2000"));
+ok("drop block reports the length", dropBlock.includes("2500"));
+ok("drop block previews the content", dropBlock.includes("aaaa"));
+ok("drop block points at memory_add", dropBlock.includes("memory_add"));
+ok("drop block never truncates into a memory claim", dropBlock.includes("never truncated"));
+ok("multiple drops listed", formatCaptureDropBlock([drop, { ...drop, content: "b".repeat(2100) }]).split("\n- ").length === 3);
 
 console.log("== init --global: userMcpConfigPath / mergeServerEntry ==");
 // D45: user-level MCP config locations, per platform (platform param is injectable).

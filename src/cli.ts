@@ -25,6 +25,7 @@ import {
 import { loadConfig, configSource } from "./config.ts";
 import { paths, projectRoot, isInRepoMemoryFile } from "./paths.ts";
 import { redact } from "./redact.ts";
+import { lengthNudge } from "./capture/length.ts";
 import { readWorkingState, clearWorkingState, workingStatePath } from "./working-state.ts";
 import { refreshGraph, refreshGraphQuiet, ensureGraph, loadGraphEdges, loadGraphNodes, loadAllMemoryIds } from "./store/graph.ts";
 import { graphNeighbours, shortestPath } from "./graph/queries.ts";
@@ -1437,6 +1438,9 @@ async function main() {
         `warning: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id}\n  ${n.snippet}\n  use \`open-memex supersede ${n.id} "new content"\` if this replaces it.`,
       );
     }
+    // D94: soft length hint - the save already happened; this is advisory only.
+    const nudge = lengthNudge(red);
+    if (nudge) console.log(nudge);
     return;
   }
 

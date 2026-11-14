@@ -7,7 +7,7 @@ rationale behind each decision lives in the decision log in
 [docs/V2-DESIGN.md](docs/V2-DESIGN.md). Pre-release builds published under
 the `@alpha` tag are development snapshots and are not listed individually.
 
-## [Unreleased]
+## [0.10.0] - 2026-11-13
 
 - D94 OptMem small items (§18 item 5): open-memex's prompt/token overhead is now **measured and published**, not asserted — `scripts/token-cost.ts` renders the real `buildContextBlock` output (8 project + 5 personal + the compiled graph outline) and the real `TOOL_DESCRIPTIONS` text on a scratch store, estimating tokens as characters ÷ 4 (no tokenizer dependency); measured: injection block 2125 chars (~531 tokens), 13 tool descriptions 8814 chars (~2204 tokens), total 10939 chars (~2735 tokens), quoted as approximations in both READMEs with the method stated and the once-per-session (not per-turn) injection spelled out. A **wake convention** documents the session-start ritual — read the injected `[OPEN-MEMEX]` block (working-state note + graph outline ride it); if empty or insufficient, one `memory_search` with the task's keywords; never re-ask the user for what memory holds — stated identically in README (en + zh), the bundled Agent Skill, and the MCP handshake instructions, with no new tool or CLI verb and no invented tool name. A **capture length nudge**: bodies over 500 characters save normally and the result carries a one-line hint (`lengthNudge`, pure, smoke-tested) on `memory_add` and CLI `add` — nothing is refused; and a keyword match over the unchanged 2000-character hard cap, previously dropped with only a debug log line, is now surfaced to the agent in the D73 hand-off note so it can re-save a shortened version.
 

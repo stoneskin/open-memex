@@ -407,11 +407,16 @@ Three ways memories get in:
   own sentence: the plugin tells the agent what it just stored, and a
   `memory_add` that re-saves the same words within the next few minutes is
   refused with the stored id (D73) — one thing you said is one memory, not
-  three copies of it.
+  three copies of it. A keyword match over the 2000-character hard cap is
+  dropped, never truncated into a memory — the agent is told in its session
+  context (D94) and can re-save a shortened version.
 - **The agent saves it**: in any editor, ask your agent to remember something
   (or it saves on its own when you state a fact worth keeping) — it calls
   `memory_add`. The routing above is a heuristic; you can always say "save this
-  to my personal memory" or use the CLI with `--scope` to be explicit.
+  to my personal memory" or use the CLI with `--scope` to be explicit. Long
+  bodies are never refused: over 500 characters the save proceeds and the
+  result just carries a soft hint that shorter, self-contained statements
+  retrieve better (D94).
 - **Checkpoint proposals**: when a task wraps up, the agent proposes 1–3 short
   candidate memories distilled from the session — decisions and their reasons,
   conventions, gotchas, approaches tried and abandoned — and saves only the

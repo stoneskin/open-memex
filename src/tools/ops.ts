@@ -25,6 +25,7 @@ import {
 import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
 import { findDuplicates, findTurnEcho, supersede, setStatus } from "../store/lifecycle.ts";
 import { TURN_ECHO_WINDOW_MS } from "../capture/handoff.ts";
+import { lengthNudge } from "../capture/length.ts";
 import {
   getUsage,
   recordUseful,
@@ -444,6 +445,12 @@ export async function addMemory(
   for (const n of dups.near) {
     output += `\nNote: similar memory exists (score ${n.score.toFixed(2)}): id=${n.id} — ${n.snippet}. Use memory_supersede if this replaces it.`;
   }
+  // D94: soft length hint. The save already happened (write, dedup, redact
+  // above are untouched); over ~500 chars the result just carries a hint so
+  // the agent can tighten the memory. Never a refusal - the only hard cap
+  // is keyword capture's MAX_CAPTURE_CHARS.
+  const nudge = lengthNudge(redacted);
+  if (nudge) output += `\n${nudge}`;
   return { title: `memory: saved ${fm.id}`, output };
 }
 

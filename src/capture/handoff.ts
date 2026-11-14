@@ -17,6 +17,7 @@
  * Pure module: no db, no fs, no config, so the threshold behavior is testable
  * in scripts/smoke-pure.ts.
  */
+import { MAX_CAPTURE_CHARS } from "./keywords.ts";
 
 /**
  * Overlap bar for refusing a re-save of a just-captured user statement.
@@ -37,13 +38,29 @@ export const TURN_ECHO_THRESHOLD = 0.28;
 /** How long a hook capture counts as "this turn" (10 minutes). */
 export const TURN_ECHO_WINDOW_MS = 10 * 60 * 1000;
 
-/** One hook capture, in memory only — never persisted (like `injectedSessions`). */
+/** One hook capture, in memory only - never persisted (like `injectedSessions`). */
 export interface CaptureRecord {
   id: string;
   scopeKey: string;
   content: string;
   at: number;
   /** The note has already been pushed for this capture. */
+  delivered?: boolean;
+}
+
+/**
+ * D94: one over-cap keyword drop, in memory only. Only `too-long` drops
+ * surface here - a `too-short` match is noise (a trigger that yields "OK"
+ * is not a memory, D67), but an over-2000-char match can carry real
+ * content the agent is otherwise never told about: the capture proceeds
+ * with no agent in the loop, so without this note the sentence silently
+ * vanishes. Debug logging (keywords.ts) is unchanged; this is the
+ * upgrade from log to the agent's face.
+ */
+export interface CaptureDropRecord {
+  content: string;
+  at: number;
+  /** The note has already been pushed for this drop. */
   delivered?: boolean;
 }
 
@@ -68,7 +85,27 @@ export function formatHandoffBlock(records: CaptureRecord[]): string {
   return [
     "[open-memex] The user's own wording in this turn was ALREADY stored verbatim, before you saw it. It is not unsaved.",
     ...lines,
-    "Do not call memory_add to save that text again in any rewording — one statement is already one memory, and a rewording only adds a second copy that retrieval will return alongside the first.",
+    "Do not call memory_add to save that text again in any rewording - one statement is already one memory, and a rewording only adds a second copy that retrieval will return alongside the first.",
     "Save a memory only for information those lines do NOT contain, as its own self-contained statement. If your version is meant to replace one of them, call memory_supersede with that id instead of memory_add.",
+  ].join("\n");
+}
+
+/**
+ * D94: the over-cap drop note. Tells the agent a keyword match was dropped
+ * for exceeding MAX_CAPTURE_CHARS (imported, not hardcoded) so it can
+ * re-save a shortened version. Empty string when there is nothing to
+ * report; never mentions too-short drops.
+ */
+export function formatCaptureDropBlock(drops: CaptureDropRecord[]): string {
+  if (drops.length === 0) return "";
+  const lines = drops.map((d) => {
+    const one = d.content.replace(/\s+/g, " ").trim();
+    const preview = one.length > 120 ? `${one.slice(0, 120)}...` : one;
+    return `- "${preview}" (${d.content.length} chars)`;
+  });
+  return [
+    `[open-memex] A keyword capture in this turn matched but was NOT saved: the body is over the ${MAX_CAPTURE_CHARS}-character hard cap, so it was dropped.`,
+    ...lines,
+    "Long matches are never truncated into a memory - the cap is unchanged. If any of the dropped text is worth keeping, save a shortened, self-contained version with memory_add.",
   ].join("\n");
 }

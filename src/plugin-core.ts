@@ -13,12 +13,14 @@ import {
 } from "./store/markdown.ts";
 import { buildContextBlock } from "./retrieve/inject.ts";
 import { workingStateBlock } from "./working-state.ts";
-import { detectKeywords } from "./capture/keywords.ts";
+import { scanKeywords } from "./capture/keywords.ts";
 import {
   TURN_ECHO_WINDOW_MS,
   formatHandoffBlock,
+  formatCaptureDropBlock,
   freshCaptures,
   type CaptureRecord,
+  type CaptureDropRecord,
 } from "./capture/handoff.ts";
 import { findDuplicates } from "./store/lifecycle.ts";
 import { redact } from "./redact.ts";
@@ -44,6 +46,13 @@ export interface PluginState {
    * `injectedSessions` — never persisted, pruned by the turn window.
    */
   captures: Map<string, CaptureRecord[]>;
+  /**
+   * D94: over-cap keyword drops this session (too-long only). The capture
+   * proceeds with no agent in the loop, so without this the agent never
+   * learns the sentence was dropped - it surfaces once via the hand-off
+   * note. In memory only, same discipline as `captures`.
+   */
+  drops: Map<string, CaptureDropRecord[]>;
 }
 
 /**
@@ -76,7 +85,7 @@ export function bootstrapPlugin(root: string): PluginState {
   } catch (err) {
     console.error("[open-memex] init failed:", err);
   }
-  return { cfg, scope, injectedSessions: new Set<string>(), workingStateSessions: new Set<string>(), captures: new Map() };
+  return { cfg, scope, injectedSessions: new Set<string>(), workingStateSessions: new Set<string>(), captures: new Map(), drops: new Map() };
 }
 
 /**
@@ -93,7 +102,15 @@ export function captureFromText(
 ): void {
   const { cfg, scope } = state;
   if (!cfg.keywordCaptureEnabled || !text) return;
-  const hits = detectKeywords(text, cfg);
+  // D94: scanKeywords over detectKeywords - the dropped matches come back
+  // too. Over-cap (too-long) drops are recorded against the session so the
+  // D73 hand-off note can surface them; too-short stays debug-log-only.
+  const scan = scanKeywords(text, cfg);
+  const hits = scan.hits;
+  for (const d of scan.dropped) {
+    if (d.reason !== "too-long") continue;
+    recordCaptureDrop(state, sessionID, { content: d.content, at: Date.now() });
+  }
   for (const h of hits) {
     const { content, hadSecret, matchedPattern } = redact(h.content, cfg.redactPatterns);
     // Secrets are masked (first 4 chars kept) and the capture proceeds;
@@ -165,30 +182,63 @@ function recordCapture(
   state.captures.set(sessionID, list);
 }
 
+/** Note one over-cap drop against its session (D94). No-op without a session. */
+function recordCaptureDrop(
+  state: PluginState,
+  sessionID: string | undefined,
+  record: CaptureDropRecord,
+): void {
+  if (!sessionID) return;
+  const list = state.drops.get(sessionID) ?? [];
+  list.push(record);
+  state.drops.set(sessionID, list);
+}
+
 /**
  * D73 hand-off note (a): what the keyword hook already stored for this
  * session, delivered once per capture into the turn's system context. The
  * agent cannot avoid re-saving a statement it cannot see is stored, so the
- * store tells it. Returns "" when there is nothing new to hand off; stale
- * records are pruned (in-memory only, like `injectedSessions`).
+ * store tells it. D94: over-cap keyword drops ride the same note, so the
+ * agent learns a long match was dropped and can re-save a shorter version.
+ * Returns "" when there is nothing new to hand off; stale records are
+ * pruned (in-memory only, like `injectedSessions`).
  *
  * Both host adapters push this from their system/context hook — the one that
  * runs before the model request, i.e. after `chat.message` / `prompt`.
  */
 export function captureHandoff(sessionID: string, state: PluginState): string {
   if (!sessionID) return "";
-  const list = state.captures.get(sessionID);
-  if (!list || list.length === 0) return "";
   const now = Date.now();
-  const fresh = freshCaptures(list, now);
-  if (fresh.length !== list.length) {
-    if (fresh.length === 0) state.captures.delete(sessionID);
-    else state.captures.set(sessionID, fresh);
+  const list = state.captures.get(sessionID);
+  let capturesBlock = "";
+  if (list && list.length > 0) {
+    const fresh = freshCaptures(list, now);
+    if (fresh.length !== list.length) {
+      if (fresh.length === 0) state.captures.delete(sessionID);
+      else state.captures.set(sessionID, fresh);
+    }
+    const pending = fresh.filter((r) => !r.delivered);
+    if (pending.length > 0) {
+      for (const r of pending) r.delivered = true;
+      capturesBlock = formatHandoffBlock(pending);
+    }
   }
-  const pending = fresh.filter((r) => !r.delivered);
-  if (pending.length === 0) return "";
-  for (const r of pending) r.delivered = true;
-  return formatHandoffBlock(pending);
+  const dropList = state.drops.get(sessionID);
+  let dropsBlock = "";
+  if (dropList && dropList.length > 0) {
+    const fresh = dropList.filter((d) => now - d.at <= TURN_ECHO_WINDOW_MS);
+    if (fresh.length !== dropList.length) {
+      if (fresh.length === 0) state.drops.delete(sessionID);
+      else state.drops.set(sessionID, fresh);
+    }
+    const pending = fresh.filter((d) => !d.delivered);
+    if (pending.length > 0) {
+      for (const d of pending) d.delivered = true;
+      dropsBlock = formatCaptureDropBlock(pending);
+    }
+  }
+  if (capturesBlock && dropsBlock) return `${capturesBlock}\n\n${dropsBlock}`;
+  return capturesBlock || dropsBlock;
 }
 
 /**

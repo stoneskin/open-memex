@@ -47,7 +47,7 @@ import { extractEdges, sharedTagConfidence } from "../src/graph/extract.ts";
 import { renderOutline } from "../src/graph/outline.ts";
 import { graphNeighbours, shortestPath } from "../src/graph/queries.ts";
 import { lintGraph } from "../src/graph/lint.ts";
-import { formatCurationAction, normalizeTitle, planCuration } from "../src/curate.ts";
+import { formatCurationAction, normalizeTitle, planCuration, splitCandidate, inferType, inferTags, formatBatchSummary } from "../src/curate.ts";
 
 console.log("== jsonc parsing + config invariants (P0) ==");
 {
@@ -1435,6 +1435,121 @@ console.log("  == D78 curation (deterministic tier) ==");
     receipts.includes("undo: open-memex curate undo 01D78DUPB0000000000000000") &&
       receipts.includes("undo: open-memex status 01D78EMPTY000000000000000 active") &&
       receipts.includes("undo: open-memex curate undo 01D78TITLE000000000000000"));
+}
+
+console.log("== D95 curation (batch tier) ==");
+{
+  const rec = (
+    id: string,
+    body: string,
+    createdAt: string,
+    extra: Partial<{
+      status: string;
+      supersedes: string | null;
+      supersededBy: string | null;
+      type: string;
+      tags: string[];
+      source: string;
+    }> = {},
+  ) => ({
+    id,
+    body,
+    createdAt,
+    status: extra.status ?? "active",
+    supersedes: extra.supersedes ?? null,
+    supersededBy: extra.supersededBy ?? null,
+    type: extra.type ?? "fact",
+    tags: extra.tags ?? [],
+    source: extra.source ?? "cli",
+  });
+
+  const sameA = "deploy window opens Thursday at nine";
+  const sameB = "deploy window opens thursday at nine"; // same tokens, different hash
+  const ambiguousA = "release notes deploy window opens thursday morning after standup";
+  const ambiguousB = "release notes deploy window opens friday morning after standup";
+
+  ok("type inference: explicit TODO marker is high confidence",
+    inferType("TODO: rotate the signing key")?.type === "todo" &&
+      inferType("TODO: rotate the signing key")?.confidence === "high");
+  ok("type inference: 'we decided' is high confidence",
+    inferType("We decided the cut moves to friday")?.type === "decision");
+  ok("type inference: no signal keeps the current type",
+    inferType("the deploy window opens thursday") === null);
+  ok("tag inference: hashtags are additive and capped",
+    JSON.stringify(inferTags("rotate the key #release #ops", [])) === '{"tags":["release","ops"],"signal":"tag:release"}');
+  ok("tag inference: existing tags are never duplicated",
+    inferTags("#release", ["Release"]) === null);
+
+  const splitBody =
+    "deployment runbook keep the release train on thursday morning after standup and record the rollback owner in the shared channel before the cut, then verify the smoke checks and announce the all clear to the on call rotation\n\n" +
+    "espresso grinder cleaning schedule backflush the group head every friday and descale the boiler monthly with the citric solution from the cabinet, then rinse the reservoir twice and dry the burrs before the next coffee service";
+  const split = splitCandidate(splitBody);
+  ok("split candidate: two unrelated paragraphs",
+    split !== null && split.firstPart.startsWith("deployment runbook") &&
+      split.secondPart.startsWith("espresso grinder") && split.overlap < 0.25);
+  ok("split candidate: one paragraph is not split",
+    splitCandidate("a single paragraph about one topic that is long enough to look overlong but is really one thought repeated for length and padding only") === null);
+
+  const plan = planCuration([
+    rec("01D95SAMEB0000000000000000", sameB, "2026-01-01T00:00:02Z"),
+    rec("01D95SAMEA0000000000000000", sameA, "2026-01-01T00:00:01Z"),
+    rec("01D95AMBA00000000000000000", ambiguousA, "2026-01-01T00:00:03Z"),
+    rec("01D95AMBB00000000000000000", ambiguousB, "2026-01-01T00:00:04Z"),
+    rec("01D95SPLIT0000000000000000", splitBody, "2026-01-01T00:00:05Z"),
+    rec("01D95AUTO00000000000000000", "TODO: rotate the deploy key #release", "2026-01-01T00:00:06Z", { source: "keyword" }),
+    rec("01D95BATCH0000000000000000", "We decided the cut moves to friday #release", "2026-01-01T00:00:07Z"),
+    rec("01D95EXPLICIT00000000000000", "We decided the cut moves to friday", "2026-01-01T00:00:08Z", { type: "decision" }),
+  ]);
+  const proposal = (kind: string, id: string) => plan.proposals.find((p) => p.kind === kind && p.id === id);
+  const action = (kind: string, id: string) => plan.actions.find((a) => a.kind === kind && a.id === id);
+
+  ok("semantic merge: oldest free record is canonical",
+    proposal("semantic-merge", "01D95SAMEB0000000000000000")?.canonicalId === "01D95SAMEA0000000000000000");
+  ok("semantic merge: a 0.8-0.9 pair stays report-only",
+    plan.nearDuplicates.some((p) => p.a === "01D95AMBA00000000000000000" && p.b === "01D95AMBB00000000000000000") &&
+      !proposal("semantic-merge", "01D95AMBB00000000000000000"));
+  ok("split proposal carries both halves",
+    proposal("split", "01D95SPLIT0000000000000000")?.secondPart?.startsWith("espresso grinder") === true);
+  ok("high-confidence keyword capture infers type and tags automatically",
+    action("infer-type", "01D95AUTO00000000000000000")?.toType === "todo" &&
+      action("infer-tags", "01D95AUTO00000000000000000")?.addedTags?.includes("release"));
+  ok("a tool save goes to batch, never a silent type change",
+    proposal("infer-type", "01D95BATCH0000000000000000")?.toType === "decision" &&
+      !action("infer-type", "01D95BATCH0000000000000000"));
+  ok("an explicit non-default type is never touched",
+    !proposal("infer-type", "01D95EXPLICIT00000000000000") &&
+      !action("infer-type", "01D95EXPLICIT00000000000000"));
+  ok("batch proposals are never in the auto tier",
+    plan.proposals.every((p) => p.kind !== "semantic-merge" || !plan.actions.some((a) => a.id === p.id)));
+  {
+    // A proposal's body is the exact text it was validated against; the title
+    // tier must not rewrite it out from under the decision.
+    const raggedSplit = planCuration([
+      rec("01D95RAGGED0000000000000000", `  ${splitBody}`, "2026-01-01T00:00:01Z"),
+    ]);
+    ok("a split candidate keeps its body untouched by the title tier",
+      raggedSplit.proposals.some((p) => p.kind === "split") &&
+        !raggedSplit.actions.some((a) => a.kind === "normalize-title"));
+  }
+  const summary = formatBatchSummary(plan, { ids: ["A", "B"] });
+  ok("one summary screen names the accept/decline/undo paths",
+    summary.includes("--accept-batch") && summary.includes("--decline-batch") &&
+      summary.includes(`curate undo --batch ${plan.batchId}`));
+
+  const reordered = planCuration([
+    rec("01D95EXPLICIT00000000000000", "We decided the cut moves to friday", "2026-01-01T00:00:08Z", { type: "decision" }),
+    rec("01D95BATCH0000000000000000", "We decided the cut moves to friday #release", "2026-01-01T00:00:07Z"),
+    rec("01D95AUTO00000000000000000", "TODO: rotate the deploy key #release", "2026-01-01T00:00:06Z", { source: "keyword" }),
+    rec("01D95SPLIT0000000000000000", splitBody, "2026-01-01T00:00:05Z"),
+    rec("01D95AMBB00000000000000000", ambiguousB, "2026-01-01T00:00:04Z"),
+    rec("01D95AMBA00000000000000000", ambiguousA, "2026-01-01T00:00:03Z"),
+    rec("01D95SAMEB0000000000000000", sameB, "2026-01-01T00:00:02Z"),
+    rec("01D95SAMEA0000000000000000", sameA, "2026-01-01T00:00:01Z"),
+  ]);
+  ok("batch id and order are stable across input order",
+    reordered.batchId === plan.batchId &&
+      reordered.proposals.map((p) => `${p.kind}:${p.id}`).join(",") ===
+        plan.proposals.map((p) => `${p.kind}:${p.id}`).join(","));
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);

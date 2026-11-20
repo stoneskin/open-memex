@@ -126,6 +126,10 @@ yet. Syncing them into the repo for review is an explicit, user-approved step:
   copies the drafts into the current project's \`.ai/open-memex/\` directory as
   \`proposed\` and commits locally on the CURRENT branch. It NEVER creates a
   branch on its own.
+- If the result says a BATCH DECISION is required, show that one summary and ask
+  the user once for the whole batch. Call again with \`curateBatch="accept"\` or
+  \`"decline"\` — never per-item confirmations, and never accept on your own
+  judgement.
 - After the submit, ask ONE follow-up: "want me to create a branch + push +
   open the PR, or will you handle it yourself?" A "yes, you do it" answer
   covers the whole chain — branch creation, push, PR creation — do NOT re-ask

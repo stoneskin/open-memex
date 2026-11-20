@@ -302,7 +302,7 @@ MCP 服务器暴露十三个工具；opencode 原生插件暴露其中七个核�
 | ● `memory_workingstate` | 读/写/清除每项目的工作状态笔记（§3.6，D89）——让被中断的任务得以续接；只是草稿状态，永远不会成为记忆 |
 | ● `memory_useful`    | 确认一条记忆有用（D77）——只认显式确认；被动的搜索/列表出现只计入 `retrieved_count`，绝不算有用 |
 | `memory_status`      | 显示同步队列（outbox 草稿、仓库评审状态、未提交文件），并附带 D77 复用报告 |
-| `memory_submit`      | 先做确定性策展，再把指定草稿移进仓库记忆目录（本地分支 + 提交） |
+| `memory_submit`      | 先做策展（确定性自动层 + 一次批次决定），再把指定草稿移进仓库记忆目录（本地分支 + 提交） |
 | `memory_propose`     | 把个人记忆复制到项目作用域，作为评审候选 |
 | `memory_promote`     | 推进 `proposed → approved → published`（或拒绝 / 重新提交） |
 | `memory_resolve`     | 列出冲突的记忆文件 / 对某个做三方合并 |
@@ -344,7 +344,7 @@ MCP 服务器暴露十三个工具；opencode 原生插件暴露其中七个核�
 
 1. **捕获**——日常工作中随手存下决策、坑、教训，都是草稿。
 2. **评审**——草稿停在本地 outbox 里（你机器上，git 看不见）；`open-memex sync-status`——或者直接在聊天里说"sync memory"（"同步记忆"）——看有啥待处理的。
-3. **提交**——由你点名记忆；它们进入 `<仓库>/.ai/open-memex/` 并在当前分支形成一个本地提交。复制之前，`submit` 先打印只读的图谱 lint，再自动应用确定性清理：完全重复合并进 supersede 链、空正文归档、首行标题空白规范化。近重复只报告，语义合并/拆分留给人。每个动作都打印撤销命令；`--no-curate` 跳过清理但保留 lint 报告。open-memex 永不自动推送；它会打印推送和建 PR 的命令，拿到你明确许可的助手可以替你执行。
+3. **提交**——由你点名记忆；它们进入 `<仓库>/.ai/open-memex/` 并在当前分支形成一个本地提交。复制之前，`submit` 先打印只读的图谱 lint，再自动应用确定性层：完全重复合并进 supersede 链、空正文归档、首行标题空白规范化，以及关键词捕获上高置信度的类型/标签推断。需要判断的部分——语义合并（token 内容相同的近重复）、超载记忆的拆分、不确定的类型/标签推断——一起显示为**一屏 batch-confirm**：一个参数接受整批，一个参数拒绝整批，拒绝时每条提案记忆原样不动（上面那层确定性动作已经跑过），永不逐条弹确认。每个动作都打印撤销命令，接受的批次可用 `curate undo --batch <id>` 整批撤销；`--no-curate` 跳过策展但保留 lint 报告。open-memex 永不自动推送；它会打印推送和建 PR 的命令，拿到你明确许可的助手可以替你执行。
 4. **PR 评审**——记忆是纯 Markdown；评审者走正常分支/PR 流程批准、要求修改或拒绝。
 5. **回想**——已发布的记忆在会话开始时注入，平时也能随时搜，人和助手都一样。
 
@@ -531,12 +531,17 @@ open-memex sync-status
 # 以及任何未提交的仓库记忆文件。
 
 open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
+                       [--accept-batch | --decline-batch]
 # 把你点名的草稿移进 .ai/open-memex/，标为 "proposed"：
 # 复制、翻转 review_state、在当前分支本地 git 提交。
 # 永不自己建分支——建分支是你（或拿到完整链路明确许可的助手）的事。
-# 复制前：只读图谱 lint + 确定性策展（完全重复合并、空正文归档、
-# 首行标题清理）。--no-curate 跳过清理但仍打印 lint；近重复只报告，
-# 永不自动合并。每个已应用动作都会打印撤销命令。
+# 复制前：只读图谱 lint + 确定性自动应用（完全重复合并、空正文归档、
+# 首行标题清理、关键词捕获上的高置信度类型/标签推断）。
+# 然后是批次层：语义合并、拆分、不确定的类型/标签推断打成一屏摘要。
+# 有提案又没带决定参数时，submit 在写任何东西之前停下；重跑时带
+# --accept-batch（全部应用）或 --decline-batch（拒绝整批），永不逐条确认。
+# --no-curate 完全跳过策展但仍打印 lint。
+# 每个已应用动作都会打印撤销命令。
 # 生成的 gh pr create body 带 lint + 策展摘要，人数只算实际提交的 id
 #（不是提交前的批次）。
 # 全有全无；冲突（同 id 不同内容）干净地中止。
@@ -545,9 +550,16 @@ open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
 # （记忆 PR 叠在你的工作分支上）；--base 可改指到 main 或你的评审分支。
 
 open-memex curate undo <id>
-# 撤销某条记忆上最近一次自动策展（合并或标题修正）。
+# 撤销某条记忆上最近一次自动策展（合并、标题修正、推断的类型/标签）。
 # 凭据写在文件 review_history 里，所以跨分支/跨机器都能撤销；
 # 空正文归档用 `open-memex status <id> active` 恢复。
+
+open-memex curate undo --batch <batch-id>
+# 一次撤销整个已接受的批次（id 由 submit 打印）。
+
+open-memex curate stats
+# 每个策展信号的 accepted / declined / undone 计数——本地反馈，
+# 供置信度阈值将来学习（目前还不调参）。
 
 open-memex pr-status [--apply]
 # 读分支的 GitHub PR，把状态映射到每条仓库内记忆：
@@ -637,7 +649,7 @@ open-memex graph path <a> <b>          # 最短跳链，带凭据
 open-memex graph lint [--json]         # 孤立节点、悬空边、近陈旧对
 ```
 
-`lint` 只报告——不自动处理，由人决定。同一份报告就是 D78 提交前策展（D93）的输入：`submit` 在确定性清理前先打印它。图谱接口仅限 CLI；MCP 表面保持十三个记忆工具不变。
+`lint` 只报告——不自动处理，由人决定。同一份报告就是 D78 提交前策展（D93/D95）的输入：`submit` 在策展前先打印它，它标出的近陈旧对正是 batch-confirm 屏幕的候选。图谱接口仅限 CLI；MCP 表面保持十三个记忆工具不变。
 
 ## MCP 服务器
 

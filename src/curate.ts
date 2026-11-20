@@ -672,7 +672,7 @@ export function formatBatchSummary(plan: CurationPlan, opts: { ids: string[] }):
   const idList = opts.ids.join(" ");
   lines.push(`  accept all:  open-memex submit ${idList} --accept-batch`);
   lines.push(
-    `  decline all: open-memex submit ${idList} --decline-batch   (the batch stays unchanged; the deterministic tier above still ran)`,
+    `  decline all: open-memex submit ${idList} --decline-batch   (the batch stays unchanged; the deterministic tier still runs on the re-run)`,
   );
   lines.push(`  after accepting, undo the whole batch: open-memex curate undo --batch ${plan.batchId}`);
   return lines.join("\n");

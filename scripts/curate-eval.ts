@@ -15,6 +15,16 @@
 // all 9 remaining members unchanged, which is the "declined batch changes
 // nothing" baseline. Lint after submit: 11 (orphan 9, dangling 1, stale 1).
 //
+// D95 numbers after the batch tier landed (same corpus, one run):
+// - no decision flag: submit stops before writing anything (outbox snapshot
+//   identical) and prints one summary with --accept-batch / --decline-batch.
+// - accepted: auto-applied 5 (merged 1, archived 1, normalized 1, typed 1,
+//   tagged 1) + batch accepted 4 (merged 1, split 1, typed 1, tagged 1), one
+//   split part created; lint after submit 6 (orphan 4, dangling 1, stale 1).
+// - declined: auto-applied 5, all 9 members submitted, merge target still
+//   active, inferred type still fact, no split part - nothing changed.
+// - `curate undo --batch <id>` reverses all 4 batch items in one command.
+//
 // Seeds two scratch projects with the same corpus, measures the deterministic
 // curation candidates in the first, then runs `submit` in the second and reads
 // the curation summary it prints. The baseline half contains no product logic;
@@ -29,6 +39,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
+import { parse as parseMemory } from "../src/store/markdown.ts";
 
 // D95 batch-confirm threshold: 0.8 is the "worth a look" signal, 0.9 is
 // "genuinely same content". Kept here for the baseline half; the product
@@ -467,35 +478,117 @@ function measure(s: Seed): Measure {
   };
 }
 
+function outboxFile(s: Seed, memId: string): string {
+  return path.join(s.outboxDir, `${memId}.md`);
+}
+
+function repoFile(s: Seed, memId: string): string {
+  return path.join(s.repoDir, `${memId}.md`);
+}
+
+interface MemView {
+  body: string;
+  type: string;
+  tags: string[];
+  status: string;
+  derivedFrom: string | null;
+}
+
+function readMem(file: string): MemView | null {
+  if (!fs.existsSync(file)) return null;
+  const parsed = parseMemory(fs.readFileSync(file, "utf8"));
+  if (!parsed) return null;
+  return {
+    body: parsed.body,
+    type: parsed.fm.type,
+    tags: parsed.fm.tags,
+    status: parsed.fm.status,
+    derivedFrom: parsed.fm.derived_from,
+  };
+}
+
+function outboxSnapshot(s: Seed): Map<string, string> {
+  const snap = new Map<string, string>();
+  if (!fs.existsSync(s.outboxDir)) return snap;
+  for (const name of fs.readdirSync(s.outboxDir)) {
+    if (!name.endsWith(".md")) continue;
+    snap.set(name, fs.readFileSync(path.join(s.outboxDir, name), "utf8"));
+  }
+  return snap;
+}
+
+function sameSnapshot(a: Map<string, string>, b: Map<string, string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [k, v] of a) if (b.get(k) !== v) return false;
+  return true;
+}
+
+function derivedOf(s: Seed, originalId: string): MemView | null {
+  if (!fs.existsSync(s.repoDir)) return null;
+  for (const name of fs.readdirSync(s.repoDir)) {
+    if (!name.endsWith(".md")) continue;
+    const view = readMem(path.join(s.repoDir, name));
+    if (view?.derivedFrom === originalId) return view;
+  }
+  return null;
+}
+
 interface Curated {
   autoApplied: number;
-  merged: number;
-  archived: number;
-  normalized: number;
+  batchAccepted: number;
+  batchId: string | null;
+  splitCreated: number;
   submittedCount: number;
   prTitleCount: number | null;
   prBody: string;
   receipts: string[];
   output: string;
+  previewBlocked: boolean;
+  previewUntouched: boolean;
 }
 
 function curated(s: Seed): Curated {
-  const r = run(["submit", ...s.batchIds], s.project);
+  // First run: no decision. It must stop before writing anything and print
+  // one summary screen with both flags.
+  const before = outboxSnapshot(s);
+  const preview = run(["submit", ...s.batchIds], s.project);
+  const previewOut = `${preview.out}${preview.err}`;
+  const previewBlocked =
+    preview.code !== 0 &&
+    /batch decision required/.test(previewOut) &&
+    /--accept-batch/.test(previewOut) &&
+    /--decline-batch/.test(previewOut);
+  const previewUntouched = sameSnapshot(before, outboxSnapshot(s));
+
+  const r = run(["submit", "--accept-batch", ...s.batchIds], s.project);
   const output = `${r.out}${r.err}`;
   const applied = Number((/curation auto-applied:\s*(\d+)/.exec(output) ?? [])[1] ?? 0);
+  const batch = /batch-confirm (\S+) accepted:\s*(\d+) applied/.exec(output);
   const titleCount = /--title "mem: review (\d+) /.exec(output);
   return {
     autoApplied: applied,
-    merged: (output.match(/\bmerged\b/g) ?? []).length,
-    archived: (output.match(/\barchived\b/g) ?? []).length,
-    normalized: (output.match(/\bnormalized\b/g) ?? []).length,
+    batchAccepted: batch ? Number(batch[2]) : 0,
+    batchId: batch ? batch[1]! : null,
+    splitCreated: (output.match(/split part created:/g) ?? []).length,
     submittedCount: (output.match(/^submitted /gm) ?? []).length,
     prTitleCount: titleCount ? Number(titleCount[1]) : null,
     prBody: (/--body "([^"]*)"/.exec(output) ?? [])[1] ?? "",
     receipts: output
       .split("\n")
       .map((l) => l.trim())
-      .filter((l) => /^(merged|archived|normalized) /.test(l)),
+      .filter((l) => /^(merged|archived|normalized|inferred) /.test(l)),
+    output,
+    previewBlocked,
+    previewUntouched,
+  };
+}
+
+function declined(s: Seed): { autoApplied: number; submittedCount: number; output: string } {
+  const r = run(["submit", "--decline-batch", ...s.batchIds], s.project);
+  const output = `${r.out}${r.err}`;
+  return {
+    autoApplied: Number((/curation auto-applied:\s*(\d+)/.exec(output) ?? [])[1] ?? 0),
+    submittedCount: (output.match(/^submitted /gm) ?? []).length,
     output,
   };
 }
@@ -534,11 +627,14 @@ console.log(
   `curated lint after submit: ${afterLint.total} (orphan ${afterLint.orphan}, dangling ${afterLint.dangling}, stale ${afterLint.stale})`,
 );
 console.log(
-  `curated auto-applied: ${after.autoApplied} (merged ${after.merged}, archived ${after.archived}, normalized ${after.normalized})`,
+  `curated auto-applied: ${after.autoApplied}; batch accepted: ${after.batchAccepted} (split parts created ${after.splitCreated}, batch ${after.batchId ?? "missing"})`,
 );
 for (const r of after.receipts) console.log(`  ${r}`);
-if (after.autoApplied === 0) {
-  console.log("  (no curation summary yet - this is the pre-D78 baseline run)");
+console.log(
+  `batch gate: ${after.previewBlocked ? "no flag stopped before any write" : "MISSING STOP"}; outbox untouched: ${after.previewUntouched ? "yes" : "NO"}`,
+);
+if (!after.previewBlocked || !after.previewUntouched) {
+  throw new Error("submit without a batch decision must stop before writing anything");
 }
 const bodyIds = (/IDs: ([^.]+)\./.exec(after.prBody) ?? [])[1]?.trim().split(/\s+/).filter(Boolean)
   .length ?? 0;
@@ -546,13 +642,70 @@ const prOk =
   after.submittedCount > 0 &&
   after.prTitleCount === after.submittedCount &&
   bodyIds === after.submittedCount &&
-  /Lint before curation: 14 finding\(s\) \(orphans 12, dangling 1, stale 1; report only\)\. Auto-applied 3: merged 1, archived 1, normalized 1\.$/.test(
+  /Lint before curation: 14 finding\(s\) \(orphans 12, dangling 1, stale 1; report only\)\. Auto-applied 5: merged 1, archived 1, normalized 1, typed 1, tagged 1\. Batch-confirm accepted 4: merged 1, split 1, typed 1, tagged 1 \(undo: open-memex curate undo --batch b[0-9a-f]+\)\.$/.test(
     after.prBody,
   );
 console.log(
   `pr command: title ${after.prTitleCount ?? "missing"} (submitted ${after.submittedCount}), body ids ${bodyIds}, summary ${prOk ? "ok" : "MISSING"}`,
 );
 if (!prOk) throw new Error(`PR command does not match the submitted set:\n${after.output}`);
+
+// Accepted batch: a semantic merge supersedes its target, the split keeps both
+// halves, and inference lands on the right memories.
+// A merged-away duplicate is history: it stays in the outbox (it is never
+// submitted as a proposed memory on the branch).
+const mergeB = readMem(outboxFile(curSeed, id("MERGB")));
+const inferAuto = readMem(repoFile(curSeed, id("INFERAUTO")));
+const inferBatch = readMem(repoFile(curSeed, id("INFERBATCH")));
+const splitOriginal = readMem(repoFile(curSeed, id("SPLIT")));
+const splitDerived = derivedOf(curSeed, id("SPLIT"));
+const acceptedOk =
+  mergeB?.status === "superseded" &&
+  inferAuto?.type === "todo" && inferAuto.tags.includes("release") &&
+  inferBatch?.type === "decision" && inferBatch.tags.includes("release") &&
+  splitOriginal?.body.includes("deployment runbook") === true &&
+  splitOriginal.body.includes("espresso") === false &&
+  splitDerived?.body.includes("espresso grinder") === true;
+console.log(
+  `accepted batch effects: merge ${mergeB?.status ?? "missing"}, auto type ${inferAuto?.type ?? "missing"}, batch type ${inferBatch?.type ?? "missing"}, split ${splitDerived ? "created" : "MISSING"}`,
+);
+if (!acceptedOk) throw new Error(`accepted batch did not apply as designed:\n${after.output}`);
+
+const declSeed = seed("declined");
+const decl = declined(declSeed);
+const declMergeB = readMem(repoFile(declSeed, id("MERGB")));
+const declInfer = readMem(repoFile(declSeed, id("INFERBATCH")));
+const declSplit = readMem(repoFile(declSeed, id("SPLIT")));
+const declinedOk =
+  decl.autoApplied === 5 &&
+  decl.submittedCount === 9 &&
+  declMergeB?.status === "active" &&
+  declInfer?.type === "fact" &&
+  declSplit?.body.includes("espresso grinder") === true &&
+  derivedOf(declSeed, id("SPLIT")) === null;
+console.log(
+  `declined batch: ${declinedOk ? "nothing changed" : "CHANGED SOMETHING"} (auto ${decl.autoApplied}, submitted ${decl.submittedCount}, merge ${declMergeB?.status ?? "missing"}, type ${declInfer?.type ?? "missing"})`,
+);
+if (!declinedOk) throw new Error(`declined batch changed memories:\n${decl.output}`);
+
+const batchUndo = run(["curate", "undo", "--batch", after.batchId ?? ""], curSeed.project);
+const undoOut = `${batchUndo.out}${batchUndo.err}`;
+const undoneMergeB = readMem(outboxFile(curSeed, id("MERGB")));
+const undoneInfer = readMem(repoFile(curSeed, id("INFERBATCH")));
+const undoneSplit = readMem(repoFile(curSeed, id("SPLIT")));
+const undoneDerived = derivedOf(curSeed, id("SPLIT"));
+const batchUndoOk =
+  batchUndo.code === 0 &&
+  /batch \S+ undone: 4 item\(s\)/.test(undoOut) &&
+  undoneMergeB?.status === "active" &&
+  undoneInfer?.type === "fact" &&
+  undoneInfer.tags.includes("release") === false &&
+  undoneSplit?.body.includes("espresso grinder") === true &&
+  undoneDerived?.status === "retracted";
+console.log(
+  `batch undo: ${batchUndoOk ? "whole batch reversed" : "MISSING"} (merge ${undoneMergeB?.status ?? "missing"}, type ${undoneInfer?.type ?? "missing"}, derived ${undoneDerived?.status ?? "missing"})`,
+);
+if (!batchUndoOk) throw new Error(`batch undo did not reverse the batch:\n${undoOut}`);
 
 const noSeed = seed("no-curate");
 const no = noCurate(noSeed);
@@ -566,4 +719,7 @@ console.log(`undo checks: ${undoResults.filter((r) => r.code === 0).length}/${un
 undoResults.forEach((r, i) => {
   if (r.code !== 0) console.log(`  undo ${undoIds[i]} failed: ${(r.err || r.out).trim()}`);
 });
+
+const stats = run(["curate", "stats"], curSeed.project);
+console.log(`curate stats: ${stats.code === 0 && /curation feedback/.test(stats.out) ? "counters recorded" : "MISSING"}`);
 console.log(`scratch: ${T}`);

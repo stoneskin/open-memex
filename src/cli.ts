@@ -7,7 +7,7 @@ import { migrateScope, scopeHasFiles, type ConflictStrategy } from "./store/migr
 import { migrateV2 } from "./store/v2migrate.ts";
 import { findDuplicates, supersede, setStatus } from "./store/lifecycle.ts";
 import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatReviewHistory, currentAuthor } from "./review.ts";
-import { getSyncStatus, formatSyncStatus, submitMemories } from "./submit.ts";
+import { getSyncStatus, formatSyncStatus, submitMemories, BatchDecisionRequired } from "./submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
 import { search, list, countList, hitStateLabel, type SearchStats } from "./retrieve/search.ts";
 import { recordUseful, getUsage, reuseRate, usefulCount, usefulKindFor, deleteUsage, loadReuseReport } from "./store/usage.ts";
@@ -30,8 +30,9 @@ import { readWorkingState, clearWorkingState, workingStatePath } from "./working
 import { refreshGraph, refreshGraphQuiet, ensureGraph, loadGraphEdges, loadGraphNodes, loadAllMemoryIds } from "./store/graph.ts";
 import { graphNeighbours, shortestPath } from "./graph/queries.ts";
 import { lintGraph } from "./graph/lint.ts";
-import { formatCurationAction } from "./curate.ts";
-import { undoCuration } from "./store/curate.ts";
+import { formatCurationAction, formatBatchSummary, formatBatchProposal } from "./curate.ts";
+import { undoCuration, undoBatch } from "./store/curate.ts";
+import { loadCurationFeedback, formatCurationFeedback } from "./store/curation-feedback.ts";
 import { resolveMcpCommand } from "./init.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -326,33 +327,53 @@ commits locally on the CURRENT branch, and moves the outbox originals out.
 Never creates a branch on its own — branch creation is your call.
 
 Usage: open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
+                              [--accept-batch | --decline-batch]
 
-D78: submit reports graph lint (report-only, never blocks) and auto-applies
-only deterministic curation: exact duplicate merges, empty-body archives, and
-first-line title whitespace normalization. Every change is listed with its
-undo command. Near-duplicates stay report-only - a human decides.
+D78: submit reports graph lint (report-only, never blocks). The deterministic
+auto tier — exact duplicate merges, empty-body archives, first-line title
+whitespace, high-confidence type/tag inference from keyword captures — is
+applied automatically. Every change is listed with its undo command.
+
+D95: semantic merges, splits and uncertain type/tag inferences are one
+batch-confirm screen. With proposals present and no decision flag, submit stops
+before writing anything and prints the summary. One flag decides the whole
+batch: --accept-batch applies all, --decline-batch changes nothing. Undo the
+accepted batch as a unit with \`open-memex curate undo --batch <id>\`.
 
 Flags:
-  --branch     create this branch and submit onto it (only with your explicit
-               approval for the full chain); default: stay on current branch
-  --base       PR base override (default: the branch you're on)
-  --no-curate  skip the deterministic auto-apply tier; lint still reports
+  --branch          create this branch and submit onto it (only with your
+                    explicit approval for the full chain); default: stay on
+                    current branch
+  --base            PR base override (default: the branch you're on)
+  --no-curate       skip curation entirely (auto and batch); lint still reports
+  --accept-batch    accept every batch proposal (never per-item dialogs)
+  --decline-batch   decline the batch; every memory stays untouched
 
 Example:
   open-memex submit 01ABC 01DEF
-  open-memex submit 01ABC --no-curate`,
+  open-memex submit 01ABC 01DEF --decline-batch
+  open-memex submit 01ABC 01DEF --accept-batch`,
 
-  curate: `Undo one deterministic curation action applied by submit.
+  curate: `Undo deterministic curation applied by submit, or inspect the
+feedback counters.
 
 Every action is recorded in the memory file's review_history, so undo works
 across branches and machines. Only the most recent curation action on an id is
 undoable: an undo appends its own receipt, so a second run refuses. Inspect the
 file's review_history for the older trail.
 
-Usage: open-memex curate undo <id>
+D95: an accepted batch is undone as a unit. \`--batch\` replays the exact
+curation receipts that carry that batch token - one memory can hold two (type,
+then tags) - and reports anything it cannot reverse instead of guessing.
 
-Example:
-  open-memex curate undo 01ABC`,
+Usage: open-memex curate undo <id>
+       open-memex curate undo --batch <batch-id>
+       open-memex curate stats
+
+Examples:
+  open-memex curate undo 01ABC
+  open-memex curate undo --batch b1a2b3c4d5
+  open-memex curate stats`,
 
   "pr-status": `Map the current branch's GitHub PR state back onto review_state:
 merged → published, approval → approved (approved_by = the reviewer),
@@ -553,8 +574,8 @@ Usage:
   open-memex export [--scope project|personal|both] [--type T] [--tag t] [--all] [-o <file>]
   open-memex import <bundle.tar.gz> [--dry-run]
   open-memex distill-agents [--scope project|personal] [--type t1,t2] [--limit N] [-o <file>]
-  open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate]
-  open-memex curate undo <id>
+  open-memex submit <id...> [--branch <name>] [--base <branch>] [--no-curate] [--accept-batch|--decline-batch]
+  open-memex curate undo <id> | --batch <batch-id> | stats
   open-memex pr-status [--apply]
   open-memex reindex
   open-memex audit [--scope project|personal|both]
@@ -1945,16 +1966,26 @@ function positionalArgs(argv: string[], booleans: ReadonlySet<string> = new Set(
   }
 
   if (cmd === "submit") {
-    const booleans = new Set(["no-curate"]);
+    const booleans = new Set(["no-curate", "accept-batch", "decline-batch"]);
     const flags = parseFlags(rest, booleans);
     const ids = positionalArgs(rest, booleans);
     if (ids.length === 0) usage();
+    if (flags["accept-batch"] === "true" && flags["decline-batch"] === "true") {
+      console.error("submit failed: pass either --accept-batch or --decline-batch, not both.");
+      process.exit(2);
+    }
     syncScope(project.key, "submit");
     try {
       const r = submitMemories(ids, {
         branch: flags.branch,
         base: flags.base,
         noCurate: flags["no-curate"] === "true",
+        batch:
+          flags["accept-batch"] === "true"
+            ? "accept"
+            : flags["decline-batch"] === "true"
+              ? "decline"
+              : undefined,
       });
       const c = r.curation;
       console.log(
@@ -1977,6 +2008,20 @@ function positionalArgs(argv: string[], booleans: ReadonlySet<string> = new Set(
       for (const s of c.skipped) {
         console.log(`  curation skipped ${s.id}: ${s.reason}`);
       }
+      if (c.batchDecision === "accepted") {
+        console.log(`batch-confirm ${c.batchId} accepted: ${c.batchApplied.length} applied`);
+        for (const a of c.batchApplied) console.log(`  ${formatBatchProposal(a.proposal)}`);
+        for (const id of c.batchCreated) {
+          console.log(`  split part created: ${id}`);
+        }
+        console.log(`  undo the whole batch: open-memex curate undo --batch ${c.batchId}`);
+      } else if (c.batchDecision === "declined") {
+        console.log(
+          `batch-confirm ${c.batchId} declined: ${c.proposals.length} proposal(s), nothing changed.`,
+        );
+      } else if (c.proposals.length > 0) {
+        console.log(formatBatchSummary(c.plan!, { ids }));
+      }
       for (const w of c.warnings) console.log(`  curation note: ${w}`);
       for (const s of r.submitted) {
         console.log(`submitted ${s.id} → ${path.relative(process.cwd(), s.filePath)}  [${s.reviewState}]`);
@@ -1993,6 +2038,10 @@ function positionalArgs(argv: string[], booleans: ReadonlySet<string> = new Set(
       console.log(`  ${r.pushCommand}`);
       console.log(`  ${r.prCommand}`);
     } catch (e) {
+      if (e instanceof BatchDecisionRequired) {
+        console.log(e.message);
+        process.exit(2);
+      }
       console.error(`submit failed: ${(e as Error).message}`);
       process.exit(2);
     }
@@ -2000,16 +2049,42 @@ function positionalArgs(argv: string[], booleans: ReadonlySet<string> = new Set(
   }
 
   if (cmd === "curate") {
+    const booleans = new Set<string>();
+    const flags = parseFlags(rest.slice(1), booleans);
+    const args = positionalArgs(rest.slice(1), booleans);
     const sub = rest[0];
-    const id = rest[1];
-    if (sub !== "undo" || !id) usage();
     syncScope(project.key, "cli");
+
+    if (sub === "stats") {
+      console.log(formatCurationFeedback(loadCurationFeedback()));
+      return;
+    }
+
+    if (sub !== "undo") usage();
     try {
+      if (flags.batch) {
+        const r = undoBatch(flags.batch, project.key, { by: currentAuthor() });
+        refreshGraphQuiet(project.key, cfg);
+        console.log(
+          `batch ${r.batchId} undone: ${r.undone.length} item(s)${r.skipped.length > 0 ? `, ${r.skipped.length} skipped` : ""}`,
+        );
+        for (const u of r.undone) console.log(`  ${u.kind} ${u.id}`);
+        for (const s of r.skipped) console.log(`  skipped ${s.id}: ${s.reason}`);
+        if (r.undone.length === 0) {
+          console.log("  nothing to undo - the batch may already be reversed, or its memories moved on.");
+        }
+        return;
+      }
+      const id = args[0];
+      if (!id) usage();
       const r = undoCuration(id, { by: currentAuthor() });
       refreshGraphQuiet(project.key, cfg);
       console.log(`curation undone: ${r.kind} ${id}`);
       for (const p of r.filePaths) {
         console.log(`  ${path.relative(process.cwd(), p)}`);
+        if (isInRepoMemoryFile(p)) {
+          console.log("  (in-repo memory: local until committed and pushed)");
+        }
       }
     } catch (e) {
       console.error(`curate undo failed: ${(e as Error).message}`);

@@ -36,10 +36,10 @@ import {
   loadReuseReport,
 } from "../store/usage.ts";
 import { formatReuseReport } from "../reuse-report.ts";
-import { formatCurationAction } from "../curate.ts";
+import { formatCurationAction, formatBatchProposal } from "../curate.ts";
 import { db } from "../store/db.ts";
 import { redact } from "../redact.ts";
-import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount } from "../submit.ts";
+import { getSyncStatus, formatSyncStatus, submitMemories, outboxDraftCount, BatchDecisionRequired } from "../submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "../github.ts";
 import { isInRepoMemoryFile } from "../paths.ts";
 import { refreshGraphQuiet } from "../store/graph.ts";
@@ -96,7 +96,7 @@ export const TOOL_DESCRIPTIONS = {
   memory_status:
     "Show the project memory sync pipeline: drafts waiting in the outbox (appdata), memories in the repo awaiting review or published, and any repo files not yet committed — plus the D77 reuse report: per-scope retrieved/useful rates, the most-reused memories, and \"zombies\" (retrieved but never confirmed useful). Call this at session start, when the server reports drafts waiting for review, when the user says 'sync memory' (or '同步记忆'), or when they ask what memory is pulling its weight. Then ask the user which drafts to sync. For the memories themselves use memory_list; for PR review state use memory_pr_status. (MCP server and the `open-memex sync-status` CLI; the opencode native plugin does not expose this tool.)",
   memory_submit:
-    "Move outbox drafts into the repo memory dir for review. Before copying, reports graph lint (never blocking) and auto-applies only deterministic curation: exact-duplicate merges, empty-body archives, and first-line title normalization. Near-duplicates are reported, never merged. Every applied action appears in the output with its undo command; pass noCurate=true to skip the auto-apply tier while keeping the lint report. Then copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically. (MCP server and the `open-memex submit` CLI; the opencode native plugin does not expose this tool.) Unknown ids or a failed local commit abort the submit with the reason; nothing is published automatically.",
+    "Move outbox drafts into the repo memory dir for review. Before copying, reports graph lint (never blocking) and auto-applies the deterministic tier: exact-duplicate merges, empty-body archives, first-line title normalization, and high-confidence type/tag inference from keyword captures. Every applied action appears in the output with its undo command; pass noCurate=true to skip curation (lint still reports). D95: semantic merges, splits and uncertain type/tag inferences are one batch-confirm summary — when they exist, submit stops before writing anything and returns the summary. Show that summary to the user, then call again with either curateBatch=\"accept\" (apply the whole batch) or curateBatch=\"decline\" (change nothing). Never per-item approval, never silently apply the batch. Then copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically. (MCP server and the `open-memex submit` CLI; the opencode native plugin does not expose this tool.) Unknown ids or a failed local commit abort the submit with the reason; nothing is published automatically.",
   memory_propose:
     "Copy personal memories into the project outbox as review drafts. The personal originals stay put. Use this when personal knowledge should enter a project's review flow; memory_submit then moves the drafts into the repo, and memory_promote advances drafts already there. (MCP server and the `open-memex propose` CLI; the opencode native plugin does not expose this tool.)",
   memory_promote:
@@ -251,7 +251,13 @@ export const memorySubmitArgs = {
   noCurate: z
     .boolean()
     .optional()
-    .describe("Skip the deterministic pre-submit auto-apply tier; the graph lint report still runs. Default false."),
+    .describe("Skip curation entirely (auto and batch); the graph lint report still runs. Default false."),
+  curateBatch: z
+    .enum(["accept", "decline"])
+    .optional()
+    .describe(
+      "D95: the ONE decision for the batch-confirm tier (semantic merges, splits, uncertain type/tag inferences). When proposals exist and this is omitted, submit writes nothing and returns the summary — show it to the user, then call again with accept or decline. Never per-item approval.",
+    ),
 };
 export type MemorySubmitArgs = z.infer<z.ZodObject<typeof memorySubmitArgs>>;
 
@@ -716,14 +722,32 @@ export async function statusMemories(): Promise<ToolResult> {
 }
 
 export async function submitMemoriesOp(args: MemorySubmitArgs): Promise<ToolResult> {
-  const r = submitMemories(args.ids, { branch: args.branch, base: args.base, noCurate: args.noCurate });
+  let r: ReturnType<typeof submitMemories>;
+  try {
+    r = submitMemories(args.ids, {
+      branch: args.branch,
+      base: args.base,
+      noCurate: args.noCurate,
+      batch: args.curateBatch,
+    });
+  } catch (e) {
+    // D95: the batch summary is a decision prompt, not a failure. Return it as
+    // a normal result so the agent can show it and call again.
+    if (e instanceof BatchDecisionRequired) {
+      return {
+        title: "memory: batch decision required",
+        output: `${e.message}\nAsk the user once for the whole batch, then call memory_submit again with curateBatch="accept" or "decline".`,
+      };
+    }
+    throw e;
+  }
   const lines: string[] = [];
   const c = r.curation;
   lines.push(
     `curation lint: ${c.lintFindings.length} finding(s) - orphans ${c.lintCounts.orphan}, dangling ${c.lintCounts["dangling-edge"]}, stale ${c.lintCounts.stale} (report only)`,
   );
   if (c.disabled) {
-    lines.push("curation auto-apply skipped (noCurate=true)");
+    lines.push("curation skipped (noCurate=true)");
   } else if (c.applied.length === 0) {
     lines.push("curation auto-applied: 0");
   } else {
@@ -731,6 +755,14 @@ export async function submitMemoriesOp(args: MemorySubmitArgs): Promise<ToolResu
     for (const a of c.applied) lines.push(`  ${formatCurationAction(a.action)}`);
   }
   for (const s of c.skipped) lines.push(`curation skipped ${s.id}: ${s.reason}`);
+  if (c.batchDecision === "accepted") {
+    lines.push(`batch-confirm ${c.batchId} accepted: ${c.batchApplied.length} applied`);
+    for (const a of c.batchApplied) lines.push(`  ${formatBatchProposal(a.proposal)}`);
+    for (const id of c.batchCreated) lines.push(`  split part created: ${id}`);
+    lines.push(`  undo the whole batch: open-memex curate undo --batch ${c.batchId}`);
+  } else if (c.batchDecision === "declined") {
+    lines.push(`batch-confirm ${c.batchId} declined: ${c.proposals.length} proposal(s), nothing changed.`);
+  }
   for (const w of c.warnings) lines.push(`curation note: ${w}`);
   for (const s of r.submitted) lines.push(`submitted ${s.id} [${s.reviewState}]`);
   for (const id of r.skippedIdentical) lines.push(`already on branch: ${id} (outbox copy removed)`);

@@ -40,13 +40,20 @@ import { db } from "./store/db.ts";
 import { currentAuthor } from "./review.ts";
 import {
   planCuration,
+  batchIdFor,
+  formatBatchSummary,
+  type BatchProposal,
   type CurationPlan,
   type CurationSkip,
 } from "./curate.ts";
 import {
   applyCurationPlan,
+  applyBatchProposals,
+  declineBatch,
   undoCuration,
+  undoBatch,
   type AppliedCuration,
+  type AppliedBatch,
 } from "./store/curate.ts";
 import {
   loadAllMemoryIds,
@@ -70,14 +77,34 @@ function curationPrBody(ids: string[], curation: CurationReport): string {
     let merged = 0;
     let archived = 0;
     let normalized = 0;
+    let typed = 0;
+    let tagged = 0;
     for (const a of curation.applied) {
       if (a.action.kind === "merge-duplicate") merged++;
       else if (a.action.kind === "archive-empty") archived++;
+      else if (a.action.kind === "infer-type") typed++;
+      else if (a.action.kind === "infer-tags") tagged++;
       else normalized++;
     }
-    applied = `Auto-applied ${curation.applied.length}: merged ${merged}, archived ${archived}, normalized ${normalized}.`;
+    applied = `Auto-applied ${curation.applied.length}: merged ${merged}, archived ${archived}, normalized ${normalized}, typed ${typed}, tagged ${tagged}.`;
   }
-  return `Submitted from the open-memex outbox. IDs: ${ids.join(" ")}. Lint before curation: ${lint}. ${applied}`;
+  let batch = "Batch-confirm: no proposals.";
+  if (curation.batchDecision === "declined") {
+    batch = `Batch-confirm declined (${curation.proposals.length} proposal(s), nothing changed).`;
+  } else if (curation.batchDecision === "accepted") {
+    let merges = 0;
+    let splits = 0;
+    let typed = 0;
+    let tagged = 0;
+    for (const a of curation.batchApplied) {
+      if (a.proposal.kind === "semantic-merge") merges++;
+      else if (a.proposal.kind === "split") splits++;
+      else if (a.proposal.kind === "infer-type") typed++;
+      else tagged++;
+    }
+    batch = `Batch-confirm accepted ${curation.batchApplied.length}: merged ${merges}, split ${splits}, typed ${typed}, tagged ${tagged} (undo: open-memex curate undo --batch ${curation.batchId}).`;
+  }
+  return `Submitted from the open-memex outbox. IDs: ${ids.join(" ")}. Lint before curation: ${lint}. ${applied} ${batch}`;
 }
 
 function git(root: string, args: string[]): string {
@@ -275,6 +302,27 @@ export interface SubmitOptions {
   base?: string;
   /** D78: skip the deterministic auto-apply tier. Lint still reports. */
   noCurate?: boolean;
+  /**
+   * D95: the ONE decision for the batch-confirm tier. When proposals exist and
+   * this is omitted, submit stops before writing anything and throws
+   * BatchDecisionRequired with the summary screen. "decline" leaves every
+   * memory untouched; "accept" applies the whole batch.
+   */
+  batch?: "accept" | "decline";
+}
+
+/** D95: submit is holding for the batch decision - nothing has been written. */
+export class BatchDecisionRequired extends Error {
+  readonly plan: CurationPlan;
+  readonly ids: string[];
+  constructor(plan: CurationPlan, ids: string[]) {
+    super(
+      `batch decision required - nothing was written. Submit again with --accept-batch or --decline-batch.\n${formatBatchSummary(plan, { ids })}`,
+    );
+    this.name = "BatchDecisionRequired";
+    this.plan = plan;
+    this.ids = ids;
+  }
 }
 
 export interface CurationReport {
@@ -285,6 +333,13 @@ export interface CurationReport {
   plan: CurationPlan | null;
   applied: AppliedCuration[];
   skipped: CurationSkip[];
+  /** D95: batch-confirm proposals (never applied without a decision) */
+  proposals: BatchProposal[];
+  batchId: string | null;
+  batchDecision: "none" | "accepted" | "declined";
+  batchApplied: AppliedBatch[];
+  /** split only: memories created for a second half (also submitted) */
+  batchCreated: string[];
   /** non-fatal problems (lint unavailable, planner failure, ...) */
   warnings: string[];
 }
@@ -453,6 +508,9 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
   let plan: CurationPlan | null = null;
   let applied: AppliedCuration[] = [];
   let curationSkipped: CurationSkip[] = [];
+  let batchDecision: "none" | "accepted" | "declined" = "none";
+  let batchApplied: AppliedBatch[] = [];
+  let batchCreated: string[] = [];
   if (opts.noCurate) {
     // Explicit opt-out: the lint report still prints, the files are untouched.
   } else {
@@ -465,16 +523,59 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
           createdAt: v.fm.created_at,
           supersedes: v.fm.supersedes,
           supersededBy: v.fm.superseded_by,
+          type: v.fm.type,
+          tags: v.fm.tags,
+          source: v.fm.source,
         })),
       );
       // A record already on the branch needs no action of its own, but it can
       // still be the canonical target for a duplicate in this batch.
       plan.actions = plan.actions.filter((a) => !skippedSet.has(a.id));
+      plan.proposals = plan.proposals.filter((p) => !skippedSet.has(p.id));
+      // The id must describe the set actually shown/decided, not the batch
+      // before the already-on-branch filter.
+      plan.batchId = plan.proposals.length > 0 ? batchIdFor(plan.proposals) : null;
+
+      // D95: the batch tier is one decision, taken BEFORE the first write.
+      // No flag means "ask": nothing (not even the auto tier) has run yet, so
+      // the re-run starts from an untouched store.
+      if (plan.proposals.length > 0 && !opts.batch) {
+        if (createdBranch) {
+          try {
+            git(root, ["checkout", "--quiet", startBranch]);
+            git(root, ["branch", "--quiet", "-D", branch]);
+          } catch {
+            /* best effort - the decision prompt is what matters */
+          }
+        }
+        throw new BatchDecisionRequired(plan, ids);
+      }
+
       const result = applyCurationPlan(plan, { by: author });
       applied = result.applied;
       curationSkipped = result.skipped;
-      if (applied.length > 0) refreshGraphQuiet(scope.key, cfg);
+
+      if (plan.proposals.length > 0 && opts.batch === "decline") {
+        declineBatch(plan.proposals);
+        batchDecision = "declined";
+      } else if (plan.proposals.length > 0 && opts.batch === "accept") {
+        try {
+          const b = applyBatchProposals(plan.proposals, {
+            by: author,
+            batchId: plan.batchId!,
+          });
+          batchApplied = b.applied;
+          batchCreated = b.created.map((c) => c.id);
+          batchDecision = "accepted";
+        } catch (e) {
+          // The write half rolls a partial batch back before rethrowing; a
+          // curation hiccup is reported, never fatal to the human's submit.
+          warnings.push(`batch curation failed and was rolled back: ${(e as Error).message}`);
+        }
+      }
+      if (applied.length > 0 || batchApplied.length > 0) refreshGraphQuiet(scope.key, cfg);
     } catch (e) {
+      if (e instanceof BatchDecisionRequired) throw e;
       warnings.push(`curation planning failed: ${(e as Error).message}`);
       plan = null;
     }
@@ -493,6 +594,24 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     }
     if (after.fm.status !== "active") continue;
     activeValidated.push({ ...v, body: after.body, fm: after.fm });
+  }
+  // D95: an accepted split created a second memory in the outbox. It is part
+  // of the same batch, so it rides the same submit.
+  for (const id of batchCreated) {
+    if (activeValidated.some((v) => v.id === id)) continue;
+    const mf = readMemoryFile(path.join(outboxDir, `${id}.md`));
+    if (!mf) {
+      warnings.push(`${id}: split part vanished during curation - not submitted`);
+      continue;
+    }
+    if (mf.fm.status !== "active") continue;
+    activeValidated.push({
+      id,
+      srcPath: mf.filePath,
+      body: mf.body,
+      fm: mf.fm,
+      reviewState: (mf.fm.review_state ?? "draft") as ReviewState,
+    });
   }
 
   const now = msToRfc3339(Date.now());
@@ -564,6 +683,13 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     // Nothing reached the branch: undo the deterministic curation and the
     // copies so a failed submit leaves the outbox exactly as it was.
     if (!commitDone) {
+      if (batchApplied.length > 0 && plan?.batchId) {
+        try {
+          undoBatch(plan.batchId, scope.key, { by: author });
+        } catch {
+          /* best effort - the original submit error is what matters */
+        }
+      }
       for (const a of applied.slice().reverse()) {
         try {
           undoCuration(a.action.id, { by: author });
@@ -571,7 +697,7 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
           /* best effort - the original submit error is what matters */
         }
       }
-      if (applied.length > 0) refreshGraphQuiet(scope.key, cfg);
+      if (applied.length > 0 || batchApplied.length > 0) refreshGraphQuiet(scope.key, cfg);
       for (const w of written) {
         if (submitted.some((s) => s.id === w.id) && fs.existsSync(w.destPath)) {
           try {
@@ -600,6 +726,11 @@ export function submitMemories(ids: string[], opts: SubmitOptions = {}): SubmitR
     plan,
     applied,
     skipped: curationSkipped,
+    proposals: plan?.proposals ?? [],
+    batchId: plan?.batchId ?? null,
+    batchDecision,
+    batchApplied,
+    batchCreated,
     warnings,
   };
   const submittedIds8 = submitted.map((s) => s.id.slice(0, 8));

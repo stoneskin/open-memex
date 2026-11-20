@@ -6,6 +6,15 @@
 // (orphan 7, dangling 1, stale 1); deterministic candidates: exact-dup 1,
 // empty 1, title 2; near-dup report (not auto) 1.
 //
+// D95 batch-confirm baseline (2026-11-19, 0.10.0, extended fixture, no batch
+// logic): lint 14 (orphan 12, dangling 1, stale 1) - the five new outbox
+// drafts are orphan nodes; deterministic candidates unchanged (exact-dup 1,
+// empty 1, title 2); near-dup report 2 (the pair above + the semantic-merge
+// pair); batch proposals: semantic-merge 1, split 1, type-inference 2,
+// tag-inference 2. Nothing is applied for the batch tier - the run submits
+// all 9 remaining members unchanged, which is the "declined batch changes
+// nothing" baseline. Lint after submit: 11 (orphan 9, dangling 1, stale 1).
+//
 // Seeds two scratch projects with the same corpus, measures the deterministic
 // curation candidates in the first, then runs `submit` in the second and reads
 // the curation summary it prints. The baseline half contains no product logic;
@@ -20,6 +29,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { contentHash, similarity, NEAR_DUP_THRESHOLD } from "../src/store/lifecycle.ts";
+
+// D95 batch-confirm threshold: 0.8 is the "worth a look" signal, 0.9 is
+// "genuinely same content". Kept here for the baseline half; the product
+// constant lives in src/curate.ts.
+const SEMANTIC_MERGE_THRESHOLD = 0.9;
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI = path.join(REPO, "dist", "cli.js");
@@ -76,6 +90,8 @@ function id(tag: string): string {
 interface FixtureOptions {
   status?: string;
   tags?: string[];
+  type?: string;
+  source?: string;
   createdAt?: string;
   supersedes?: string | null;
   supersededBy?: string | null;
@@ -99,12 +115,12 @@ scope_key: ${scopeKey}
 scope: project
 visibility: internal
 project_name: d78
-type: fact
+type: ${opts.type ?? "fact"}
 role: knowledge
 importance: normal
 status: ${opts.status ?? "active"}
 tags: [${(opts.tags ?? []).join(", ")}]
-source: cli
+source: ${opts.source ?? "cli"}
 created_at: "${now}"
 updated_at: "${now}"
 supersedes: ${opts.supersedes ?? "null"}
@@ -200,6 +216,56 @@ function seed(name: string): Seed {
     scopeKey,
   );
 
+  // D95 batch-confirm corpus. Same shape as the deterministic half: every
+  // case is a real outbox draft the human would submit together.
+  //
+  // - semantic-merge pair: same content, not byte-identical (similarity
+  //   crosses 0.8, contentHash differs), so the deterministic tier leaves it
+  //   alone and only the batch tier may merge it.
+  // - split candidate: two unrelated paragraphs in one overlong memory.
+  // - infer-type/tag, high confidence from a keyword capture (source:
+  //   keyword): the hook never chose a type, so the auto tier may accept it.
+  // - infer-type/tag, high confidence from a tool save (source: cli): the
+  //   agent may have chosen `fact`, so the batch screen asks.
+  const mergeA = id("MERGA");
+  const mergeB = id("MERGB");
+  const split = id("SPLIT");
+  const inferAuto = id("INFERAUTO");
+  const inferBatch = id("INFERBATCH");
+  fixture(
+    outboxDir,
+    mergeA,
+    "zzq d78 semantic merge candidate deployment window opens thursday morning at nine",
+    scopeKey,
+    { createdAt: "2026-01-01T00:00:10.000Z" },
+  );
+  fixture(
+    outboxDir,
+    mergeB,
+    "zzq d78 semantic merge candidate deployment window opens Thursday morning at nine",
+    scopeKey,
+    { createdAt: "2026-01-01T00:00:11.000Z" },
+  );
+  fixture(
+    outboxDir,
+    split,
+    "zzq d78 split candidate deployment runbook keep the release train on thursday morning after standup and record the rollback owner in the shared channel before the cut\n\nzzq d78 split candidate espresso grinder cleaning schedule backflush the group head every friday and descale the boiler monthly with the citric solution from the cabinet",
+    scopeKey,
+  );
+  fixture(
+    outboxDir,
+    inferAuto,
+    "TODO: rotate the deploy signing key before the release cut #release",
+    scopeKey,
+    { source: "keyword" },
+  );
+  fixture(
+    outboxDir,
+    inferBatch,
+    "We decided the release cut moves to friday afternoon #release",
+    scopeKey,
+  );
+
   const re = run(["reindex"], project);
   if (re.code !== 0) throw new Error(`reindex failed: ${re.out}${re.err}`);
   return {
@@ -207,7 +273,19 @@ function seed(name: string): Seed {
     scopeKey,
     outboxDir,
     repoDir,
-    batchIds: [dupA, dupB, empty, title, nearA, nearB],
+    batchIds: [
+      dupA,
+      dupB,
+      empty,
+      title,
+      nearA,
+      nearB,
+      mergeA,
+      mergeB,
+      split,
+      inferAuto,
+      inferBatch,
+    ],
   };
 }
 
@@ -220,6 +298,62 @@ interface Measure {
   emptyBodies: number;
   titlesToNormalize: number;
   nearPairs: number;
+  semanticMerges: number;
+  splitCandidates: number;
+  typeInferences: number;
+  tagInferences: number;
+}
+
+/** Baseline-only copy of the split heuristic: two unrelated paragraphs in an
+ *  overlong body. Kept in the fixture so the "before" number does not depend
+ *  on product code that does not exist yet. */
+function fixtureSplitCandidate(body: string): { first: string; second: string } | null {
+  const text = body.replace(/\r\n/g, "\n").trim();
+  if (text.length < 320) return null;
+  const parts = text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  let best: { i: number; score: number } | null = null;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const first = parts.slice(0, i + 1).join("\n\n");
+    const second = parts.slice(i + 1).join("\n\n");
+    if (first.length < 100 || second.length < 100) continue;
+    const score = similarity(first, second);
+    if (!best || score < best.score) best = { i, score };
+  }
+  if (!best || best.score >= 0.25) return null;
+  return {
+    first: parts.slice(0, best.i + 1).join("\n\n"),
+    second: parts.slice(best.i + 1).join("\n\n"),
+  };
+}
+
+const FIXTURE_TYPE_RULES: Array<[RegExp, string]> = [
+  [/(^|\n)\s*(todo|TODO)\s*:/, "todo"],
+  [/(^|\n)\s*(gotcha|beware|warning)\s*:/i, "gotcha"],
+  [/(^|\n)\s*how\s+to\b/i, "howto"],
+  [/\bwe\s+(?:have\s+)?decided\b/i, "decision"],
+  [/(^|\n)\s*decision\s*:/i, "decision"],
+  [/\bi\s+prefer\b/i, "preference"],
+  [/(^|\n)\s*preference\s*:/i, "preference"],
+];
+
+function fixtureTypeInference(body: string): string | null {
+  for (const [re, type] of FIXTURE_TYPE_RULES) if (re.test(body)) return type;
+  return null;
+}
+
+function fixtureTagInference(body: string): string[] {
+  const out: string[] = [];
+  const re = /(^|\s)#([a-z0-9][a-z0-9_-]{1,23})\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const tag = m[2]!.toLowerCase();
+    if (!out.includes(tag)) out.push(tag);
+  }
+  return out;
 }
 
 interface LintCounts {
@@ -252,8 +386,17 @@ function measure(s: Seed): Measure {
 
   const batch = s.batchIds.map((memId) => {
     const raw = fs.readFileSync(path.join(s.outboxDir, `${memId}.md`), "utf8");
-    const body = raw.slice(raw.indexOf("\n---\n") + 5);
-    return { id: memId, body };
+    const fence = raw.indexOf("\n---\n", 4);
+    const fmRaw = raw.slice(4, fence);
+    const body = raw.slice(fence + 5);
+    const type = (/^type:\s*(\S+)/m.exec(fmRaw) ?? [])[1] ?? "fact";
+    const source = (/^source:\s*(\S+)/m.exec(fmRaw) ?? [])[1] ?? "";
+    const tagLine = (/^tags:\s*\[(.*)\]/m.exec(fmRaw) ?? [])[1] ?? "";
+    const tags = tagLine
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    return { id: memId, body, type, source, tags };
   });
 
   const groups = new Map<string, string[]>();
@@ -278,13 +421,34 @@ function measure(s: Seed): Measure {
   }
 
   let nearPairs = 0;
+  let semanticMerges = 0;
   for (let i = 0; i < batch.length; i++) {
     for (let j = i + 1; j < batch.length; j++) {
       const a = batch[i]!;
       const b = batch[j]!;
       if (contentHash(a.body) === contentHash(b.body)) continue;
-      if (similarity(a.body, b.body) >= NEAR_DUP_THRESHOLD) nearPairs++;
+      const score = similarity(a.body, b.body);
+      if (score < NEAR_DUP_THRESHOLD) continue;
+      nearPairs++;
+      // D95: a merge needs the near-dup signal to be genuinely same-content.
+      // 0.8-0.9 stays report-only: one flipped word (thursday/friday) lands
+      // there and merging it would drop a real difference.
+      const ratio =
+        Math.min(a.body.length, b.body.length) / Math.max(a.body.length, b.body.length);
+      if (score >= SEMANTIC_MERGE_THRESHOLD && ratio >= 0.6) semanticMerges++;
     }
+  }
+
+  let splitCandidates = 0;
+  let typeInferences = 0;
+  let tagInferences = 0;
+  for (const b of batch) {
+    if (b.body.trim().length === 0) continue;
+    if (fixtureSplitCandidate(b.body)) splitCandidates++;
+    const inferredType = fixtureTypeInference(b.body);
+    if (b.type === "fact" && inferredType && inferredType !== b.type) typeInferences++;
+    const inferredTags = fixtureTagInference(b.body).filter((t) => !b.tags.includes(t));
+    if (inferredTags.length > 0) tagInferences++;
   }
 
   return {
@@ -296,6 +460,10 @@ function measure(s: Seed): Measure {
     emptyBodies,
     titlesToNormalize,
     nearPairs,
+    semanticMerges,
+    splitCandidates,
+    typeInferences,
+    tagInferences,
   };
 }
 
@@ -346,7 +514,9 @@ function line(label: string, m: Measure): string {
   return (
     `${label}: lint ${m.lintTotal} (orphan ${m.orphan}, dangling ${m.dangling}, stale ${m.stale}) | ` +
     `deterministic candidates: exact-dup ${m.exactDuplicates}, empty ${m.emptyBodies}, ` +
-    `title ${m.titlesToNormalize} | near-dup report ${m.nearPairs}`
+    `title ${m.titlesToNormalize} | near-dup report ${m.nearPairs} | ` +
+    `batch proposals: merge ${m.semanticMerges}, split ${m.splitCandidates}, ` +
+    `type ${m.typeInferences}, tag ${m.tagInferences}`
   );
 }
 
@@ -376,7 +546,7 @@ const prOk =
   after.submittedCount > 0 &&
   after.prTitleCount === after.submittedCount &&
   bodyIds === after.submittedCount &&
-  /Lint before curation: 9 finding\(s\) \(orphans 7, dangling 1, stale 1; report only\)\. Auto-applied 3: merged 1, archived 1, normalized 1\.$/.test(
+  /Lint before curation: 14 finding\(s\) \(orphans 12, dangling 1, stale 1; report only\)\. Auto-applied 3: merged 1, archived 1, normalized 1\.$/.test(
     after.prBody,
   );
 console.log(

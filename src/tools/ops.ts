@@ -12,6 +12,7 @@ import type { Scope } from "../scope.ts";
 import type { MyOMemoryConfig } from "../config.ts";
 import { PERSONAL_SCOPE } from "../scope.ts";
 import { search, list, countList, hitStateLabel } from "../retrieve/search.ts";
+import { applyCrossLingualRerank } from "../retrieve/embedding.ts";
 import { formatInventoryLine, truncationNote } from "../retrieve/display.ts";
 import {
   writeMemoryFile,
@@ -473,13 +474,17 @@ export async function searchMemories(
         ? [project.key]
         : [project.key, PERSONAL_SCOPE.key];
   // D77-L2: every surface that hands hits to a caller counts as exposure.
-  const hits = search(args.query, {
+  const found = search(args.query, {
     scopeKeys,
     limit: args.limit,
     type: args.type,
     record: true,
     feedback: cfg.feedbackWeighting,
   });
+  // D96: opt-in cross-lingual rerank. Reorders only what BM25 returned, never
+  // adds or removes a hit, and is a no-op unless the query and some hit are
+  // written in different scripts.
+  const hits = (await applyCrossLingualRerank(args.query, found, cfg)).hits;
   if (hits.length === 0) {
     return {
       title: "memory: 0 results",

@@ -152,6 +152,21 @@ CREATE TABLE IF NOT EXISTS memory_usage (
 );
 `;
 
+// D96: the cross-lingual rerank's vector cache. Like the D77 counters it is
+// local, derived telemetry — keyed by a hash of the embedded text, never in
+// frontmatter, and never dropped by a rebuild (the vectors stay valid as long
+// as the text and model do). `model` is part of the key, so switching
+// `embeddingModel` cannot mix vector spaces.
+const EMBEDDING_SCHEMA = `
+CREATE TABLE IF NOT EXISTS embedding_vectors (
+  model   TEXT NOT NULL,
+  hash    TEXT NOT NULL,
+  dim     INTEGER NOT NULL,
+  vector  BLOB NOT NULL,
+  PRIMARY KEY (model, hash)
+);
+`;
+
 function userVersion(d: AnyDatabase): number {
   const row = d.prepare("PRAGMA user_version").get() as { user_version: number };
   return row.user_version;
@@ -207,6 +222,7 @@ export function db(): AnyDatabase {
   d.exec(TABLE_SCHEMA);
   d.exec(FTS_SCHEMA);
   d.exec(USAGE_SCHEMA);
+  d.exec(EMBEDDING_SCHEMA);
   if (userVersion(d) < SCHEMA_VERSION) rebuildIndexSchema(d);
   _db = d;
   return d;

@@ -42,12 +42,13 @@ import { userMcpConfigPath, mergeServerEntry, detectInstalledClients, mergePlugi
 import { z } from "zod";
 import { memoryAddArgs } from "../src/tools/ops.ts";
 import { dataRootPath, homeOverride } from "../src/paths.ts";
-import { configFilePath, loadConfig, stripJsonComments } from "../src/config.ts";
+import { configFilePath, loadConfig, stripJsonComments, SETTABLE_KEYS } from "../src/config.ts";
 import { extractEdges, sharedTagConfidence } from "../src/graph/extract.ts";
 import { renderOutline } from "../src/graph/outline.ts";
 import { graphNeighbours, shortestPath } from "../src/graph/queries.ts";
 import { lintGraph } from "../src/graph/lint.ts";
 import { formatCurationAction, normalizeTitle, planCuration, splitCandidate, inferType, inferTags, formatBatchSummary } from "../src/curate.ts";
+import { rerankCrossLingual, DEFAULT_RERANK_MIN_COSINE } from "../src/retrieve/rerank.ts";
 
 console.log("== jsonc parsing + config invariants (P0) ==");
 {
@@ -1550,6 +1551,52 @@ console.log("== D95 curation (batch tier) ==");
     reordered.batchId === plan.batchId &&
       reordered.proposals.map((p) => `${p.kind}:${p.id}`).join(",") ===
         plan.proposals.map((p) => `${p.kind}:${p.id}`).join(","));
+}
+
+console.log("== D96 cross-lingual rerank (pure) ==");
+{
+  // A same-language hit is ABSENT from the cosine map: that absence, not a
+  // low score, is what marks it as a barrier. BM25 order must survive.
+  const hits = ["a", "b", "c", "d", "e"].map((id) => ({ id }));
+  const cosines = new Map([
+    ["b", 0.41],
+    ["c", 0.62],
+  ]);
+  const r = rerankCrossLingual(hits, cosines);
+  ok("a contiguous eligible run reorders by cosine, same-language hits keep their slot",
+    r.ordered.map((h) => h.id).join(",") === "a,c,b,d,e");
+  ok("promotions report the move size", r.promotions.length === 1 && r.promotions[0]!.id === "c" && r.promotions[0]!.promoted === 1);
+
+  // A cross-lingual hit below the floor is "too little signal": exact slot kept.
+  const low = rerankCrossLingual(hits, new Map([["b", 0.05], ["c", 0.62]]));
+  ok("a below-floor cross-lingual hit is a barrier and does not move",
+    low.ordered.map((h) => h.id).join(",") === "a,b,c,d,e" && low.promotions.length === 0);
+
+  // Ties are stable — no reordering without a signal gap.
+  const tie = rerankCrossLingual(hits, new Map([["b", 0.5], ["c", 0.5]]));
+  ok("equal cosines keep their BM25 order", tie.ordered.map((h) => h.id).join(",") === "a,b,c,d,e");
+
+  // Empty map = nothing is cross-script; the rerank is a no-op.
+  ok("an empty candidate map changes nothing", rerankCrossLingual(hits, new Map()).ordered.map((h) => h.id).join(",") === "a,b,c,d,e");
+  ok("the shipped floor is the one the gate measured", DEFAULT_RERANK_MIN_COSINE === 0.2);
+  ok("the rerank is opt-in by default", DEFAULT_CONFIG.crossLingualRerank === false);
+  ok("the default model is the measured multilingual one",
+    DEFAULT_CONFIG.embeddingModel === "Xenova/paraphrase-multilingual-MiniLM-L12-v2");
+  // The model id becomes a directory under the model cache; it must not escape it.
+  const modelId = SETTABLE_KEYS.embeddingModel!;
+  const rejects = (v: string): boolean => {
+    try {
+      modelId(v);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  ok("model id rejects path traversal and nested paths",
+    rejects("../evil") && rejects("..") && rejects("a/b/c") && rejects("C:/x") && rejects(""));
+  ok("model id accepts a Hugging Face id",
+    modelId("Xenova/all-MiniLM-L6-v2") === "Xenova/all-MiniLM-L6-v2" &&
+      modelId("paraphrase-multilingual-MiniLM-L12-v2") === "paraphrase-multilingual-MiniLM-L12-v2");
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);

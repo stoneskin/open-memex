@@ -658,9 +658,21 @@ e.g. Banana Plan → payment system refactor project — and a query mentioning 
 triggers a second round on the other side, both directions, merged evenly
 with round one so alias hits are never down-weighted; no reindex when the
 alias changes); and **semantic vectors**
-as an opt-in experiment (local multilingual embeddings measured at R@5 92.7%
-on the cross-lingual fixture slice — see `docs/retrieval-ablation-study.md`
-§4.7; no embedding model is ever downloaded without your explicit opt-in).
+as an opt-in rerank (D96): with `crossLingualRerank` on, a search whose
+results include a memory written in the other script (English query → Chinese
+memory, or the reverse) may reorder those hits by local embedding similarity.
+BM25 still retrieves — the model only reorders, only inside one review tier,
+only inside a contiguous run, and only above a similarity floor; the BM25
+score is never edited and a hit with too little signal keeps its exact slot.
+Measured on the checked-in fixture (feedback weighting off): **MRR 0.804 →
+0.825** overall, and on the six cross-lingual queries **R@1 0% → 33.3%, MRR
+0.431 → 0.597**, with the 41 same-language queries unchanged. The tax is
+published, not hidden: a quantized multilingual MiniLM is **112.8 MB**, loads
+in ~0.76 s, uses ~497 MB RSS and adds ~3.1 ms per query. That is why it is off
+by default, why the model downloads only after you opt in (into the data root,
+never the repo), and why open-memex itself carries no embedding dependency.
+A same-language search never loads a model. Full numbers and the gate verdict:
+`docs/design/decisions.md` D96 and `docs/retrieval-ablation-study.md` §4.7.
 
 External check on public data: the same pipeline scores **recall@5 97.0% /
 MRR 0.909** on LongMemEval-S (470 questions, retrieval stage only — no answer
@@ -773,6 +785,8 @@ Defaults:
   "graphOutline": true,        // inject the compiled graph outline at session start
   "graphOutlineLines": 10,     // outline length cap (max 30)
   "feedbackWeighting": false,  // D79: reorder near-tied hits by reuse_rate (opt-in)
+  "crossLingualRerank": false, // D96: EN<->ZH embedding rerank (opt-in; downloads a model)
+  "embeddingModel": "Xenova/paraphrase-multilingual-MiniLM-L12-v2", // D96
   "memoryDir": ".ai/open-memex" // in-repo project-memory dir, relative to repo root
 }
 ```
@@ -786,11 +800,15 @@ open-memex config set maxProjectMemories 12
 open-memex config set sync.autoPull true   # best-effort pull at MCP session start
 open-memex config set graphOutline false   # stop injecting the graph outline
 open-memex config set feedbackWeighting true  # D79: let reuse signal break near-ties
+# D96: opt-in EN<->ZH rerank. Install the runtime once, then flip the flag:
+npm install -g open-memex @huggingface/transformers
+open-memex config set crossLingualRerank true
 ```
 
 Settable keys: `maxProjectMemories`, `maxProfileItems`, `injectOnFirstTurn`,
 `keywordCaptureEnabled`, `captureAliases`, `logLevel`, `memoryDir`,
-`graphOutline`, `graphOutlineLines`, `feedbackWeighting`, and `sync.autoPull`
+`graphOutline`, `graphOutlineLines`, `feedbackWeighting`, `crossLingualRerank`,
+`embeddingModel`, and `sync.autoPull`
 (a dotted key that writes into the nested `sync` object). Full design:
 [docs/V2-DESIGN.md](./docs/V2-DESIGN.md).
 

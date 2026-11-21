@@ -38,6 +38,17 @@ export interface MyOMemoryConfig {
    * `loadConfig`'s shallow merge cannot drop it.
    */
   feedbackWeighting: boolean;
+  /**
+   * D96: opt-in cross-lingual rerank (EN<->ZH only). When on, a search that
+   * returned at least one memory written in the other script may reorder those
+   * hits by local embedding similarity, inside the same review tier and inside
+   * contiguous runs only. BM25 still retrieves; the model is downloaded into
+   * the data root on first use. Default off — see `docs/design/decisions.md`
+   * D96 for the measured gain and tax.
+   */
+  crossLingualRerank: boolean;
+  /** D96: the local embedding model the rerank uses. `Xenova/...` ids are downloaded on first use. */
+  embeddingModel: string;
   /** Patterns whose capture group 1 becomes the memory body; saved to the current scope. */
   keywordPatterns: string[];
   /** Same shape, but hits are forced into the personal scope (e.g. "remember for me"). */
@@ -71,6 +82,8 @@ export const DEFAULT_CONFIG: MyOMemoryConfig = {
   graphOutline: true,
   graphOutlineLines: 10,
   feedbackWeighting: false,
+  crossLingualRerank: false,
+  embeddingModel: "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
   keywordPatterns: [
     "^\\s*remember(?!\\s+for\\s+me)(?:\\s+that|\\s+to)?[:,]?\\s+(.+)$",
     "^\\s*(?:please\\s+)?note(?:\\s+that)?[:,]?\\s+(.+)$",
@@ -204,6 +217,19 @@ function toRelativeDir(v: unknown): string {
   return t;
 }
 
+function toModelId(v: unknown): string {
+  if (typeof v !== "string" || !v.trim()) throw new Error("must be a model id (e.g. Xenova/all-MiniLM-L6-v2)");
+  const t = v.trim();
+  // The id becomes a directory name under the model cache, so it must not be
+  // able to escape it: at most one "/", every segment starts alphanumeric
+  // (which rules out ".", "..", and absolute paths).
+  const segment = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+  const parts = t.split("/");
+  if (parts.length > 2 || !parts.every((p) => segment.test(p)))
+    throw new Error('must be a Hugging Face model id like "Xenova/all-MiniLM-L6-v2"');
+  return t;
+}
+
 /** Keys users may change via `open-memex config set <key> <value>`, with validators. */
 export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
   maxProjectMemories: toNonNegInt,
@@ -219,6 +245,8 @@ export const SETTABLE_KEYS: Record<string, (v: unknown) => unknown> = {
   },
   graphOutline: toBool,
   feedbackWeighting: toBool,
+  crossLingualRerank: toBool,
+  embeddingModel: toModelId,
   graphOutlineLines: (v) => {
     const n = toNonNegInt(v);
     if (n < 1) throw new Error("must be a positive integer (topic lines)");

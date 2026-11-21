@@ -16,6 +16,9 @@ import {
   nodeSupportsNativeDriver,
 } from "./runtime-floor.ts";
 import { db, backendName } from "./store/db.ts";
+import { countVectors } from "./store/embeddings.ts";
+import { embeddingModelDir } from "./retrieve/embedding.ts";
+import { createRequire } from "node:module";
 import { LEGACY_PACKAGE_NAME, opencodeGlobalConfigPath, userMcpConfigPath } from "./init.ts";
 
 interface Check {
@@ -605,9 +608,53 @@ function vscodeMcpCheck(): Check {
   };
 }
 
+/**
+ * D96: the cross-lingual rerank is opt-in and depends on an optional package
+ * the default install deliberately does not pull. When the flag is on, say
+ * plainly whether that package resolves and how much is cached — a silent
+ * downgrade to BM25 is the failure mode this check exists to catch.
+ */
+function rerankCheck(): Check {
+  const name = "cross-lingual rerank (D96)";
+  const cfg = loadConfig();
+  if (!cfg.crossLingualRerank) {
+    return {
+      name,
+      ok: true,
+      detail: "off (default; enable with: open-memex config set crossLingualRerank true)",
+    };
+  }
+  let installed = false;
+  try {
+    const req = createRequire(import.meta.url);
+    req.resolve("@huggingface/transformers");
+    installed = true;
+  } catch {
+    installed = false;
+  }
+  if (!installed) {
+    return {
+      name,
+      ok: false,
+      detail: `on, but @huggingface/transformers is not installed — run: npm install -g @huggingface/transformers (search stays BM25 until then)`,
+    };
+  }
+  let vectors = 0;
+  try {
+    vectors = countVectors(cfg.embeddingModel);
+  } catch {
+    vectors = 0;
+  }
+  return {
+    name,
+    ok: true,
+    detail: `on (model ${cfg.embeddingModel}, ${vectors} cached vector(s), models in ${embeddingModelDir()})`,
+  };
+}
+
 export async function runDoctor(): Promise<boolean> {
   console.log("open-memex doctor");
-  const checks: Check[] = [nodeCheck(), configCheck(), driverCheck(), scopeCheck(), storageCheck(), lockingCheck(), opencodePluginCheck(), vscodeMcpCheck()];
+  const checks: Check[] = [nodeCheck(), configCheck(), driverCheck(), scopeCheck(), storageCheck(), lockingCheck(), rerankCheck(), opencodePluginCheck(), vscodeMcpCheck()];
   checks.push(await mcpCheck());
   checks.push(legacyCheck());
   let allOk = true;

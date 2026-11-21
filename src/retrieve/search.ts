@@ -125,12 +125,19 @@ function toHit(r: RawRow): SearchHit {
  * Reviewed knowledge (approved/published) outranks unreviewed outbox drafts;
  * personal memories are always `draft` by design and are NOT demoted.
  * Stable: order within a tier keeps the incoming score/recency order.
+ *
+ * Exported for the D96 cross-lingual rerank, which must reorder inside a
+ * tier block only.
  */
-function reviewTier(r: RawRow): number {
-  if (r.scope_key === "personal") return 1;
-  if (r.review_state === "approved" || r.review_state === "published") return 0;
-  if (r.review_state === "draft" || r.review_state === "rejected") return 2;
+export function hitReviewTier(h: Pick<SearchHit, "scope_key" | "review_state">): number {
+  if (h.scope_key === "personal") return 1;
+  if (h.review_state === "approved" || h.review_state === "published") return 0;
+  if (h.review_state === "draft" || h.review_state === "rejected") return 2;
   return 1; // proposed and anything unexpected
+}
+
+function reviewTier(r: RawRow): number {
+  return hitReviewTier(r);
 }
 
 /** D30: `[draft]` / `[proposed]` / … marker for project memories.

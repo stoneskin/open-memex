@@ -10,6 +10,8 @@ import { proposeMemories, promoteMemory, listConflicts, resolveConflict, formatR
 import { getSyncStatus, formatSyncStatus, submitMemories, BatchDecisionRequired } from "./submit.ts";
 import { getPrStatus, formatPrStatus, applyPrStatus } from "./github.ts";
 import { search, list, countList, hitStateLabel, type SearchStats } from "./retrieve/search.ts";
+import { applyCrossLingualRerank, embeddingModelDir } from "./retrieve/embedding.ts";
+import { DEFAULT_RERANK_MIN_COSINE } from "./retrieve/rerank.ts";
 import { recordUseful, getUsage, reuseRate, usefulCount, usefulKindFor, deleteUsage, loadReuseReport } from "./store/usage.ts";
 import { formatReuseReport } from "./reuse-report.ts";
 import { DEFAULT_EXPANSIONS_WEIGHT } from "./retrieve/weights.ts";
@@ -1306,7 +1308,7 @@ async function main() {
     const stats: SearchStats | undefined = explain
       ? { ftsQuery: "", candidates: 0, hiddenSuperseded: 0, hiddenExcluded: 0, aliasExpansions: [] }
       : undefined;
-    const hits = search(query, {
+    const found = search(query, {
       scopeKeys: keys,
       limit: flags.limit ? Number(flags.limit) : undefined,
       type: flags.type,
@@ -1314,6 +1316,10 @@ async function main() {
       record: true,
       feedback: cfg.feedbackWeighting,
     });
+    // D96: opt-in cross-lingual rerank — reorders only what BM25 returned, and
+    // only hits written in the other script (see src/retrieve/rerank.ts).
+    const rerank = await applyCrossLingualRerank(query, found, cfg);
+    const hits = rerank.hits;
     if (explain && stats) {
       console.log(`fts: ${stats.ftsQuery || "(empty query)"}`);
       console.log(
@@ -1344,6 +1350,30 @@ async function main() {
                 `  ↑ ${p.id} +${p.promoted} (reuse ${rate}, retrieved=${p.retrieved}, useful=${p.useful})`,
               );
             }
+          }
+        }
+      }
+      // D96: report whether the cross-lingual rerank ran, which hits were
+      // eligible, and every hit it lifted. The BM25 score is never changed,
+      // so the score column stays the raw lexical value.
+      if (!cfg.crossLingualRerank) {
+        console.log(
+          "cross-lingual rerank: off (default; enable with: open-memex config set crossLingualRerank true)",
+        );
+      } else if (rerank.skipped === "no-cross-lingual-hits") {
+        console.log("cross-lingual rerank: on, no cross-script hits in this result (nothing to rerank)");
+      } else if (rerank.skipped === "model-unavailable") {
+        console.log("cross-lingual rerank: on, but the local embedding runtime is unavailable — BM25 order kept");
+      } else {
+        console.log(
+          `cross-lingual rerank: on (model ${cfg.embeddingModel}, min cosine ${DEFAULT_RERANK_MIN_COSINE}, models in ${embeddingModelDir()})`,
+        );
+        console.log(`  candidates: ${rerank.candidates} cross-script hit(s) in ${hits.length} result(s)`);
+        if (rerank.promotions.length === 0) {
+          console.log("  no hits moved by embeddings");
+        } else {
+          for (const p of rerank.promotions) {
+            console.log(`  ↑ ${p.id} +${p.promoted} (cosine ${p.cosine.toFixed(3)})`);
           }
         }
       }

@@ -397,7 +397,7 @@ open-memex 的会话从已有上下文开始，而不是从提问开始：
 
 可选的反馈加权（D79 第一刀，**默认关**）用 D77 复用计数器打破 BM25 的近平分：一条至少有 3 次检索记录、且 `reuse_rate` 更高的记忆，会在同一个 25% 分数段内排到前面。它不改 BM25 分数、不跨评审层级、不动样本不足的命中（新记忆保持原 BM25 位置）；有用性仍只来自显式信号，被动曝光永远不算。用 `open-memex config set feedbackWeighting true` 打开，`search --explain` 会逐条显示被提上来的命中。
 
-三层检索，各补各的短板：**BM25 关键词检索**（SQLite FTS5——精确词匹配，快速，可用 `search --explain` 解释）；**同义词展开分两半**：（a）index-time（D80——一份随仓库提交的精选映射表：开发领域同义词 + EN↔ZH 翻译对，在写入时展开进索引，`ship` 能找到 `deploy`、`单点登录` 能找到 `SSO`，查询侧只需要普通单轮；确定性，不下载模型）；（b）query-time 用户别名（D81——带 `alias:`/`target:` frontmatter 的别名记忆，每个 scope 定义一次自己的词汇，比如香蕉计划→支付系统重构项目；查询提到任一侧就触发对另一侧的第二轮搜索，双向，与第一轮等权重合并，别名命中不降权；别名变更不用 reindex）；**语义向量**作为 opt-in 实验（本地多语言 embedding，在跨语言 fixture 切片上 R@5 92.7%——见 `docs/retrieval-ablation-study.md` §4.7；未经你明确允许绝不下载 embedding 模型）。
+三层检索，各补各的短板：**BM25 关键词检索**（SQLite FTS5——精确词匹配，快速，可用 `search --explain` 解释）；**同义词展开分两半**：（a）index-time（D80——一份随仓库提交的精选映射表：开发领域同义词 + EN↔ZH 翻译对，在写入时展开进索引，`ship` 能找到 `deploy`、`单点登录` 能找到 `SSO`，查询侧只需要普通单轮；确定性，不下载模型）；（b）query-time 用户别名（D81——带 `alias:`/`target:` frontmatter 的别名记忆，每个 scope 定义一次自己的词汇，比如香蕉计划→支付系统重构项目；查询提到任一侧就触发对另一侧的第二轮搜索，双向，与第一轮等权重合并，别名命中不降权；别名变更不用 reindex）；**语义向量**作为 opt-in 重排（D96）：打开 `crossLingualRerank` 后，如果搜索结果里出现用另一种书写系统写的记忆（英文查询 → 中文记忆，或反过来），这些命中可以按本地 embedding 相似度重排。BM25 仍然是召回方——模型只重排，只在同一个评审层级内、只在连续的一段里、只在相似度过线时；BM25 分数永不修改，信号不足的命中保持原位置。在仓库内的 fixture 上实测（反馈加权关闭）：整体 **MRR 0.804 → 0.825**；六条真正跨语言的查询 **R@1 0% → 33.3%、MRR 0.431 → 0.597**；41 条同语言查询完全不变。代价是公开的：量化多语言 MiniLM **112.8 MB**、加载约 0.76 秒、占用约 497 MB RSS、每条查询多约 3.1 毫秒。所以它默认关、模型只在你 opt-in 之后才下载（下载到数据根目录，绝不进仓库），open-memex 本身也不带任何 embedding 依赖。同语言查询根本不会加载模型。完整数字与 gate 结论见 `docs/design/decisions.md` D96 与 `docs/retrieval-ablation-study.md` §4.7。
 
 公开数据上的外部验证：同一管线在 LongMemEval-S 上拿到 **recall@5 97.0% / MRR 0.909**（470 个问题，只测检索阶段——不生成答案、不用 judge 模型；这不是 LongMemEval 官方分数）。同协议下 agentmemory 公布的数字是 86.2% / 0.715（纯 BM25）和 95.2% / 0.882（BM25+向量）。22k 条记忆的 pooled 压力测试把 recall@5 拉到 40.6%——词法检索的天花板，这次是测出来的。用 `node --experimental-strip-types scripts/bench-longmemeval.ts --data <路径>` 复现（数据集 `xiaowu0162/longmemeval-cleaned`，MIT 协议）。
 
@@ -462,6 +462,8 @@ npm install -g open-memex@latest   # 或 @alpha
   "graphOutline": true,        // 会话开始时注入图谱编译大纲
   "graphOutlineLines": 10,     // 大纲长度上限（最大 30）
   "feedbackWeighting": false,  // D79：按 reuse_rate 调整近平分命中顺序（默认关）
+  "crossLingualRerank": false, // D96：EN↔ZH embedding 重排（opt-in；会下载模型）
+  "embeddingModel": "Xenova/paraphrase-multilingual-MiniLM-L12-v2", // D96
   "memoryDir": ".ai/open-memex" // 仓库内项目记忆目录，相对于仓库根
 }
 ```
@@ -474,9 +476,12 @@ open-memex config set maxProjectMemories 12
 open-memex config set sync.autoPull true   # MCP 会话开始时尽力而为地 pull
 open-memex config set graphOutline false   # 不再注入图谱大纲
 open-memex config set feedbackWeighting true  # D79：让复用信号打破近平分
+# D96：opt-in 的 EN↔ZH 重排。先装运行时，再打开开关：
+npm install -g open-memex @huggingface/transformers
+open-memex config set crossLingualRerank true
 ```
 
-可设置的键：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、`keywordCaptureEnabled`、`captureAliases`、`logLevel`、`memoryDir`、`graphOutline`、`graphOutlineLines`、`feedbackWeighting`，以及 `sync.autoPull`（带点的键，写入嵌套的 `sync` 对象）。完整设计：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（英文）。
+可设置的键：`maxProjectMemories`、`maxProfileItems`、`injectOnFirstTurn`、`keywordCaptureEnabled`、`captureAliases`、`logLevel`、`memoryDir`、`graphOutline`、`graphOutlineLines`、`feedbackWeighting`、`crossLingualRerank`、`embeddingModel`，以及 `sync.autoPull`（带点的键，写入嵌套的 `sync` 对象）。完整设计：[docs/V2-DESIGN.md](./docs/V2-DESIGN.md)（英文）。
 
 ## CLI 参考
 

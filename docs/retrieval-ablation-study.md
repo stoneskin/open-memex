@@ -135,6 +135,17 @@ BM25 reproduces the §4.2 lexical ceiling (38.5% vs 40.6%, within implementation
 
 **Gate verdict: PASS on memory-like docs, methodology artifact on pooled.** The pooled corpus does not resemble open-memex memories (short, focused) — it tested single-vector-per-long-doc, which nobody ships. The fixture is the product-representative test, and there the multilingual vector beats BM25 by **+12pp R@5**, specifically on the cross-lingual slice. A chunked rerun was deliberately skipped (4× compute on a non-representative corpus). The 40.6% lexical ceiling stands as the BM25 bar; the semantic layer's value is proven where the product lives.
 
+**Re-measurement (2026-11-20, D96 — decision, not new method).** The fixture has since grown to 60 memories / 47 queries and the lexical arm improved (D80/D81/D83), so the gate was re-run on current code, now with a **rerank arm** in the shape the project would actually ship: BM25 retrieves, and embeddings may only reorder *cross-script* (EN↔ZH) hits inside a contiguous run, inside one review tier, with a cosine floor.
+
+| arm (60 memories / 47 queries, feedback off) | R@1 | R@5 | MRR |
+|---|---|---|---|
+| BM25 (shipped) | 66.0% | 97.9% | 0.804 |
+| vec-only | 76.6% | 91.5% | 0.832 |
+| naive RRF | 78.7% | 97.9% | 0.864 |
+| **rerank @ cosine ≥ 0.2** | **70.2%** | **97.9%** | **0.825** |
+
+On the six genuinely cross-script queries the rerank lifts R@1 from **0% to 33.3%** and MRR from **0.431 to 0.597**; the 41 same-language queries are identical at every floor (that is the containment rule, not a coincidence). Depth-8 (rerank only the returned set) holds at 0.823. The pooled ceiling is unchanged — BM25 reproduces 38.3% R@5 on the 22,419-session corpus, and the vector arms were not re-run there (the 2026-10-07 collapse is a single-vector-on-long-docs artifact; the rerank is near-inert on that corpus anyway: 0/470 questions are CJK, 109/22,419 sessions contain CJK). Two findings stand out: (1) **RRF now beats the rerank arm** (0.864 vs 0.825) by reordering same-language hits too — that is general fusion, outside D96's EN↔ZH scope, and it needs its own gate; (2) the rerank's gain is entirely a *ranking* gain (R@5 was already 100% on the slice), which is exactly what a BM25-first design can promise. Tax: q8 model 112.8 MB, 0.76 s load, 497 MB RSS, 3.1 ms/query. Full decision: D96 in `docs/design/decisions.md`.
+
 ## 5. Discussion
 
 **OR semantics does the work; everything else is trim.** Of +0.66 total explainable MRR, OR contributes +0.652 and the remaining factors ±0.01. The lexical lemon is squeezed — further gains will not come from query-string tweaks.

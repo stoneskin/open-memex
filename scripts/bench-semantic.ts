@@ -85,6 +85,7 @@ import { serialize, normalizeFrontmatter } from "../src/store/markdown.ts";
 import { syncScope } from "../src/store/sync.ts";
 import { search } from "../src/retrieve/search.ts";
 import { hasCjk } from "../src/retrieve/cjk.ts";
+import { rerankCrossLingual } from "../src/retrieve/rerank.ts";
 import { memoriesDirPath } from "../src/paths.ts";
 
 interface Doc {
@@ -231,35 +232,17 @@ function fmt(m: Metrics): string {
 
 /**
  * The product shape: BM25 retrieves, embeddings may only reorder contiguous
- * runs of cross-lingual hits whose cosine clears `floor`. Same-language hits,
- * and cross-lingual hits below the floor, keep their exact BM25 slot and act
- * as barriers — a run never jumps over them. BM25 scores are untouched.
- *
- * (Lands here self-contained so the baseline commit carries no retrieval
- * change; the mechanism commit re-points this at the shipped rule.)
+ * runs of cross-lingual hits whose cosine clears `floor`. This calls the
+ * SHIPPED pure rule (`src/retrieve/rerank.ts`), so the bench cannot drift
+ * from the product's ordering; the arm only supplies cosines.
  */
 function rerankOrder(ids: string[], queryLang: "en" | "zh", sim: (id: string) => number, floor: number): string[] {
-  const out = [...ids];
-  const eligible = (id: string): boolean => {
+  const cosines = new Map<string, number>();
+  for (const id of ids) {
     const d = byId.get(id);
-    return !!d && d.lang !== queryLang && sim(id) >= floor;
-  };
-  let i = 0;
-  while (i < out.length) {
-    if (!eligible(out[i]!)) {
-      i++;
-      continue;
-    }
-    let j = i + 1;
-    while (j < out.length && eligible(out[j]!)) j++;
-    if (j - i > 1) {
-      const run = out.slice(i, j).map((id, k) => ({ id, k }));
-      run.sort((a, b) => sim(b.id) - sim(a.id) || a.k - b.k);
-      run.forEach((x, k) => (out[i + k] = x.id));
-    }
-    i = j;
+    if (d && d.lang !== queryLang) cosines.set(id, sim(id));
   }
-  return out;
+  return rerankCrossLingual(ids.map((id) => ({ id })), cosines, { minCosine: floor }).ordered.map((h) => h.id);
 }
 
 function rankOf(ids: string[], gold: Set<string>): number {

@@ -54,6 +54,8 @@ npm run cli -- resolve [id-or-path]                          # list / 3-way-merg
 npm run mcp                                          # start the stdio MCP server
 node --experimental-strip-types scripts\smoke-pure.ts   # runs pure-logic checks (no sqlite)
 node --experimental-strip-types scripts\smoke-mcp.ts    # MCP handshake + tool round-trip (temp dirs, no real data)
+node --experimental-strip-types scripts\bench-semantic.ts --arms bm25   # D96 gate bench, lexical arm only
+node --experimental-strip-types scripts\bench-semantic.ts --cache-dir <dir>  # adds the model arms
 ```
 
 After `npm i -g open-memex` (or `npm link` from source), the `open-memex` bin is on
@@ -238,7 +240,15 @@ log records what was already considered and rejected.
 Still hard: no cloud, no silent sync (explicit pull only), Markdown is the source
 of truth, `personal` scope never leaves the machine. Embeddings are an *optional
 capability* per the design — do not add them (or LLM-driven extraction, or a
-knowledge graph) without updating the design doc first. `docs/V2-DESIGN.md` §18 tracks the
+knowledge graph) without updating the design doc first. **D96 is the shape that shipped, and it is
+narrow on purpose:** BM25 retrieves, embeddings may only *rerank* EN<->ZH (cross-script) hits, inside
+one review tier, inside a contiguous run, above `DEFAULT_RERANK_MIN_COSINE`; `crossLingualRerank` is
+default off; the runtime (`@huggingface/transformers`) is deliberately not a dependency, so a missing
+package must degrade to BM25, never fail a search; vectors live in `embedding_vectors` (keyed by
+`(model, sha256(text))`, never in frontmatter, never dropped by a rebuild). Do not turn this into a
+retriever, a default, or a general RRF/hybrid layer without a new gate - RRF scores better on the
+fixture and is still out of scope, because reordering same-language hits is a different decision (see
+D96 and `docs/retrieval-ablation-study.md` §4.7). `docs/V2-DESIGN.md` §18 tracks the
 build roadmap; the design doc tracks the *why*.
 
 ## Branch workflow

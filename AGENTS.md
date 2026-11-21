@@ -55,7 +55,7 @@ npm run mcp                                          # start the stdio MCP serve
 node --experimental-strip-types scripts\smoke-pure.ts   # runs pure-logic checks (no sqlite)
 node --experimental-strip-types scripts\smoke-mcp.ts    # MCP handshake + tool round-trip (temp dirs, no real data)
 node --experimental-strip-types scripts\bench-semantic.ts --arms bm25   # D96 gate bench, lexical arm only
-node --experimental-strip-types scripts\bench-semantic.ts --cache-dir <dir>  # adds the model arms
+node --experimental-strip-types scripts\bench-semantic.ts --cache-dir <dir>  # adds the model arms (needs `npm i --no-save @huggingface/transformers`)
 ```
 
 After `npm i -g open-memex` (or `npm link` from source), the `open-memex` bin is on

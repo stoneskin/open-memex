@@ -23,6 +23,7 @@
  *
  * Usage:
  *   node --experimental-strip-types scripts/bench-semantic.ts --arms bm25
+ *   npm i --no-save @huggingface/transformers   # once, for the model arms
  *   node --experimental-strip-types scripts/bench-semantic.ts --cache-dir <dir>
  *   node --experimental-strip-types scripts/bench-semantic.ts --pooled \
  *     --data <longmemeval_s_cleaned.json> --cache-dir <dir>

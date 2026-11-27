@@ -1379,6 +1379,103 @@ console.log("== D91 graph: extract / outline / queries / lint ==");
   }
 }
 
+console.log("== LLM half: semantic-edge fixture + deterministic baseline ==");
+{
+  // Locked, human-labeled fixture (§7, spec docs/design/llm-half.md):
+  // 20 memory pairs, each labeled supports / contradicts / neither with
+  // the deciding spans quoted verbatim. The deterministic half cannot see
+  // any of these pairs — that blindness IS the baseline, measured below
+  // rather than asserted: these pairs are the work the LLM half exists
+  // to do. CI never measures model precision on this fixture (no client
+  // in v1): the admissibility check's logic is tested with canned
+  // verdicts once the check lands; model precision is an external
+  // observation with labels hidden from the judge (recall floor 0.5, §7).
+  const sid = (n: number) => `01${String(n).padStart(24, "0")}`;
+  const snode = (id: string, body: string) => ({
+    id,
+    status: "active",
+    type: "fact",
+    tags: [] as string[],
+    body,
+    supersedes: null,
+    derived_from: null,
+  });
+  type Label = "supports" | "contradicts" | "neither";
+  const pairs: Array<{
+    a: ReturnType<typeof snode>;
+    b: ReturnType<typeof snode>;
+    label: Label;
+    spanA: string;
+    spanB: string;
+  }> = [
+    // supports (7) — A gives a reason, evidence, or precedent for B.
+    { a: snode(sid(1), "Deploy is ci-gated: the pipeline must pass before any production push."), b: snode(sid(2), "Tuesday's release was blocked because CI was red."), label: "supports", spanA: "ci-gated", spanB: "blocked because CI was red" },
+    { a: snode(sid(3), "The outline joins topics only by medium+ edges; low-band pairs never fuse topics."), b: snode(sid(4), "The legacy-only memory stayed outside every topic in the outline."), label: "supports", spanA: "low-band pairs never fuse topics", spanB: "stayed outside every topic" },
+    { a: snode(sid(5), "Smoke tests run with --experimental-strip-types; development has no build step."), b: snode(sid(6), "CI runs smoke-pure.ts directly under Node 22 with no compile."), label: "supports", spanA: "no build step", spanB: "directly under Node 22 with no compile" },
+    { a: snode(sid(7), "Personal scope never leaves the machine: no sync, no share."), b: snode(sid(8), "The share-server design keeps personal memories local-only."), label: "supports", spanA: "never leaves the machine", spanB: "keeps personal memories local-only" },
+    { a: snode(sid(9), "A supersede keeps the old file and flips its status; chains are never hand-edited."), b: snode(sid(10), "The audit completed a dangling supersede pointer on read instead of editing frontmatter."), label: "supports", spanA: "never hand-edited", spanB: "instead of editing frontmatter" },
+    { a: snode(sid(11), "Embeddings are opt-in only: BM25 retrieves, rerank is cross-lingual only."), b: snode(sid(12), "The rerank gate measured cross-lingual R@1 from 0% to 33.3% with the same-language slice untouched."), label: "supports", spanA: "rerank is cross-lingual only", spanB: "cross-lingual R@1 from 0% to 33.3%" },
+    { a: snode(sid(13), "Keep the retry budget at 3 attempts; a fourth attempt never recovered a deploy last quarter."), b: snode(sid(14), "The retry budget was set to 3 after the October incident review."), label: "supports", spanA: "retry budget at 3 attempts", spanB: "retry budget was set to 3" },
+    // contradicts (6) — A asserts the opposite of B.
+    // C1 is the low-overlap pair the spec requires: "Use X" vs "Never use X"
+    // shares almost no wording, so a lexical-overlap candidate generator
+    // (threshold 0.8) misses it — the candidate order must rank
+    // canonical_ref / rare-tag pairs first (§4).
+    { a: snode(sid(15), "Use the staging queue for every deploy."), b: snode(sid(16), "Never route deploys through the staging queue."), label: "contradicts", spanA: "Use the staging queue for every deploy", spanB: "Never route deploys through the staging queue" },
+    { a: snode(sid(17), "The graph covers the project scope only; personal scope never graphs."), b: snode(sid(18), "Personal memories should appear in the graph outline."), label: "contradicts", spanA: "personal scope never graphs", spanB: "Personal memories should appear in the graph outline" },
+    { a: snode(sid(19), "Init asks once; the answer gates all three pieces."), b: snode(sid(20), "Each piece asks separately at init."), label: "contradicts", spanA: "Init asks once", spanB: "Each piece asks separately at init" },
+    { a: snode(sid(21), "A declined concept is not re-proposed until a new citing memory arrives."), b: snode(sid(22), "Re-propose declined concepts on every lint run."), label: "contradicts", spanA: "not re-proposed until a new citing memory arrives", spanB: "Re-propose declined concepts on every lint run" },
+    { a: snode(sid(23), "Stale pages are never auto-deleted."), b: snode(sid(24), "Delete stale pages automatically on rebuild."), label: "contradicts", spanA: "never auto-deleted", spanB: "Delete stale pages automatically" },
+    { a: snode(sid(25), "The plugin adds no model client in v1."), b: snode(sid(26), "The plugin should call the model directly for semantic edges."), label: "contradicts", spanA: "adds no model client in v1", spanB: "call the model directly" },
+    // neither (7) — related or not, but neither supports nor contradicts.
+    { a: snode(sid(27), "The retry budget is 3 attempts."), b: snode(sid(28), "The deploy checklist has five steps."), label: "neither", spanA: "retry budget is 3 attempts", spanB: "deploy checklist has five steps" },
+    { a: snode(sid(29), "Outline topics join on medium+ edges."), b: snode(sid(30), "The smoke suite runs under Node 22."), label: "neither", spanA: "topics join on medium+ edges", spanB: "runs under Node 22" },
+    { a: snode(sid(31), "We ship alphas with npm publish --tag alpha."), b: snode(sid(32), "The MCP server runs over stdio."), label: "neither", spanA: "npm publish --tag alpha", spanB: "runs over stdio" },
+    { a: snode(sid(33), "Capture length nudge is a hint, never a refusal."), b: snode(sid(34), "Keyword capture fires on chat.message."), label: "neither", spanA: "a hint, never a refusal", spanB: "fires on chat.message" },
+    { a: snode(sid(35), "The D77 counters live in index.db, never in frontmatter."), b: snode(sid(36), "The reuse report shows zombies per scope."), label: "neither", spanA: "never in frontmatter", spanB: "shows zombies per scope" },
+    { a: snode(sid(37), "A page without sources is invalid."), b: snode(sid(38), "The wiki directory is excluded from export unless --all."), label: "neither", spanA: "without sources is invalid", spanB: "excluded from export unless --all" },
+    { a: snode(sid(39), "The agent loop holds the model; the plugin holds no client."), b: snode(sid(40), "The judge model is gemini-3-flash-preview."), label: "neither", spanA: "the plugin holds no client", spanB: "judge model is gemini-3-flash-preview" },
+  ];
+
+  const allNodes = pairs.flatMap((p) => [p.a, p.b]);
+  ok("fixture: 20 pairs, 7 supports / 6 contradicts / 7 neither",
+    pairs.length === 20 &&
+      pairs.filter((p) => p.label === "supports").length === 7 &&
+      pairs.filter((p) => p.label === "contradicts").length === 6 &&
+      pairs.filter((p) => p.label === "neither").length === 7);
+  ok("fixture: 40 distinct node ids",
+    new Set(allNodes.map((n) => n.id)).size === 40);
+  ok("fixture: every deciding span resolves verbatim in its own body",
+    pairs.every((p) => p.a.body.includes(p.spanA) && p.b.body.includes(p.spanB)));
+  ok("fixture: every body is non-empty",
+    allNodes.every((n) => n.body.length > 0));
+
+  // Baseline: the deterministic half's answer on these pairs is no edge.
+  // extractEdges has no lexical similarity — only supersede chains,
+  // derived-from, body mentions, and shared tags — and the fixture nodes
+  // carry none of those between any pair, so the baseline is zero edges.
+  const baseEdges = extractEdges(allNodes);
+  ok("baseline: deterministic half sees no edge between any labeled pair",
+    pairs.every((p) =>
+      !baseEdges.some((e) =>
+        (e.from === p.a.id && e.to === p.b.id) || (e.from === p.b.id && e.to === p.a.id))),
+    JSON.stringify(baseEdges));
+  ok("baseline: zero edges over the whole fixture corpus",
+    baseEdges.length === 0, JSON.stringify(baseEdges));
+
+  // The C1 pair is the reason candidate order matters: its token overlap
+  // sits far below the 0.8 lexical threshold, so overlap-first ranking
+  // would never surface it.
+  const tokens = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+  const c1 = pairs.find((p) => p.label === "contradicts")!;
+  const ta = tokens(c1.a.body);
+  const tb = tokens(c1.b.body);
+  const inter = [...ta].filter((t) => tb.has(t)).length;
+  const union = new Set([...ta, ...tb]).size;
+  ok("fixture: low-overlap contradiction pair sits below the 0.8 threshold",
+    inter / union < 0.8, `jaccard=${(inter / union).toFixed(2)}`);
+}
+
 console.log("  == D78 curation (deterministic tier) ==");
 {
   const rec = (

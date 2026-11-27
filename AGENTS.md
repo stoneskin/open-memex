@@ -40,7 +40,7 @@ npm run cli -- inventory [--format text|json|html] [--scope both]  # what is rem
 npm run cli -- audit [--scope project|personal|both]            # memory health: near-dup pairs, stale actives, broken chains, personal-in-repo, expired working-state notes (read-only)
 npm run cli -- wstate [--clear]                                 # show/clear the session working-state note (D89 §3.6; the file it prints is editable directly)
 npm run cli -- graph build | outline | neighbours <id> | path <a> <b> | lint   # D91 structural graph (project scope only; no --scope)
-npm run cli -- graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..." [--resolution unresolved|superseded-by] [--model-confidence <value>] [--json]   # D97: stage one semantic-edge verdict after the admissibility check (llm-half §4)
+npm run cli -- graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..." [--resolution unresolved|superseded-by] [--model-confidence <value>] [--json]   # D97: stage one semantic-edge verdict after the admissibility check (llm-half §4); --resolution defaults to unresolved, superseded-by is always dropped, never staged
 npm run cli -- graph verdicts [--json]   # D97: list staged verdicts awaiting human review
 npm run cli -- pull                                          # fetch + fast-forward only (explicit; diverged = clean failure, never force-merge)
 npm run cli -- push                                          # push current branch to remote (explicit only; open-memex never auto-pushes)

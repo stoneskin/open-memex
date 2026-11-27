@@ -381,16 +381,20 @@ function rowToStaged(r: VerdictRow): StagedVerdict {
 
 /**
  * Stage one admissible verdict in the review queue. Idempotent per
- * (from, to, type): a second verdict on a pair already pending returns
- * the existing row instead of staging a duplicate — the human reviews
- * the pair once. Callers must run `checkAdmissibility` first; this
- * function stages, it does not re-check.
+ * (from, to, type) for identical content: a second verdict on a pair
+ * already pending returns the existing row instead of staging a
+ * duplicate — the human reviews the pair once. A re-stage with
+ * DIFFERENT content (spans, relation, or resolution) is a conflict,
+ * not a silent no-op: it returns the existing row with conflict true
+ * so the caller can report it (the CLI exits 1 naming the staged row).
+ * Callers must run `checkAdmissibility` first; this function stages,
+ * it does not re-check. modelConfidence is recorded, never compared.
  */
 export function stageVerdict(
   scopeKey: string,
   verdict: SemanticVerdict,
   cappedConfidence: Confidence,
-): { staged: StagedVerdict; alreadyStaged: boolean } {
+): { staged: StagedVerdict; alreadyStaged: boolean; conflict: boolean } {
   ensureSchema();
   const existing = db()
     .prepare(
@@ -398,7 +402,14 @@ export function stageVerdict(
        WHERE scope_key = ? AND from_id = ? AND to_id = ? AND edge_type = ? AND status = 'pending'`,
     )
     .get(scopeKey, verdict.from, verdict.to, verdict.type) as VerdictRow | undefined;
-  if (existing) return { staged: rowToStaged(existing), alreadyStaged: true };
+  if (existing) {
+    const same =
+      existing.span_from === verdict.spanFrom &&
+      existing.span_to === verdict.spanTo &&
+      existing.relation === verdict.relation &&
+      existing.resolution === (verdict.resolution ?? "unresolved");
+    return { staged: rowToStaged(existing), alreadyStaged: true, conflict: !same };
+  }
   const id = ulid();
   const createdAt = new Date().toISOString();
   db()
@@ -425,7 +436,7 @@ export function stageVerdict(
   const row = db()
     .prepare(`SELECT * FROM graph_verdict_queue WHERE id = ?`)
     .get(id) as VerdictRow;
-  return { staged: rowToStaged(row), alreadyStaged: false };
+  return { staged: rowToStaged(row), alreadyStaged: false, conflict: false };
 }
 
 /** Pending staged verdicts for a scope, oldest first. */

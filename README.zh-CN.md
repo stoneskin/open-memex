@@ -626,7 +626,7 @@ open-memex audit        # 记忆健康检查：近重复对、陈旧记忆、断
 open-memex wstate       # 显示工作状态笔记（--clear 删除）
 open-memex graph build  # 重建知识图谱（仅结构边；写入时自动刷新）
 open-memex graph lint   # 孤立节点、悬空边、近重复对（只报告，不自动处理）
-open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..."  # 提交一条语义边裁决（先过 admissibility 检查；D97）
+open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..." [--resolution unresolved|superseded-by] [--model-confidence <value>] [--json]  # 提交一条语义边裁决（先过 admissibility 检查；D97）
 open-memex graph verdicts  # 列出待人工审核的已暂存裁决
 open-memex migrate --to-v2 [--dry-run]   # v1 数据 → v2（把 user 作用域改名为 personal）
 ```
@@ -654,7 +654,7 @@ open-memex graph outline               # 编译后的大纲（即注入内容）
 open-memex graph neighbours <id> [--depth 1-6]   # BFS，带每条边的来源
 open-memex graph path <a> <b>          # 最短跳链，带凭据
 open-memex graph lint [--json]         # 孤立节点、悬空边、近陈旧对
-open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..."  # 提交一条语义边裁决（先过 admissibility 检查）
+open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..." [--resolution unresolved|superseded-by] [--model-confidence <value>] [--json]  # 提交一条语义边裁决（先过 admissibility 检查）
 open-memex graph verdicts [--json]     # 列出待人工审核的已暂存裁决
 ```
 

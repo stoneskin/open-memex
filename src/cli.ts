@@ -1173,10 +1173,22 @@ async function main() {
         };
         const check = checkAdmissibility(verdict, loadGraphNodes(project.key));
         if (!check.admissible) {
-          console.log(`verdict dropped (1): ${check.reason}`);
+          // A drop is a normal, counted outcome — exit 0, not an error.
+          // --json carries the machine-readable result for scripted callers.
+          if (flags.json === "true") {
+            console.log(JSON.stringify({ staged: false, reason: check.reason }, null, 2));
+          } else {
+            console.log(`verdict dropped (1): ${check.reason}`);
+          }
           return;
         }
-        const { staged, alreadyStaged } = stageVerdict(project.key, verdict, check.cappedConfidence);
+        const { staged, alreadyStaged, conflict } = stageVerdict(project.key, verdict, check.cappedConfidence);
+        if (conflict) {
+          console.error(
+            `verdict conflict: a different verdict for ${staged.from} --${staged.type}--> ${staged.to} is already staged (${staged.id}); review or withdraw it first`,
+          );
+          process.exit(1);
+        }
         if (flags.json === "true") {
           console.log(JSON.stringify({ staged, alreadyStaged }, null, 2));
           return;

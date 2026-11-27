@@ -19,6 +19,14 @@
  * after stripping those spans the remainder is exactly one sentence (one
  * trailing terminator, no other terminator). A span may itself contain
  * punctuation, which is why the spans are stripped before counting.
+ * Three details (2026-11-26 review round 1): terminators include the
+ * Chinese full-stop/exclamation/question marks (。！？), so a Chinese
+ * relation is one sentence too; the longer span is stripped first, so a
+ * span that is a substring of the other cannot corrupt the count; and
+ * the sentence's terminator may live at the end of a span — when the
+ * relation ends with a span that itself ends with a terminator and the
+ * remainder carries no other terminator, that still counts as one
+ * sentence (the period inside the closing quote terminates the sentence).
  */
 
 import type { Confidence, GraphNode } from "./extract.ts";
@@ -61,6 +69,9 @@ const fail = (reason: string): AdmissibilityResult => ({
   cappedConfidence: "medium",
 });
 
+const SENTENCE_END = /[.!?。！？]$/;
+const SENTENCE_MARK = /[.!?。！？]/;
+
 /**
  * Rule 3: the relation is one sentence naming both sides. Both cited
  * spans must appear verbatim, and the text around them must be a single
@@ -73,10 +84,28 @@ export function relationNamesBothSides(
 ): boolean {
   const r = relation.trim();
   if (!r) return false;
+  if (!spanFrom || !spanTo) return false;
   if (!r.includes(spanFrom) || !r.includes(spanTo)) return false;
-  const rest = r.replaceAll(spanFrom, "").replaceAll(spanTo, "").trim();
-  if (!/[.!?]$/.test(rest)) return false;
-  return !/[.!?]/.test(rest.slice(0, -1));
+  // Strip the longer span first: when one span is a substring of the
+  // other, stripping the short one first would eat into the long one's
+  // occurrence and corrupt the terminator count.
+  const [longer, shorter] =
+    spanFrom.length >= spanTo.length ? [spanFrom, spanTo] : [spanTo, spanFrom];
+  const rest = r.replaceAll(longer, "").replaceAll(shorter, "").trim();
+  if (SENTENCE_END.test(rest)) return !SENTENCE_MARK.test(rest.slice(0, -1));
+  if (SENTENCE_MARK.test(rest)) return false;
+  // The sentence's terminator may live at the end of a span: the relation
+  // ends with a span that itself ends with a terminator (the quoted span
+  // is a full sentence from the body), and the remainder carries no other
+  // terminator — that is still one sentence. A span "ends the relation"
+  // when only its closing quote (and whitespace) follows it.
+  const endsRelation = (span: string): boolean => {
+    const idx = r.lastIndexOf(span);
+    if (idx === -1) return false;
+    return /^["'\s]*$/.test(r.slice(idx + span.length));
+  };
+  const lastSpan = endsRelation(spanFrom) ? spanFrom : endsRelation(spanTo) ? spanTo : null;
+  return lastSpan !== null && SENTENCE_END.test(lastSpan);
 }
 
 /**

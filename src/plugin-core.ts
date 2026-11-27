@@ -24,6 +24,7 @@ import {
 } from "./capture/handoff.ts";
 import { findDuplicates } from "./store/lifecycle.ts";
 import { redact } from "./redact.ts";
+import { looksLikeEdgeVerdict } from "./graph/admissibility.ts";
 
 /**
  * Host-agnostic plugin core (D60). Both opencode host generations adapt to
@@ -116,6 +117,15 @@ export function captureFromText(
     // Secrets are masked (first 4 chars kept) and the capture proceeds;
     // skip only when nothing usable remains.
     if (content.length === 0) continue;
+    // D97: an edge verdict is not a memory — same refusal as memory_add.
+    // A verdict-shaped body pasted by the user must not slip in through
+    // keyword capture; verdicts enter only through `graph verdict`.
+    if (looksLikeEdgeVerdict(content)) {
+      if (cfg.logLevel === "debug") {
+        console.log("[open-memex] keyword capture skipped an edge verdict (use `graph verdict`)");
+      }
+      continue;
+    }
     if (hadSecret && cfg.logLevel === "debug") {
       console.log(`[open-memex] keyword capture masked secret (${matchedPattern})`);
     }

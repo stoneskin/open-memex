@@ -1576,6 +1576,39 @@ console.log("  == LLM half: admissibility check + verdict ingress (canned verdic
   ok("check: resolution is ignored for supports (rule 4 is contradicts-only)",
     checkAdmissibility({ ...v0, resolution: "superseded-by" }, allNodes).admissible);
 
+  // Review round 1: Chinese terminators, span-final terminators, and
+  // substring spans.
+  const zhA = snode(sid(31), "部署走 ci-gated：流水线通过后才能推生产。");
+  const zhB = snode(sid(32), "周二的发布被拦下了，因为 CI 红了。");
+  const zhV: SemanticVerdict = {
+    from: zhA.id, to: zhB.id, type: "supports",
+    spanFrom: "ci-gated", spanTo: "因为 CI 红了",
+    relation: `"ci-gated" 支持 "因为 CI 红了" 因为前者是后者遵循的规则。`,
+  };
+  ok("check: a Chinese relation ending with 。 is one sentence",
+    checkAdmissibility(zhV, [zhA, zhB]).admissible);
+  ok("check: a Chinese two-sentence relation is dropped",
+    !checkAdmissibility({ ...zhV, relation: `"ci-gated" 支持 "因为 CI 红了" 因为前者是后者遵循的规则。再补一句。` }, [zhA, zhB]).admissible);
+  ok("check: a terminator at the end of a span still ends the sentence",
+    checkAdmissibility(
+      { ...v0, spanTo: "blocked because CI was red.", relation: `"ci-gated" supports "blocked because CI was red."` },
+      allNodes,
+    ).admissible);
+  const subA = snode(sid(33), "Deploy is CI was red today, holding the release.");
+  const subB = snode(sid(34), "Blocked: CI was red. Retry after the pipeline goes green.");
+  const subV: SemanticVerdict = {
+    from: subA.id, to: subB.id, type: "supports",
+    spanFrom: "CI was red", spanTo: "CI was red.",
+    relation: `"CI was red" supports "CI was red." because the first states the rule the second applies.`,
+  };
+  ok("check: a span that is a substring of the other does not corrupt the count",
+    checkAdmissibility(subV, [subA, subB]).admissible);
+  ok("check: the substring-span verdict still drops on a second sentence",
+    !checkAdmissibility(
+      { ...subV, relation: `"CI was red" supports "CI was red." because the first states the rule. It really is.` },
+      [subA, subB],
+    ).admissible);
+
   // The memory_add / memory_propose refusal detector (§4): only the full
   // structured shape matches — prose about support never does.
   ok("refusal: a JSON body carrying the full verdict shape is an edge verdict",

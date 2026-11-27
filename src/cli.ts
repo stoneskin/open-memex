@@ -1178,7 +1178,7 @@ async function main() {
           if (flags.json === "true") {
             console.log(JSON.stringify({ staged: false, reason: check.reason }, null, 2));
           } else {
-            console.log(`verdict dropped (1): ${check.reason}`);
+            console.log(`verdict dropped: ${check.reason}`);
           }
           return;
         }

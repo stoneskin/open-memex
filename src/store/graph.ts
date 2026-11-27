@@ -408,6 +408,14 @@ export function stageVerdict(
       existing.span_to === verdict.spanTo &&
       existing.relation === verdict.relation &&
       existing.resolution === (verdict.resolution ?? "unresolved");
+    // Identical re-stage refreshes the recorded confidence: the first
+    // value is not immutable metadata, the latest model verdict is.
+    if (same && verdict.modelConfidence != null && existing.model_confidence !== verdict.modelConfidence) {
+      db()
+        .prepare(`UPDATE graph_verdict_queue SET model_confidence = ? WHERE id = ?`)
+        .run(verdict.modelConfidence, existing.id);
+      existing.model_confidence = verdict.modelConfidence;
+    }
     return { staged: rowToStaged(existing), alreadyStaged: true, conflict: !same };
   }
   const id = ulid();

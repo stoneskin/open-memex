@@ -397,7 +397,10 @@ export async function addMemory(
   // (`open-memex graph verdict`) is the only writer of semantic edges.
   // Ordinary prose never matches the detector (it needs the full JSON
   // verdict shape), so a memory that merely says "A supports B" saves
-  // normally.
+  // normally. Ordering note: this check runs on the redacted body —
+  // redaction must preserve JSON structure (it masks secret values
+  // only); if redaction ever rewrote keys, a verdict could slip past
+  // the detector.
   if (looksLikeEdgeVerdict(redacted)) {
     return {
       title: "memory: not saved — edge verdict",

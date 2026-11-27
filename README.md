@@ -1041,7 +1041,8 @@ curation, and a stale pair it flags is a candidate for the batch-confirm screen.
 A semantic-edge verdict (`graph verdict`, D97) is admissible only if both
 endpoints are active, each cited span resolves verbatim in its endpoint's body,
 the relation is one sentence quoting both spans, and a contradicts edge names its
-resolution; model-generated edges cap at medium confidence, and only a human
+resolution; a span that is itself a full sentence may carry the sentence's final
+period (the period may sit inside the span's closing quote). Model-generated edges cap at medium confidence, and only a human
 accept promotes one to high. The check verifies form, never truth — and it runs
 before staging, so a dropped verdict never reaches the review queue.
 The graph interface is CLI-only; the MCP surface stays at its thirteen memory

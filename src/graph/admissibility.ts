@@ -86,6 +86,9 @@ export function relationNamesBothSides(
   if (!r) return false;
   if (!spanFrom || !spanTo) return false;
   if (!r.includes(spanFrom) || !r.includes(spanTo)) return false;
+  // Identical spans must be quoted twice: if both sides cite the same
+  // text, a single occurrence only names one side.
+  if (spanFrom === spanTo && r.split(spanFrom).length - 1 < 2) return false;
   // Strip the longer span first: when one span is a substring of the
   // other, stripping the short one first would eat into the long one's
   // occurrence and corrupt the terminator count.
@@ -163,7 +166,21 @@ export function checkAdmissibility(
     if (resolution === "superseded-by") {
       return fail("redundant: superseded-by — the supersede chain already states the conflict");
     }
-    if (fromNode.supersedes === toNode.id || toNode.supersedes === fromNode.id) {
+    // Follow the supersedes chain from each endpoint: a contradicts edge
+    // between two nodes on the same chain is redundant at any hop, not
+    // just for a direct link.
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const onChain = (start: GraphNode, targetId: string): boolean => {
+      const seen = new Set<string>();
+      let cur: GraphNode | undefined = start;
+      while (cur && cur.supersedes && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        if (cur.supersedes === targetId) return true;
+        cur = byId.get(cur.supersedes);
+      }
+      return false;
+    };
+    if (onChain(fromNode, toNode.id) || onChain(toNode, fromNode.id)) {
       return fail("redundant: the supersede chain already links these endpoints");
     }
   }

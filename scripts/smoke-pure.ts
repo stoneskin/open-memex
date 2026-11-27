@@ -1571,6 +1571,29 @@ console.log("  == LLM half: admissibility check + verdict ingress (canned verdic
       { ...cases[2]!.a, supersedes: cases[2]!.b.id },
       cases[2]!.b,
     ]).admissible);
+  // Review round 2: a two-hop chain is redundant too (the spec says
+  // "chain", not "direct link").
+  const chA = snode(sid(41), "Use the staging queue for every deploy.");
+  const chB = snode(sid(42), "Use the staging queue only for canary deploys.");
+  const chC = snode(sid(43), "Never route deploys through the staging queue.");
+  ok("check: contradicts across a two-hop supersede chain is dropped as redundant",
+    !checkAdmissibility(
+      { from: chA.id, to: chC.id, type: "contradicts", spanFrom: "Use the staging queue for every deploy", spanTo: "Never route deploys through the staging queue", relation: rel("contradicts", "Use the staging queue for every deploy", "Never route deploys through the staging queue") },
+      [{ ...chA, supersedes: chB.id }, { ...chB, supersedes: chC.id }, chC],
+    ).admissible);
+  // Review round 2: identical spans must be quoted twice.
+  const idA = snode(sid(44), "The rule is ci-gated.");
+  const idB = snode(sid(45), "The block is ci-gated too.");
+  ok("check: identical spans quoted once only name one side",
+    !checkAdmissibility(
+      { from: idA.id, to: idB.id, type: "supports", spanFrom: "ci-gated", spanTo: "ci-gated", relation: `"ci-gated" supports the block.` },
+      [idA, idB],
+    ).admissible);
+  ok("check: identical spans quoted twice are admissible",
+    checkAdmissibility(
+      { from: idA.id, to: idB.id, type: "supports", spanFrom: "ci-gated", spanTo: "ci-gated", relation: `"ci-gated" supports "ci-gated" because the same rule is cited on both sides.` },
+      [idA, idB],
+    ).admissible);
   ok("check: unknown resolution value is dropped",
     !checkAdmissibility({ ...vc, resolution: "resolved" as SemanticVerdict["resolution"] }, allNodes).admissible);
   ok("check: resolution is ignored for supports (rule 4 is contradicts-only)",

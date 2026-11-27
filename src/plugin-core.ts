@@ -120,6 +120,9 @@ export function captureFromText(
     // D97: an edge verdict is not a memory — same refusal as memory_add.
     // A verdict-shaped body pasted by the user must not slip in through
     // keyword capture; verdicts enter only through `graph verdict`.
+    // Ordering note: like memory_add, this runs on the redacted body —
+    // redaction must preserve JSON structure (it masks secret values
+    // only).
     if (looksLikeEdgeVerdict(content)) {
       if (cfg.logLevel === "debug") {
         console.log("[open-memex] keyword capture skipped an edge verdict (use `graph verdict`)");

@@ -27,6 +27,7 @@ import { upsertFromFile, deleteFromIndex } from "../store/sync.ts";
 import { findDuplicates, findTurnEcho, supersede, setStatus } from "../store/lifecycle.ts";
 import { TURN_ECHO_WINDOW_MS } from "../capture/handoff.ts";
 import { lengthNudge } from "../capture/length.ts";
+import { looksLikeEdgeVerdict } from "../graph/admissibility.ts";
 import {
   getUsage,
   recordUseful,
@@ -85,7 +86,7 @@ export async function withOutboxNote(
 /** LLM-facing tool descriptions, shared by the opencode plugin and the MCP server. */
 export const TOOL_DESCRIPTIONS = {
   memory_add:
-    "Save a fact, preference, decision, or note to persistent local memory. Call this PROACTIVELY whenever the user shares something worth remembering across sessions — project conventions, tool choices, personal preferences, decisions made, error fixes and their causes. Worth saving: decisions and their reasons, preferences, conventions, gotchas, approaches tried and abandoned. Not worth saving: one-off task details or anything re-derivable from the code. Do not wait to be asked. For facts you infer yourself rather than the user stating, propose them first and save only on approval. Keep each memory to one self-contained statement; attach aliases when the parameter is available. If a note tells you the user's own wording was already stored verbatim this turn, that statement is already saved: do not retry it in a rewording — save only what that text does not contain, or use memory_supersede on the given id. Default scope is the current project; use the personal scope for facts about the user that apply across all projects. Returns the new memory's id; an identical fact already stored returns that id instead of duplicating.",
+    "Save a fact, preference, decision, or note to persistent local memory. Call this PROACTIVELY whenever the user shares something worth remembering across sessions — project conventions, tool choices, personal preferences, decisions made, error fixes and their causes. Worth saving: decisions and their reasons, preferences, conventions, gotchas, approaches tried and abandoned. Not worth saving: one-off task details or anything re-derivable from the code. Do not wait to be asked. For facts you infer yourself rather than the user stating, propose them first and save only on approval. Keep each memory to one self-contained statement; attach aliases when the parameter is available. If a note tells you the user's own wording was already stored verbatim this turn, that statement is already saved: do not retry it in a rewording — save only what that text does not contain, or use memory_supersede on the given id. Default scope is the current project; use the personal scope for facts about the user that apply across all projects. Returns the new memory's id; an identical fact already stored returns that id instead of duplicating. A body that is a structured semantic-edge verdict is refused — edge verdicts go through `open-memex graph verdict`, not memory_add.",
   memory_search:
     "Search persistent memory by keyword (BM25 full-text). Returns matching memories from the current project and/or personal scope. Call before asking the user about past decisions, conventions, or preferences they may have told you before. Search well: break the question into its concepts and try 2–3 phrasings per concept — synonyms, the user's other language, shorter keyword forms — and check the other scope too, before concluding nothing is stored. Results are ranked by BM25 within review tiers — reviewed (approved/published) project memories come first. `limit` caps how many come back (default 8) and `type` restricts to one memory type.",
   memory_list:
@@ -99,7 +100,7 @@ export const TOOL_DESCRIPTIONS = {
   memory_submit:
     "Move outbox drafts into the repo memory dir for review. Before copying, reports graph lint (never blocking) and auto-applies the deterministic tier: exact-duplicate merges, empty-body archives, first-line title normalization, and high-confidence type/tag inference from keyword captures. Every applied action appears in the output with its undo command; pass noCurate=true to skip curation (lint still reports). D95: semantic merges, splits and uncertain type/tag inferences are one batch-confirm summary — when they exist, submit stops before writing anything and returns the summary. Show that summary to the user, then call again with either curateBatch=\"accept\" (apply the whole batch) or curateBatch=\"decline\" (change nothing). Never per-item approval, never silently apply the batch. Then copies the drafts in as proposed (or keeps a local approval), commits locally on the current branch, and moves the outbox originals out. Never creates a branch on its own — pass branch= only with the user's explicit approval for the full chain. Prints the push and PR commands — those need the user's explicit approval and are never run automatically. (MCP server and the `open-memex submit` CLI; the opencode native plugin does not expose this tool.) Unknown ids or a failed local commit abort the submit with the reason; nothing is published automatically.",
   memory_propose:
-    "Copy personal memories into the project outbox as review drafts. The personal originals stay put. Use this when personal knowledge should enter a project's review flow; memory_submit then moves the drafts into the repo, and memory_promote advances drafts already there. (MCP server and the `open-memex propose` CLI; the opencode native plugin does not expose this tool.)",
+    "Copy personal memories into the project outbox as review drafts. The personal originals stay put. Use this when personal knowledge should enter a project's review flow; memory_submit then moves the drafts into the repo, and memory_promote advances drafts already there. Memories whose body is a structured edge verdict are refused — edge verdicts go through `open-memex graph verdict`, not memory_propose. (MCP server and the `open-memex propose` CLI; the opencode native plugin does not expose this tool.)",
   memory_promote:
     "Advance a project memory one step up the review ladder (proposed → approved → published), or reject it with a note. Rejected memories are never deleted — they can be revised and resubmitted. One step per call; an unknown id or a memory already published errors. Pass `by` to record the reviewer when it should differ from the default (e.g. approving on the strength of someone else's review). For brand-new outbox drafts, memory_submit is the entry point. (MCP server and the `open-memex promote` CLI; the opencode native plugin does not expose this tool.)",
   memory_resolve:
@@ -390,6 +391,22 @@ export async function addMemory(
     ? `\nNote: content matched a secret pattern (${matchedPattern}); it was saved with the secret masked (first 4 chars kept, rest replaced with x).`
     : "";
   const s = resolveScope(getScope, args.scope);
+  // D97 (llm-half §4): an edge verdict is not a memory. A structured
+  // verdict smuggled into memory_add would never become an edge, but the
+  // refusal keeps the convention unambiguous — the verdict ingress
+  // (`open-memex graph verdict`) is the only writer of semantic edges.
+  // Ordinary prose never matches the detector (it needs the full JSON
+  // verdict shape), so a memory that merely says "A supports B" saves
+  // normally.
+  if (looksLikeEdgeVerdict(redacted)) {
+    return {
+      title: "memory: not saved — edge verdict",
+      output:
+        "Not saved — this body is a structured semantic-edge verdict (from/to/type/spans/relation), not a memory. " +
+        "Edge verdicts enter only through the verdict ingress: `open-memex graph verdict --from … --to … --type … --span-from … --span-to … --relation …`, " +
+        "where the admissibility check runs before staging. Nothing was saved.",
+    };
+  }
   // Dedup on write (§3.4): identical content is idempotent; near-duplicates
   // are reported so the caller can supersede instead of duplicating.
   const dups = findDuplicates(s.key, redacted);

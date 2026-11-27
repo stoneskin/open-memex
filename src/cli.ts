@@ -29,7 +29,8 @@ import { paths, projectRoot, isInRepoMemoryFile } from "./paths.ts";
 import { redact } from "./redact.ts";
 import { lengthNudge } from "./capture/length.ts";
 import { readWorkingState, clearWorkingState, workingStatePath } from "./working-state.ts";
-import { refreshGraph, refreshGraphQuiet, ensureGraph, loadGraphEdges, loadGraphNodes, loadAllMemoryIds } from "./store/graph.ts";
+import { refreshGraph, refreshGraphQuiet, ensureGraph, loadGraphEdges, loadGraphNodes, loadAllMemoryIds, stageVerdict, listStagedVerdicts } from "./store/graph.ts";
+import { checkAdmissibility, looksLikeEdgeVerdict, type SemanticVerdict } from "./graph/admissibility.ts";
 import { graphNeighbours, shortestPath } from "./graph/queries.ts";
 import { lintGraph } from "./graph/lint.ts";
 import { formatCurationAction, formatBatchSummary, formatBatchProposal } from "./curate.ts";
@@ -524,12 +525,22 @@ Usage:
   open-memex graph path <idA> <idB> [--depth N]  shortest path (default 4, max 6)
   open-memex graph lint [--json]         health check: orphans, dangling refs, stale chains
   open-memex graph outline               print the compiled outline as it is injected
+  open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..." [--resolution unresolved|superseded-by] [--model-confidence <value>] [--json]
+                                         stage one semantic-edge verdict (admissibility-checked; D97, llm-half §4)
+  open-memex graph verdicts [--json]     list staged verdicts awaiting human review
 
 Every hop reports its edge type, provenance and confidence — EXTRACTED
 means the link was explicit in the source (a supersede chain, a
 derived-from copy, or the body mentioning the other memory's id);
 INFERRED means the system noticed it (shared tags). Inferred links are
 suggestions, never facts that were in the source.
+
+A semantic-edge verdict is admissible only if both endpoints are active,
+each cited span resolves verbatim in its endpoint's body, the relation is
+one sentence quoting both spans, and a contradicts edge names its
+resolution (unresolved, or superseded-by — which drops as redundant).
+Model-generated edges cap at medium confidence; only a human accept
+promotes one to high. The check verifies form, never truth.
 
 Writes (add / supersede / forget / propose / promote) refresh the graph
 automatically; graph build is the manual repair. Lint only reports.
@@ -538,7 +549,8 @@ Examples:
   open-memex graph build
   open-memex graph neighbours 01ABC --depth 2
   open-memex graph path 01ABC 01DEF
-  open-memex graph lint`,
+  open-memex graph lint
+  open-memex graph verdict --from 01AAA --to 01BBB --type supports --span-from "ci-gated" --span-to "blocked because CI was red" --relation "\\"ci-gated\\" supports \\"blocked because CI was red\\" because the rule explains the block."`,
 
   wstate: `Show the project's session working-state note (D89, §3.6) — the
 ephemeral scratch note the agent refreshes at wrap-up so an interrupted task
@@ -1132,6 +1144,73 @@ async function main() {
       return;
     }
 
+    // D97 (llm-half §4/§8): the verdict ingress. One structured verdict
+    // per call; the admissibility check runs before staging, and a drop
+    // is reported with its reason and counted, never staged silently.
+    // This command is the only writer of semantic edges — `memory_add` /
+    // `memory_propose` refuse structured verdicts outright.
+    if (sub === "verdict") {
+      const need = ["from", "to", "type", "span-from", "span-to", "relation"];
+      const missing = need.filter((k) => !flags[k]);
+      if (missing.length > 0) {
+        console.error(
+          `usage: open-memex graph verdict --from <id> --to <id> --type supports|contradicts ` +
+            `--span-from "..." --span-to "..." --relation "..." ` +
+            `[--resolution unresolved|superseded-by] [--model-confidence <value>] [--json]\nmissing: ${missing.join(", ")}`,
+        );
+        process.exit(1);
+      }
+      syncThen(() => {
+        const verdict: SemanticVerdict = {
+          from: flags.from!,
+          to: flags.to!,
+          type: flags.type as SemanticVerdict["type"],
+          spanFrom: flags["span-from"]!,
+          spanTo: flags["span-to"]!,
+          relation: flags.relation!,
+          resolution: flags.resolution as SemanticVerdict["resolution"],
+          modelConfidence: flags["model-confidence"],
+        };
+        const check = checkAdmissibility(verdict, loadGraphNodes(project.key));
+        if (!check.admissible) {
+          console.log(`verdict dropped (1): ${check.reason}`);
+          return;
+        }
+        const { staged, alreadyStaged } = stageVerdict(project.key, verdict, check.cappedConfidence);
+        if (flags.json === "true") {
+          console.log(JSON.stringify({ staged, alreadyStaged }, null, 2));
+          return;
+        }
+        console.log(
+          alreadyStaged
+            ? `verdict already staged: ${staged.id} — ${staged.from} --${staged.type}/${staged.confidence}--> ${staged.to} (pending review)`
+            : `verdict staged: ${staged.id} — ${staged.from} --${staged.type}/${staged.confidence}--> ${staged.to} (pending review)`,
+        );
+      });
+      return;
+    }
+
+    if (sub === "verdicts") {
+      syncThen(() => {
+        const rows = listStagedVerdicts(project.key);
+        if (flags.json === "true") {
+          console.log(JSON.stringify(rows, null, 2));
+          return;
+        }
+        if (rows.length === 0) {
+          console.log("no staged verdicts in the review queue.");
+          return;
+        }
+        console.log(`staged verdicts (${rows.length} pending review):`);
+        for (const r of rows) {
+          console.log(
+            `- ${r.id}: ${r.from} --${r.type}/${r.confidence}--> ${r.to} [${r.status}] ${r.relation}`,
+          );
+        }
+      });
+      return;
+    }
+
     usage();
   }
 
@@ -1412,6 +1491,15 @@ async function main() {
     const flags = parseFlags(rest.slice(1));
     const s = resolveCliScope(flags, project);
     const { content: red, hadSecret, matchedPattern } = redact(content, cfg.redactPatterns);
+    // D97 (llm-half §4): an edge verdict is not a memory — same refusal
+    // as memory_add. Verdicts go through `graph verdict` only.
+    if (looksLikeEdgeVerdict(red)) {
+      console.error(
+        "not saved — this body is a structured semantic-edge verdict (from/to/type/spans/relation), not a memory. " +
+          "Edge verdicts enter only through `open-memex graph verdict`, where the admissibility check runs before staging.",
+      );
+      process.exit(1);
+    }
     // Dedup on write (§3.4): identical content is idempotent; near-duplicates
     // warn but still save (use `supersede` when this replaces the old one).
     // Secrets are masked (first 4 chars kept) and the write proceeds.

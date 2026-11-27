@@ -11,6 +11,13 @@
  * - `graph_meta`  — build stamp + the rendered compiled outline. The
  *   outline is stored text: the session-start injection reads it and is
  *   never responsible for rendering.
+ * - `graph_verdict_queue` — staged semantic-edge verdicts awaiting human
+ *   review (llm-half §8, D97). Written ONLY by the verdict ingress
+ *   (`graph verdict`) after the admissibility check; never by the
+ *   write-path refresh, never by the memory outbox (an edge verdict
+ *   staged there would be published as a memory by submit). Rows stay
+ *   `pending` until a review step accepts or declines them — that step
+ *   is a later slice, not this one.
  *
  * Project scope only in D91 (decision): personal memories stay out of the
  * graph per §20.5's sync rule; the entry point no-ops for the personal key
@@ -20,11 +27,14 @@
 import { db } from "./db.ts";
 import type { MyOMemoryConfig } from "../config.ts";
 import { PERSONAL_SCOPE } from "../scope.ts";
+import { ulid } from "./markdown.ts";
 import {
   extractEdges,
   type GraphEdge,
   type GraphNode,
+  type Confidence,
 } from "../graph/extract.ts";
+import type { SemanticVerdict } from "../graph/admissibility.ts";
 import { renderOutline } from "../graph/outline.ts";
 
 const GRAPH_SCHEMA = `
@@ -45,6 +55,21 @@ CREATE TABLE IF NOT EXISTS graph_meta (
   edge_count  INTEGER NOT NULL,
   outline     TEXT NOT NULL DEFAULT '',
   outline_ids TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE IF NOT EXISTS graph_verdict_queue (
+  id               TEXT PRIMARY KEY,
+  scope_key        TEXT NOT NULL,
+  from_id          TEXT NOT NULL,
+  to_id            TEXT NOT NULL,
+  edge_type        TEXT NOT NULL,
+  confidence       TEXT NOT NULL,
+  model_confidence TEXT,
+  span_from        TEXT NOT NULL,
+  span_to          TEXT NOT NULL,
+  relation         TEXT NOT NULL,
+  resolution       TEXT NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'pending',
+  created_at       TEXT NOT NULL
 );
 `;
 
@@ -267,15 +292,23 @@ export function loadGraphEdges(scopeKey: string): GraphEdge[] {
 export function loadGraphNodes(scopeKey: string): GraphNode[] {
   const rows = db()
     .prepare(
-      `SELECT id, type, tags, content, status FROM memories WHERE scope_key = ?`,
+      `SELECT id, type, tags, content, status, superseded_by FROM memories WHERE scope_key = ?`,
     )
-    .all(scopeKey) as Array<{ id: string; type: string; tags: string; content: string; status: string }>;
+    .all(scopeKey) as Array<{ id: string; type: string; tags: string; content: string; status: string; superseded_by: string | null }>;
+  // Same derivation as refreshGraph: a row's `superseded_by` points forward
+  // (old → new), so the target of that pointer is the newer memory that
+  // superseded it. The admissibility check reads this for rule 4.
+  const supersedesByTarget = new Map<string, string>();
+  for (const r of rows) {
+    if (r.superseded_by && r.superseded_by !== r.id) supersedesByTarget.set(r.superseded_by, r.id);
+  }
   return rows.map((r) => ({
     id: r.id,
     status: r.status,
     type: r.type,
     tags: r.tags ? r.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
     body: r.content,
+    supersedes: supersedesByTarget.get(r.id) ?? null,
   }));
 }
 
@@ -290,4 +323,119 @@ export function loadAllMemoryIds(): string[] {
     .prepare(`SELECT id FROM memories`)
     .all() as Array<{ id: string }>;
   return rows.map((r) => r.id);
+}
+
+// ---------------------------------------------------------------------------
+// Verdict ingress staging (llm-half §4/§8, D97)
+// ---------------------------------------------------------------------------
+
+export interface StagedVerdict {
+  id: string;
+  scopeKey: string;
+  from: string;
+  to: string;
+  type: string;
+  confidence: Confidence;
+  modelConfidence: string | null;
+  spanFrom: string;
+  spanTo: string;
+  relation: string;
+  resolution: string;
+  status: string;
+  createdAt: string;
+}
+
+type VerdictRow = {
+  id: string;
+  scope_key: string;
+  from_id: string;
+  to_id: string;
+  edge_type: string;
+  confidence: Confidence;
+  model_confidence: string | null;
+  span_from: string;
+  span_to: string;
+  relation: string;
+  resolution: string;
+  status: string;
+  created_at: string;
+};
+
+function rowToStaged(r: VerdictRow): StagedVerdict {
+  return {
+    id: r.id,
+    scopeKey: r.scope_key,
+    from: r.from_id,
+    to: r.to_id,
+    type: r.edge_type,
+    confidence: r.confidence,
+    modelConfidence: r.model_confidence,
+    spanFrom: r.span_from,
+    spanTo: r.span_to,
+    relation: r.relation,
+    resolution: r.resolution,
+    status: r.status,
+    createdAt: r.created_at,
+  };
+}
+
+/**
+ * Stage one admissible verdict in the review queue. Idempotent per
+ * (from, to, type): a second verdict on a pair already pending returns
+ * the existing row instead of staging a duplicate — the human reviews
+ * the pair once. Callers must run `checkAdmissibility` first; this
+ * function stages, it does not re-check.
+ */
+export function stageVerdict(
+  scopeKey: string,
+  verdict: SemanticVerdict,
+  cappedConfidence: Confidence,
+): { staged: StagedVerdict; alreadyStaged: boolean } {
+  ensureSchema();
+  const existing = db()
+    .prepare(
+      `SELECT * FROM graph_verdict_queue
+       WHERE scope_key = ? AND from_id = ? AND to_id = ? AND edge_type = ? AND status = 'pending'`,
+    )
+    .get(scopeKey, verdict.from, verdict.to, verdict.type) as VerdictRow | undefined;
+  if (existing) return { staged: rowToStaged(existing), alreadyStaged: true };
+  const id = ulid();
+  const createdAt = new Date().toISOString();
+  db()
+    .prepare(
+      `INSERT INTO graph_verdict_queue
+       (id, scope_key, from_id, to_id, edge_type, confidence, model_confidence,
+        span_from, span_to, relation, resolution, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+    )
+    .run(
+      id,
+      scopeKey,
+      verdict.from,
+      verdict.to,
+      verdict.type,
+      cappedConfidence,
+      verdict.modelConfidence ?? null,
+      verdict.spanFrom,
+      verdict.spanTo,
+      verdict.relation,
+      verdict.resolution ?? "unresolved",
+      createdAt,
+    );
+  const row = db()
+    .prepare(`SELECT * FROM graph_verdict_queue WHERE id = ?`)
+    .get(id) as VerdictRow;
+  return { staged: rowToStaged(row), alreadyStaged: false };
+}
+
+/** Pending staged verdicts for a scope, oldest first. */
+export function listStagedVerdicts(scopeKey: string): StagedVerdict[] {
+  ensureSchema();
+  const rows = db()
+    .prepare(
+      `SELECT * FROM graph_verdict_queue
+       WHERE scope_key = ? AND status = 'pending' ORDER BY created_at ASC, id ASC`,
+    )
+    .all(scopeKey) as VerdictRow[];
+  return rows.map(rowToStaged);
 }

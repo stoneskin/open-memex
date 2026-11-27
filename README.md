@@ -979,6 +979,8 @@ open-memex audit        # memory health: duplicate pairs, stale memories, broken
 open-memex wstate       # show the session working-state note (--clear deletes it)
 open-memex graph build  # rebuild the knowledge graph (structural edges only; runs automatically on writes)
 open-memex graph lint   # orphans, dangling edges, near-duplicate pairs (reports only)
+open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..."  # stage one semantic-edge verdict (admissibility-checked; D97)
+open-memex graph verdicts  # list staged verdicts awaiting human review
 open-memex migrate --to-v2 [--dry-run]   # v1 data → v2 (renames user scope to personal)
 ```
 
@@ -1029,11 +1031,19 @@ open-memex graph outline               # the compiled outline, as injected
 open-memex graph neighbours <id> [--depth 1-6]   # BFS with per-edge provenance
 open-memex graph path <a> <b>          # shortest hop chain, with receipts
 open-memex graph lint [--json]         # orphans, dangling edges, near-stale pairs
+open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..."  # stage one semantic-edge verdict (admissibility-checked)
+open-memex graph verdicts [--json]     # list staged verdicts awaiting human review
 ```
 
 `lint` reports only — nothing is auto-resolved; a human decides. The same report
 is the input for D78's pre-submit curation (D93/D95): `submit` prints it before
 curation, and a stale pair it flags is a candidate for the batch-confirm screen.
+A semantic-edge verdict (`graph verdict`, D97) is admissible only if both
+endpoints are active, each cited span resolves verbatim in its endpoint's body,
+the relation is one sentence quoting both spans, and a contradicts edge names its
+resolution; model-generated edges cap at medium confidence, and only a human
+accept promotes one to high. The check verifies form, never truth — and it runs
+before staging, so a dropped verdict never reaches the review queue.
 The graph interface is CLI-only; the MCP surface stays at its thirteen memory
 tools.
 

@@ -626,6 +626,8 @@ open-memex audit        # 记忆健康检查：近重复对、陈旧记忆、断
 open-memex wstate       # 显示工作状态笔记（--clear 删除）
 open-memex graph build  # 重建知识图谱（仅结构边；写入时自动刷新）
 open-memex graph lint   # 孤立节点、悬空边、近重复对（只报告，不自动处理）
+open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..."  # 提交一条语义边裁决（先过 admissibility 检查；D97）
+open-memex graph verdicts  # 列出待人工审核的已暂存裁决
 open-memex migrate --to-v2 [--dry-run]   # v1 数据 → v2（把 user 作用域改名为 personal）
 ```
 
@@ -652,9 +654,11 @@ open-memex graph outline               # 编译后的大纲（即注入内容）
 open-memex graph neighbours <id> [--depth 1-6]   # BFS，带每条边的来源
 open-memex graph path <a> <b>          # 最短跳链，带凭据
 open-memex graph lint [--json]         # 孤立节点、悬空边、近陈旧对
+open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..."  # 提交一条语义边裁决（先过 admissibility 检查）
+open-memex graph verdicts [--json]     # 列出待人工审核的已暂存裁决
 ```
 
-`lint` 只报告——不自动处理，由人决定。同一份报告就是 D78 提交前策展（D93/D95）的输入：`submit` 在策展前先打印它，它标出的近陈旧对正是 batch-confirm 屏幕的候选。图谱接口仅限 CLI；MCP 表面保持十三个记忆工具不变。
+`lint` 只报告——不自动处理，由人决定。同一份报告就是 D78 提交前策展（D93/D95）的输入：`submit` 在策展前先打印它，它标出的近陈旧对正是 batch-confirm 屏幕的候选。语义边裁决（`graph verdict`，D97）只有同时满足以下条件才可暂存：两端都是 active 记忆、每段引用原文可在对应端点正文里逐字找到、关系句是一句且引用了两段原文、contradicts 边要注明处理状态；模型生成的边置信度最高 medium，只有人接受后才能升到 high。检查只验形式、不验真假——而且在暂存之前就跑，不合格的裁决进不了审核队列。图谱接口仅限 CLI；MCP 表面保持十三个记忆工具不变。
 
 ## MCP 服务器
 

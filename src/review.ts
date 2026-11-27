@@ -37,6 +37,7 @@ import {
 import { findMemoryFile } from "./store/lifecycle.ts";
 import { upsertFromFile } from "./store/sync.ts";
 import { refreshGraphQuiet } from "./store/graph.ts";
+import { looksLikeEdgeVerdict } from "./graph/admissibility.ts";
 import { recordUseful } from "./store/usage.ts";
 
 /** Best-effort author identity: git user.name, else the OS user. */
@@ -170,6 +171,11 @@ export function proposeMemories(
       fail(`only personal memories can be proposed (memory "${sourceId}" is ${src.fm.scope}).`);
     if (src.fm.status === "retracted" || src.fm.status === "archived")
       fail(`memory "${sourceId}" is ${src.fm.status} — cannot propose it.`);
+    // D97 (llm-half §4): an edge verdict is not a memory — proposing one
+    // would stage it in the outbox, where submit would publish it as a
+    // memory. Verdicts go through the ingress (`graph verdict`) only.
+    if (looksLikeEdgeVerdict(src.body))
+      fail(`memory "${sourceId}" is a structured edge verdict, not a memory — edge verdicts go through "open-memex graph verdict", not propose.`);
     return { sourceId, fm: src.fm, body: src.body };
   });
   return sources.map(({ sourceId, fm, body }) => ({

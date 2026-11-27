@@ -44,6 +44,11 @@ import { memoryAddArgs } from "../src/tools/ops.ts";
 import { dataRootPath, homeOverride } from "../src/paths.ts";
 import { configFilePath, loadConfig, stripJsonComments, SETTABLE_KEYS } from "../src/config.ts";
 import { extractEdges, sharedTagConfidence } from "../src/graph/extract.ts";
+import {
+  checkAdmissibility,
+  looksLikeEdgeVerdict,
+  type SemanticVerdict,
+} from "../src/graph/admissibility.ts";
 import { renderOutline } from "../src/graph/outline.ts";
 import { graphNeighbours, shortestPath } from "../src/graph/queries.ts";
 import { lintGraph } from "../src/graph/lint.ts";
@@ -1474,6 +1479,113 @@ console.log("== LLM half: semantic-edge fixture + deterministic baseline ==");
   const union = new Set([...ta, ...tb]).size;
   ok("fixture: low-overlap contradiction pair sits below the 0.8 threshold",
     inter / union < 0.8, `jaccard=${(inter / union).toFixed(2)}`);
+}
+
+console.log("  == LLM half: admissibility check + verdict ingress (canned verdicts) ==");
+{
+  // §7a: CI tests the check's logic with canned verdicts — endpoints,
+  // span resolution, drop rules. Model precision is an external
+  // observation (labels hidden from the judge), never measured here.
+  // The fixture pairs above are re-declared here in miniature so this
+  // block reads standalone: same ids, bodies, and deciding spans.
+  const sid = (n: number) => `01${String(n).padStart(24, "0")}`;
+  const snode = (id: string, body: string, over: Record<string, unknown> = {}) => ({
+    id,
+    status: "active",
+    type: "fact",
+    tags: [] as string[],
+    body,
+    supersedes: null,
+    derived_from: null,
+    ...over,
+  });
+  const rel = (label: "supports" | "contradicts", spanA: string, spanB: string) =>
+    label === "supports"
+      ? `"${spanA}" supports "${spanB}" because the first states the rule the second applies.`
+      : `"${spanA}" contradicts "${spanB}": the first says "${spanA}", the second says "${spanB}".`;
+  const verdictFor = (
+    a: ReturnType<typeof snode>,
+    b: ReturnType<typeof snode>,
+    label: "supports" | "contradicts",
+    spanA: string,
+    spanB: string,
+  ): SemanticVerdict => ({
+    from: a.id,
+    to: b.id,
+    type: label,
+    spanFrom: spanA,
+    spanTo: spanB,
+    relation: rel(label, spanA, spanB),
+  });
+
+  const cases: Array<{
+    a: ReturnType<typeof snode>;
+    b: ReturnType<typeof snode>;
+    label: "supports" | "contradicts";
+    spanA: string;
+    spanB: string;
+  }> = [
+    { a: snode(sid(1), "Deploy is ci-gated: the pipeline must pass before any production push."), b: snode(sid(2), "Tuesday's release was blocked because CI was red."), label: "supports", spanA: "ci-gated", spanB: "blocked because CI was red" },
+    { a: snode(sid(5), "Smoke tests run with --experimental-strip-types; development has no build step."), b: snode(sid(6), "CI runs smoke-pure.ts directly under Node 22 with no compile."), label: "supports", spanA: "no build step", spanB: "directly under Node 22 with no compile" },
+    { a: snode(sid(15), "Use the staging queue for every deploy."), b: snode(sid(16), "Never route deploys through the staging queue."), label: "contradicts", spanA: "Use the staging queue for every deploy", spanB: "Never route deploys through the staging queue" },
+    { a: snode(sid(25), "The plugin adds no model client in v1."), b: snode(sid(26), "The plugin should call the model directly for semantic edges."), label: "contradicts", spanA: "adds no model client in v1", spanB: "call the model directly" },
+  ];
+  const allNodes = cases.flatMap((c) => [c.a, c.b]);
+  const results = cases.map((c) =>
+    checkAdmissibility(verdictFor(c.a, c.b, c.label, c.spanA, c.spanB), allNodes),
+  );
+  ok("check: well-formed canned verdicts (supports + contradicts) are admissible",
+    results.every((r) => r.admissible), JSON.stringify(results.map((r) => r.reason)));
+  ok("check: model-generated edges cap at medium even with a confident model verdict",
+    results.every((r) => r.cappedConfidence === "medium") &&
+      checkAdmissibility(
+        { ...verdictFor(cases[0]!.a, cases[0]!.b, "supports", cases[0]!.spanA, cases[0]!.spanB), modelConfidence: "0.95" },
+        allNodes,
+      ).cappedConfidence === "medium");
+
+  // Drop rules, one per spec rule.
+  const v0 = verdictFor(cases[0]!.a, cases[0]!.b, "supports", cases[0]!.spanA, cases[0]!.spanB);
+  ok("check: retracted endpoint is dropped, not warned",
+    !checkAdmissibility(v0, [{ ...cases[0]!.a, status: "retracted" }, cases[0]!.b]).admissible);
+  ok("check: archived endpoint is dropped",
+    !checkAdmissibility(v0, [cases[0]!.a, { ...cases[0]!.b, status: "archived" }]).admissible);
+  ok("check: unknown endpoint is dropped",
+    !checkAdmissibility({ ...v0, to: sid(99) }, allNodes).admissible);
+  ok("check: paraphrased span (not verbatim) is dropped",
+    !checkAdmissibility({ ...v0, spanFrom: "ci gated" }, allNodes).admissible);
+  ok("check: empty span is dropped",
+    !checkAdmissibility({ ...v0, spanFrom: "  " }, allNodes).admissible);
+  ok("check: two-sentence relation is dropped",
+    !checkAdmissibility({ ...v0, relation: `${rel("supports", cases[0]!.spanA, cases[0]!.spanB)} It really is.` }, allNodes).admissible);
+  ok("check: relation that does not quote both spans is dropped",
+    !checkAdmissibility({ ...v0, relation: "The first supports the second because the rule explains it." }, allNodes).admissible);
+  ok("check: self-edge is dropped",
+    !checkAdmissibility({ ...v0, to: v0.from }, allNodes).admissible);
+  ok("check: unknown edge type is dropped",
+    !checkAdmissibility({ ...v0, type: "relates-to" as SemanticVerdict["type"] }, allNodes).admissible);
+  const vc = verdictFor(cases[2]!.a, cases[2]!.b, "contradicts", cases[2]!.spanA, cases[2]!.spanB);
+  ok("check: contradicts with resolution superseded-by is dropped as redundant",
+    !checkAdmissibility({ ...vc, resolution: "superseded-by" }, allNodes).admissible);
+  ok("check: contradicts across a supersede chain is dropped as redundant",
+    !checkAdmissibility(vc, [
+      { ...cases[2]!.a, supersedes: cases[2]!.b.id },
+      cases[2]!.b,
+    ]).admissible);
+  ok("check: unknown resolution value is dropped",
+    !checkAdmissibility({ ...vc, resolution: "resolved" as SemanticVerdict["resolution"] }, allNodes).admissible);
+  ok("check: resolution is ignored for supports (rule 4 is contradicts-only)",
+    checkAdmissibility({ ...v0, resolution: "superseded-by" }, allNodes).admissible);
+
+  // The memory_add / memory_propose refusal detector (§4): only the full
+  // structured shape matches — prose about support never does.
+  ok("refusal: a JSON body carrying the full verdict shape is an edge verdict",
+    looksLikeEdgeVerdict(JSON.stringify(v0)));
+  ok("refusal: prose mentioning support is not an edge verdict",
+    !looksLikeEdgeVerdict("Deploy is ci-gated, which supports blocking the release when CI is red."));
+  ok("refusal: partial JSON (missing spans) is not an edge verdict",
+    !looksLikeEdgeVerdict(JSON.stringify({ from: v0.from, to: v0.to, type: "supports" })));
+  ok("refusal: a non-verdict edge type in JSON is not an edge verdict",
+    !looksLikeEdgeVerdict(JSON.stringify({ ...v0, type: "relates-to" })));
 }
 
 console.log("  == D78 curation (deterministic tier) ==");

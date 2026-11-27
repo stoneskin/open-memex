@@ -139,6 +139,8 @@ open-memex graph outline                 # topics + titles (also injected at ses
 open-memex graph neighbours <id>         # what links to / from this memory, with provenance
 open-memex graph path <a> <b>            # how two memories connect
 open-memex graph lint                    # orphans, dangling edges, near-stale pairs (reports only)
+open-memex graph verdict --from <id> --to <id> --type supports|contradicts --span-from "..." --span-to "..." --relation "..."  # stage one semantic-edge verdict (admissibility-checked; D97)
+open-memex graph verdicts                # staged verdicts awaiting human review
 ```
 
 Edges are `EXTRACTED` (structural fact) or `INFERRED` (heuristic) — quote

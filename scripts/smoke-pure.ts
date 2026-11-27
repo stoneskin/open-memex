@@ -44,6 +44,11 @@ import { memoryAddArgs } from "../src/tools/ops.ts";
 import { dataRootPath, homeOverride } from "../src/paths.ts";
 import { configFilePath, loadConfig, stripJsonComments, SETTABLE_KEYS } from "../src/config.ts";
 import { extractEdges, sharedTagConfidence } from "../src/graph/extract.ts";
+import {
+  checkAdmissibility,
+  looksLikeEdgeVerdict,
+  type SemanticVerdict,
+} from "../src/graph/admissibility.ts";
 import { renderOutline } from "../src/graph/outline.ts";
 import { graphNeighbours, shortestPath } from "../src/graph/queries.ts";
 import { lintGraph } from "../src/graph/lint.ts";
@@ -1474,6 +1479,169 @@ console.log("== LLM half: semantic-edge fixture + deterministic baseline ==");
   const union = new Set([...ta, ...tb]).size;
   ok("fixture: low-overlap contradiction pair sits below the 0.8 threshold",
     inter / union < 0.8, `jaccard=${(inter / union).toFixed(2)}`);
+}
+
+console.log("  == LLM half: admissibility check + verdict ingress (canned verdicts) ==");
+{
+  // §7a: CI tests the check's logic with canned verdicts — endpoints,
+  // span resolution, drop rules. Model precision is an external
+  // observation (labels hidden from the judge), never measured here.
+  // The fixture pairs above are re-declared here in miniature so this
+  // block reads standalone: same ids, bodies, and deciding spans.
+  const sid = (n: number) => `01${String(n).padStart(24, "0")}`;
+  const snode = (id: string, body: string, over: Record<string, unknown> = {}) => ({
+    id,
+    status: "active",
+    type: "fact",
+    tags: [] as string[],
+    body,
+    supersedes: null,
+    derived_from: null,
+    ...over,
+  });
+  const rel = (label: "supports" | "contradicts", spanA: string, spanB: string) =>
+    label === "supports"
+      ? `"${spanA}" supports "${spanB}" because the first states the rule the second applies.`
+      : `"${spanA}" contradicts "${spanB}": the first says "${spanA}", the second says "${spanB}".`;
+  const verdictFor = (
+    a: ReturnType<typeof snode>,
+    b: ReturnType<typeof snode>,
+    label: "supports" | "contradicts",
+    spanA: string,
+    spanB: string,
+  ): SemanticVerdict => ({
+    from: a.id,
+    to: b.id,
+    type: label,
+    spanFrom: spanA,
+    spanTo: spanB,
+    relation: rel(label, spanA, spanB),
+  });
+
+  const cases: Array<{
+    a: ReturnType<typeof snode>;
+    b: ReturnType<typeof snode>;
+    label: "supports" | "contradicts";
+    spanA: string;
+    spanB: string;
+  }> = [
+    { a: snode(sid(1), "Deploy is ci-gated: the pipeline must pass before any production push."), b: snode(sid(2), "Tuesday's release was blocked because CI was red."), label: "supports", spanA: "ci-gated", spanB: "blocked because CI was red" },
+    { a: snode(sid(5), "Smoke tests run with --experimental-strip-types; development has no build step."), b: snode(sid(6), "CI runs smoke-pure.ts directly under Node 22 with no compile."), label: "supports", spanA: "no build step", spanB: "directly under Node 22 with no compile" },
+    { a: snode(sid(15), "Use the staging queue for every deploy."), b: snode(sid(16), "Never route deploys through the staging queue."), label: "contradicts", spanA: "Use the staging queue for every deploy", spanB: "Never route deploys through the staging queue" },
+    { a: snode(sid(25), "The plugin adds no model client in v1."), b: snode(sid(26), "The plugin should call the model directly for semantic edges."), label: "contradicts", spanA: "adds no model client in v1", spanB: "call the model directly" },
+  ];
+  const allNodes = cases.flatMap((c) => [c.a, c.b]);
+  const results = cases.map((c) =>
+    checkAdmissibility(verdictFor(c.a, c.b, c.label, c.spanA, c.spanB), allNodes),
+  );
+  ok("check: well-formed canned verdicts (supports + contradicts) are admissible",
+    results.every((r) => r.admissible), JSON.stringify(results.map((r) => r.reason)));
+  ok("check: model-generated edges cap at medium even with a confident model verdict",
+    results.every((r) => r.cappedConfidence === "medium") &&
+      checkAdmissibility(
+        { ...verdictFor(cases[0]!.a, cases[0]!.b, "supports", cases[0]!.spanA, cases[0]!.spanB), modelConfidence: "0.95" },
+        allNodes,
+      ).cappedConfidence === "medium");
+
+  // Drop rules, one per spec rule.
+  const v0 = verdictFor(cases[0]!.a, cases[0]!.b, "supports", cases[0]!.spanA, cases[0]!.spanB);
+  ok("check: retracted endpoint is dropped, not warned",
+    !checkAdmissibility(v0, [{ ...cases[0]!.a, status: "retracted" }, cases[0]!.b]).admissible);
+  ok("check: archived endpoint is dropped",
+    !checkAdmissibility(v0, [cases[0]!.a, { ...cases[0]!.b, status: "archived" }]).admissible);
+  ok("check: unknown endpoint is dropped",
+    !checkAdmissibility({ ...v0, to: sid(99) }, allNodes).admissible);
+  ok("check: paraphrased span (not verbatim) is dropped",
+    !checkAdmissibility({ ...v0, spanFrom: "ci gated" }, allNodes).admissible);
+  ok("check: empty span is dropped",
+    !checkAdmissibility({ ...v0, spanFrom: "  " }, allNodes).admissible);
+  ok("check: two-sentence relation is dropped",
+    !checkAdmissibility({ ...v0, relation: `${rel("supports", cases[0]!.spanA, cases[0]!.spanB)} It really is.` }, allNodes).admissible);
+  ok("check: relation that does not quote both spans is dropped",
+    !checkAdmissibility({ ...v0, relation: "The first supports the second because the rule explains it." }, allNodes).admissible);
+  ok("check: self-edge is dropped",
+    !checkAdmissibility({ ...v0, to: v0.from }, allNodes).admissible);
+  ok("check: unknown edge type is dropped",
+    !checkAdmissibility({ ...v0, type: "relates-to" as SemanticVerdict["type"] }, allNodes).admissible);
+  const vc = verdictFor(cases[2]!.a, cases[2]!.b, "contradicts", cases[2]!.spanA, cases[2]!.spanB);
+  ok("check: contradicts with resolution superseded-by is dropped as redundant",
+    !checkAdmissibility({ ...vc, resolution: "superseded-by" }, allNodes).admissible);
+  ok("check: contradicts across a supersede chain is dropped as redundant",
+    !checkAdmissibility(vc, [
+      { ...cases[2]!.a, supersedes: cases[2]!.b.id },
+      cases[2]!.b,
+    ]).admissible);
+  // Review round 2: a two-hop chain is redundant too (the spec says
+  // "chain", not "direct link").
+  const chA = snode(sid(41), "Use the staging queue for every deploy.");
+  const chB = snode(sid(42), "Use the staging queue only for canary deploys.");
+  const chC = snode(sid(43), "Never route deploys through the staging queue.");
+  ok("check: contradicts across a two-hop supersede chain is dropped as redundant",
+    !checkAdmissibility(
+      { from: chA.id, to: chC.id, type: "contradicts", spanFrom: "Use the staging queue for every deploy", spanTo: "Never route deploys through the staging queue", relation: rel("contradicts", "Use the staging queue for every deploy", "Never route deploys through the staging queue") },
+      [{ ...chA, supersedes: chB.id }, { ...chB, supersedes: chC.id }, chC],
+    ).admissible);
+  // Review round 2: identical spans must be quoted twice.
+  const idA = snode(sid(44), "The rule is ci-gated.");
+  const idB = snode(sid(45), "The block is ci-gated too.");
+  ok("check: identical spans quoted once only name one side",
+    !checkAdmissibility(
+      { from: idA.id, to: idB.id, type: "supports", spanFrom: "ci-gated", spanTo: "ci-gated", relation: `"ci-gated" supports the block.` },
+      [idA, idB],
+    ).admissible);
+  ok("check: identical spans quoted twice are admissible",
+    checkAdmissibility(
+      { from: idA.id, to: idB.id, type: "supports", spanFrom: "ci-gated", spanTo: "ci-gated", relation: `"ci-gated" supports "ci-gated" because the same rule is cited on both sides.` },
+      [idA, idB],
+    ).admissible);
+  ok("check: unknown resolution value is dropped",
+    !checkAdmissibility({ ...vc, resolution: "resolved" as SemanticVerdict["resolution"] }, allNodes).admissible);
+  ok("check: resolution is ignored for supports (rule 4 is contradicts-only)",
+    checkAdmissibility({ ...v0, resolution: "superseded-by" }, allNodes).admissible);
+
+  // Review round 1: Chinese terminators, span-final terminators, and
+  // substring spans.
+  const zhA = snode(sid(31), "部署走 ci-gated：流水线通过后才能推生产。");
+  const zhB = snode(sid(32), "周二的发布被拦下了，因为 CI 红了。");
+  const zhV: SemanticVerdict = {
+    from: zhA.id, to: zhB.id, type: "supports",
+    spanFrom: "ci-gated", spanTo: "因为 CI 红了",
+    relation: `"ci-gated" 支持 "因为 CI 红了" 因为前者是后者遵循的规则。`,
+  };
+  ok("check: a Chinese relation ending with 。 is one sentence",
+    checkAdmissibility(zhV, [zhA, zhB]).admissible);
+  ok("check: a Chinese two-sentence relation is dropped",
+    !checkAdmissibility({ ...zhV, relation: `"ci-gated" 支持 "因为 CI 红了" 因为前者是后者遵循的规则。再补一句。` }, [zhA, zhB]).admissible);
+  ok("check: a terminator at the end of a span still ends the sentence",
+    checkAdmissibility(
+      { ...v0, spanTo: "blocked because CI was red.", relation: `"ci-gated" supports "blocked because CI was red."` },
+      allNodes,
+    ).admissible);
+  const subA = snode(sid(33), "Deploy is CI was red today, holding the release.");
+  const subB = snode(sid(34), "Blocked: CI was red. Retry after the pipeline goes green.");
+  const subV: SemanticVerdict = {
+    from: subA.id, to: subB.id, type: "supports",
+    spanFrom: "CI was red", spanTo: "CI was red.",
+    relation: `"CI was red" supports "CI was red." because the first states the rule the second applies.`,
+  };
+  ok("check: a span that is a substring of the other does not corrupt the count",
+    checkAdmissibility(subV, [subA, subB]).admissible);
+  ok("check: the substring-span verdict still drops on a second sentence",
+    !checkAdmissibility(
+      { ...subV, relation: `"CI was red" supports "CI was red." because the first states the rule. It really is.` },
+      [subA, subB],
+    ).admissible);
+
+  // The memory_add / memory_propose refusal detector (§4): only the full
+  // structured shape matches — prose about support never does.
+  ok("refusal: a JSON body carrying the full verdict shape is an edge verdict",
+    looksLikeEdgeVerdict(JSON.stringify(v0)));
+  ok("refusal: prose mentioning support is not an edge verdict",
+    !looksLikeEdgeVerdict("Deploy is ci-gated, which supports blocking the release when CI is red."));
+  ok("refusal: partial JSON (missing spans) is not an edge verdict",
+    !looksLikeEdgeVerdict(JSON.stringify({ from: v0.from, to: v0.to, type: "supports" })));
+  ok("refusal: a non-verdict edge type in JSON is not an edge verdict",
+    !looksLikeEdgeVerdict(JSON.stringify({ ...v0, type: "relates-to" })));
 }
 
 console.log("  == D78 curation (deterministic tier) ==");
